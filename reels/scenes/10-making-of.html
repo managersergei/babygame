@@ -1,0 +1,26 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S10 Так рождается машинка</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(10.5);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 });
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="el veil" id="cover"></div>' +
+  '<img class="el mid" id="raw" src="../../assets_raw/fire.png" style="left:140px;top:560px;width:800px;border-radius:40px;box-shadow:0 24px 60px rgba(0,0,0,.35)">' +
+  '<img class="el mid" id="cut" src="../../assets/cars/fire.webp" style="left:140px;top:560px;width:800px">');
+text('hook', 'Так рождается\nмашинка', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+set('#raw', { o: 0, scale: 0.8 }); set('#cut', { o: 0 });
+tw('#raw', 0.9, 0.5, { o: [0, 1], scale: [0.8, 1] }, 'back');
+text('cap', '1. Нейросеть нарисовала', 'c1'); set('#c1', { o: 0, y: 30 }); tw('#c1', 1.1, 0.4, { o: [0, 1], y: [30, 0] });
+tw('#c1', 3.2, 0.3, { o: [1, 0] });
+tw('#raw', 3.3, 0.6, { o: [1, 0] }); tw('#cut', 3.3, 0.6, { o: [0, 1] });
+text('cap', '2. Вырезали фон и тень', 'c2'); set('#c2', { o: 0, y: 30 }); tw('#c2', 3.5, 0.4, { o: [0, 1], y: [30, 0] });
+tw('#c2', 5.5, 0.3, { o: [1, 0] });
+tw('#cut', 5.6, 0.7, { o: [1, 0], scale: [1, 0.4], y: [0, 500] }, 'in');
+tw('#cover', 5.7, 0.7, { o: [1, 0] });
+tw('#car', 6.1, 1.4, { x: [-750, 0] }); every(function (t) { w.road(t, t > 6.0 ? 900 : 0); });
+say(6.2, 'Поехали!');
+text('cap', '3. Поехала!', 'c3'); set('#c3', { o: 0, y: 30 }); tw('#c3', 6.6, 0.4, { o: [0, 1], y: [30, 0] });
+jump('#car', 7.8, 280, 0.8);
+endCard(9.2, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

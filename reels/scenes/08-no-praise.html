@@ -1,0 +1,23 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S08 Не хвалите за слово</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(9.5);
+var w = world();
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="pit el" id="pit" style="left:690px"></div>');
+car('fire', 330, 1300, 200);
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="el end" id="cover"></div>');
+text('hook', 'Не хвалите ребёнка\nза слово.', 'h1'); set('#h1', { o: 0, y: 30 }); tw('#h1', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+text('hook', 'Пусть машинка\nпрыгнет.', 'h2'); document.getElementById('h2').style.top = '760px'; document.getElementById('h2').style.color = '#ffd93d';
+set('#h2', { o: 0, scale: 0.6 }); tw('#h2', 1.7, 0.45, { o: [0, 1], scale: [0.6, 1] }, 'back');
+tw('#cover', 3.0, 0.6, { o: [1, 0] }); tw('#h1', 3.0, 0.4, { o: [1, 0] }); tw('#h2', 3.0, 0.4, { o: [1, 0] });
+var speed = 0; every(function (t) { w.road(t, speed); });
+text('word', 'ПРЫЖОК', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ПРЫЖОК!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 3.9, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 4.0, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+at(4.6, function () { speed = 900; }); jump('#car', 4.4, 340, 0.9); tw('#pit', 4.6, 0.95, { x: [0, -840] }, 'linear');
+say(5.5, 'Молодец! Ты выучил слово прыжок!');
+tw('#word', 6.2, 0.3, { o: [1, 0] }); tw('#kid', 6.2, 0.3, { o: [1, 0] });
+text('cap', 'Слово нужно ему,\nа не нам.', 'cap'); set('#cap', { o: 0, y: 30 }); tw('#cap', 6.3, 0.5, { o: [0, 1], y: [30, 0] });
+endCard(8.2, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

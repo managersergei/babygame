@@ -1,0 +1,16 @@
+{
+  "name": "Машинки — игра, где ребёнок говорит",
+  "short_name": "Машинки",
+  "description": "Ребёнок говорит слово — машинка едет, прыгает, заправляется. Для 2–4 лет.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#8fd3f4",
+  "theme_color": "#8fd3f4",
+  "lang": "ru",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

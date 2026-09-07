@@ -1,0 +1,24 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S03 Слово №3 ФАРА</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(10);
+var w = world({ night: true });
+car('fire', 330, 1300, 200);
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="beam el" id="beam" style="left:430px;top:1120px"></div><div class="dark el" id="dark"></div>');
+set('#beam', { o: 0 }); set('#dark', { o: 0 }); tw('#dark', 0.2, 1.4, { o: [0, 0.78] });
+text('label', 'СЛОВО №3', 'lab'); set('#lab', { o: 0, y: -30 }); tw('#lab', 0.1, 0.4, { o: [0, 1], y: [-30, 0] });
+text('hook', 'Стало темно.\nСкажи ФАРА', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.3, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+set('#car', { x: -750 }); tw('#car', 0, 1.6, { x: [-750, 0] });
+every(function (t) { w.road(t, 700); });
+say(1.8, 'Стало темно! Скажи слово: фара!');
+text('word', 'ФАРА', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ФАРА!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 4.3, 0.35, { o: [0, 1], y: [40, 0] }, 'back');
+tw('#word', 4.4, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+tw('#beam', 4.9, 0.25, { o: [0, 1] }); tw('#dark', 4.9, 0.6, { o: [0.78, 0.3] });
+tw('#word', 5.0, 0.25, { scale: [1, 1.12] }); tw('#word', 5.25, 0.3, { scale: [1.12, 1] });
+say(5.4, 'Молодец! Ты выучил слово фара!');
+tw('#word', 7.6, 0.3, { o: [1, 0] }); tw('#kid', 7.6, 0.3, { o: [1, 0] });
+endCard(8.5, 'МАШИНКИ', 'игра, где ребёнок говорит', 'Слово №4 — завтра · ссылка в профиле');
+</script></body></html>

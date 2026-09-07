@@ -1,0 +1,27 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S01 Слово №1 ПРЫЖОК</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(10);
+var w = world();
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="pit el" id="pit" style="left:1250px"></div>');
+car('fire', 330, 1300, 200);
+text('label', 'СЛОВО №1', 'lab'); set('#lab', { o: 0, y: -30 }); tw('#lab', 0.1, 0.4, { o: [0, 1], y: [-30, 0] });
+text('hook', 'Скажи ПРЫЖОК —\nи машинка прыгнет', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.3, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+set('#car', { x: -750 }); tw('#car', 0, 1.6, { x: [-750, 0] });
+tw('#pit', 0.6, 1.5, { x: [0, -560] });
+var speed = 900; at(2.1, function () { speed = 0; });
+every(function (t) { w.road(t, speed); });
+say(2.3, 'Ой! Яма! Скажи слово: прыжок!');
+text('word', 'ПРЫЖОК', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ПРЫЖОК!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 5.0, 0.35, { o: [0, 1], y: [40, 0] }, 'back');
+tw('#word', 5.1, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+tw('#word', 5.45, 0.25, { scale: [1, 1.12] }); tw('#word', 5.7, 0.3, { scale: [1.12, 1] });
+at(5.7, function () { speed = 900; });
+jump('#car', 5.55, 340, 0.9);
+tw('#pit', 5.75, 0.95, { x: [-560, -1400] }, 'linear');
+say(6.8, 'Молодец! Ты выучил слово прыжок!');
+tw('#word', 7.4, 0.3, { o: [1, 0] }); tw('#kid', 7.4, 0.3, { o: [1, 0] });
+endCard(8.7, 'МАШИНКИ', 'игра, где ребёнок говорит', 'Слово №2 — завтра · ссылка в профиле');
+</script></body></html>

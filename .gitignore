@@ -1,0 +1,10 @@
+.DS_Store
+*.bak
+*.восстановлен-*.bak
+assets_raw/
+reels/out/
+reels/frames/
+node_modules/
+assets/cars/*.png
+assets/world/*.png
+assets/music/*.wav

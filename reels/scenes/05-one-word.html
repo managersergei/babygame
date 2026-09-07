@@ -1,0 +1,22 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S05 Одно слово за уровень</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(11.5);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.6, { x: [-750, 0] });
+every(function (t) { w.road(t, 700); });
+text('hook', 'Секрет: одно слово\nза уровень', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+say(0.5, 'Это уровень 1. Сейчас твоя машина поедет, и мы выучим слово прыжок. Ты готов?');
+var words = [['⬆', 'ПРЫЖОК'], ['1', 'ОДИН'], ['⛽', 'БЕНЗИН'], ['🎨', 'ЧЁРНЫЙ'], ['💡', 'ФАРА'], ['💨', 'ГАЗ']];
+words.forEach(function (wd, i) {
+  var y = 540 + i * 100, x = 120 + (i % 2) * 40;
+  document.getElementById('stage').insertAdjacentHTML('beforeend',
+    '<div class="el" id="w' + i + '" style="left:' + x + 'px;top:' + y + 'px;width:820px;height:86px;border-radius:26px;background:rgba(255,253,248,.95);box-shadow:0 8px 20px rgba(0,0,0,.2);display:flex;align-items:center;gap:22px;padding:0 26px;font-size:46px;font-weight:900;color:#2b2140">' +
+    '<span style="display:inline-block;width:64px;text-align:center;color:#e0691f">' + wd[0] + '</span><span>' + (i + 1) + ' · ' + wd[1] + '</span></div>');
+  set('#w' + i, { o: 0, x: -80 }); tw('#w' + i, 1.4 + i * 0.55, 0.4, { o: [0, 1], x: [-80, 0] }, 'back');
+});
+text('cap', 'Не десять слов. Одно.\nИ сразу — команда машинке.', 'cap'); set('#cap', { o: 0, y: 30 }); tw('#cap', 6.4, 0.5, { o: [0, 1], y: [30, 0] });
+jump('#car', 7.6, 300, 0.85);
+endCard(10.0, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

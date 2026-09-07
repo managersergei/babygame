@@ -1,0 +1,34 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S04 Микрофон включён</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(10.5);
+var s = document.getElementById('stage'); s.style.background = '#2b6cb0';
+text('hook', 'Микрофон включён.\nИнтернет выключен.', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+s.insertAdjacentHTML('beforeend',
+  '<div class="el mid" id="phone" style="left:280px;top:600px;width:520px;height:840px;border-radius:70px;background:#fffdf8;box-shadow:0 30px 60px rgba(0,0,0,.35)">' +
+  '<div style="position:absolute;left:200px;top:26px;width:120px;height:14px;border-radius:7px;background:#d7d1c5"></div>' +
+  '<div id="mic" style="position:absolute;left:0;width:520px;top:130px;font-size:150px;text-align:center">🎤</div>' +
+  '<div id="bars" style="position:absolute;left:90px;top:360px;width:340px;height:160px;display:flex;align-items:flex-end;justify-content:space-between"></div>' +
+  '<div id="lock" style="position:absolute;left:0;width:520px;top:560px;font-size:120px;text-align:center;opacity:0">🔒</div>' +
+  '<div id="pat" style="position:absolute;left:110px;top:560px;width:300px;height:120px;display:grid;grid-template-columns:repeat(10,1fr);gap:6px;opacity:0"></div>' +
+  '</div>' +
+  '<div class="el mid txt" id="wifi" style="left:790px;top:560px;font-size:150px;text-shadow:none">📶</div>' +
+  '<div class="el mid txt" id="cross" style="left:790px;top:560px;font-size:170px;color:#ff5252;text-shadow:none;line-height:150px">✕</div>');
+var bars = document.getElementById('bars'), pat = document.getElementById('pat');
+for (var i = 0; i < 9; i++) { var b = document.createElement('div'); b.style.cssText = 'width:26px;height:20px;border-radius:13px;background:#2b6cb0'; bars.appendChild(b); }
+for (var j = 0; j < 40; j++) { var c = document.createElement('div'); c.style.cssText = 'border-radius:5px;background:' + (Math.sin(j * 7.3) > 0.1 ? '#e0691f' : '#bfe9ff'); pat.appendChild(c); }
+set('#phone', { o: 0, y: 60 }); tw('#phone', 0.6, 0.6, { o: [0, 1], y: [60, 0] }, 'back');
+set('#cross', { o: 0, scale: 2 }); tw('#cross', 1.6, 0.35, { o: [0, 1], scale: [2, 1] }, 'back');
+var talk = false; at(2.0, function () { talk = true; }); at(4.6, function () { talk = false; });
+say(2.0, 'Скажи прыжок — и машинка подпрыгнет!');
+every(function (t) { var bs = bars.children; for (var i = 0; i < bs.length; i++) { var h = talk ? 30 + Math.abs(Math.sin(t * 9 + i * 1.7)) * 120 * Math.abs(Math.sin(t * 2.3 + i)) : 20; bs[i].style.height = h + 'px'; } });
+text('cap', 'Игра не распознаёт речь.', 'c1'); set('#c1', { o: 0, y: 30 }); tw('#c1', 2.3, 0.4, { o: [0, 1], y: [30, 0] });
+at(4.8, function () { pat.style.opacity = 1; bars.style.opacity = 0.25; });
+tw('#c1', 4.8, 0.3, { o: [1, 0] });
+text('cap', 'Она запоминает, как слово\nзвучит у вашего ребёнка.', 'c2'); set('#c2', { o: 0, y: 30 }); tw('#c2', 5.0, 0.4, { o: [0, 1], y: [30, 0] });
+at(6.9, function () { document.getElementById('lock').style.opacity = 1; pat.style.opacity = 0.35; });
+tw('#c2', 7.2, 0.3, { o: [1, 0] });
+text('cap', 'Узор остаётся на телефоне.\nВ интернет — ничего.', 'c3'); set('#c3', { o: 0, y: 30 }); tw('#c3', 7.4, 0.4, { o: [0, 1], y: [30, 0] });
+endCard(9.2, 'МАШИНКИ', 'работает без интернета', 'ссылка в профиле');
+</script></body></html>

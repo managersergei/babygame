@@ -1,0 +1,26 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>S07 Игра ждёт</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(12.5);
+var w = world();
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="pit el" id="pit" style="left:1250px"></div>');
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.6, { x: [-750, 0] });
+tw('#pit', 0.6, 1.5, { x: [0, -560] });
+var speed = 900; at(2.1, function () { speed = 0; }); every(function (t) { w.road(t, speed); });
+text('hook', 'Что делает игра,\nкогда ребёнок молчит?', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+say(2.3, 'Ой! Яма! Скажи слово: прыжок!');
+text('cap', 'Тишина…', 'cap'); set('#cap', { o: 0 });
+var t0 = 4.9; tw('#cap', t0, 0.3, { o: [0, 1] });
+every(function (t) { if (t > t0 && t < 8.6) document.getElementById('cap').textContent = 'Тишина… ' + Math.min(4, Math.floor(t - t0) + 1) + ' с'; });
+say(6.7, 'Ещё раз!');
+tw('#cap', 8.4, 0.3, { o: [1, 0] });
+at(8.5, function () { document.getElementById('hook').textContent = 'Ждёт.\nПроигрыша нет. Никто не давит.'; });
+tw('#hook', 8.5, 0.3, { scale: [0.9, 1] }, 'back');
+text('word', 'ПРЫЖОК', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ПРЫЖОК!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 9.2, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 9.3, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+at(9.9, function () { speed = 900; }); jump('#car', 9.7, 340, 0.9); tw('#pit', 9.9, 0.95, { x: [-560, -1400] }, 'linear');
+say(10.7, 'Молодец!');
+endCard(11.5, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

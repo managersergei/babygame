@@ -1,0 +1,44 @@
+/* Reel kit: вертикальный холст 1080×1920, палитра игры, безопасные зоны. */
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:1080px; height:1920px; overflow:hidden; background:#8fd3f4;
+  font-family:"Arial Rounded MT Bold","Trebuchet MS",system-ui,-apple-system,sans-serif; }
+#stage { position:relative; width:1080px; height:1920px; overflow:hidden; }
+.el { position:absolute; will-change:transform, opacity; transform-origin:50% 100%; }
+.mid { transform-origin:50% 50%; }
+img.el { display:block; }
+.txt { font-weight:900; color:#fff; text-align:center; line-height:1.05; white-space:pre-line;
+  text-shadow:0 6px 0 #2b6cb0, 0 14px 30px rgba(0,0,0,.35); }
+.hook { left:70px; width:940px; top:260px; font-size:92px; }
+.hook.small { font-size:72px; }
+.label { left:70px; width:940px; top:180px; font-size:44px; color:#fffdf8; letter-spacing:.08em; text-shadow:0 4px 0 #2b6cb0; }
+.word { left:0; width:1080px; top:640px; font-size:210px; color:#ffd93d; text-shadow:0 10px 0 #e0691f, 0 24px 44px rgba(0,0,0,.4); transform-origin:50% 50%; }
+.word.sm { font-size:150px; }
+.kid { left:120px; width:840px; top:1400px; font-size:64px; color:#2b2140; text-shadow:none; background:rgba(255,253,248,.95);
+  border-radius:40px; padding:26px 34px; box-shadow:0 12px 30px rgba(0,0,0,.25); }
+.cap { left:90px; width:900px; top:1520px; font-size:54px; color:#fff; text-shadow:0 5px 0 #2b2140, 0 12px 24px rgba(0,0,0,.4); }
+.end { left:0; width:1080px; top:0; height:1920px; background:#2b6cb0; }
+.end .t1 { position:absolute; left:80px; width:920px; top:760px; font-size:120px; font-weight:900; color:#ffd93d; text-align:center; text-shadow:0 8px 0 #e0691f; }
+.end .t2 { position:absolute; left:80px; width:920px; top:930px; font-size:56px; font-weight:900; color:#fff; text-align:center; }
+.end .t3 { position:absolute; left:80px; width:920px; top:1180px; font-size:48px; font-weight:900; color:#bfe9ff; text-align:center; }
+/* мир */
+.sky { position:absolute; left:0; top:0; width:1080px; height:1200px; background:linear-gradient(#63b8ea, #8fd3f4 60%, #cdeefb); }
+.sky.night { background:linear-gradient(#0b1d3a, #1c3b6e 60%, #2b5a8f); }
+.sun { position:absolute; left:820px; top:230px; width:170px; height:170px; border-radius:50%; background:#ffe36b; box-shadow:0 0 80px 30px rgba(255,227,107,.55); }
+.cloud { position:absolute; width:260px; height:90px; border-radius:60px; background:rgba(255,255,255,.92); }
+.cloud:before { content:""; position:absolute; left:50px; top:-45px; width:120px; height:120px; border-radius:50%; background:inherit; }
+.cloud:after { content:""; position:absolute; left:130px; top:-25px; width:90px; height:90px; border-radius:50%; background:inherit; }
+.hills { position:absolute; left:-100px; top:980px; width:1280px; height:260px; background:radial-gradient(ellipse 420px 200px at 20% 100%, #6fbf5c 60%, transparent 61%), radial-gradient(ellipse 520px 240px at 65% 100%, #7ccf6a 60%, transparent 61%), radial-gradient(ellipse 380px 190px at 100% 100%, #6fbf5c 60%, transparent 61%); }
+.grass { position:absolute; left:0; top:1130px; width:1080px; height:790px; background:linear-gradient(#79c86a, #5fae52); }
+.road { position:absolute; left:0; top:1150px; width:1080px; height:200px; background:#5b6470; border-top:8px solid #f2f6fb; border-bottom:8px solid #f2f6fb; overflow:hidden; }
+.stripes { position:absolute; left:0; top:88px; width:2160px; height:16px;
+  background:repeating-linear-gradient(90deg, #fff 0 120px, transparent 120px 240px); }
+.pit { position:absolute; top:1146px; width:230px; height:212px; background:#2b2140; border-radius:0 0 90px 90px; }
+.pit:before { content:""; position:absolute; left:0; right:0; top:0; height:14px; background:#1a1428; }
+.light { position:absolute; top:960px; width:90px; height:270px; border-radius:26px; background:#2b2140; box-shadow:0 10px 0 #1a1428; }
+.light i { position:absolute; left:15px; width:60px; height:60px; border-radius:50%; background:#3a3350; }
+.light i.r { top:18px; } .light i.y { top:105px; } .light i.g { top:192px; }
+.light i.on.r { background:#ff3b3b; box-shadow:0 0 30px #ff3b3b; } .light i.on.g { background:#3ddc6a; box-shadow:0 0 30px #3ddc6a; }
+.beam { position:absolute; width:520px; height:220px; background:linear-gradient(90deg, rgba(255,240,150,.75), rgba(255,240,150,0)); clip-path:polygon(0 35%, 100% 0, 100% 100%, 0 65%); }
+.dark { position:absolute; left:0; top:0; width:1080px; height:1920px; background:#0b1d3a; }
+.shadow { position:absolute; width:260px; height:40px; border-radius:50%; background:rgba(0,0,0,.28); }
+.veil { position:absolute; left:0; top:0; width:1080px; height:1920px; background:#8fd3f4; pointer-events:none; }
