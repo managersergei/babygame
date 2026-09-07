@@ -7,7 +7,7 @@ const here = resolve(new URL(".", import.meta.url).pathname);
 const args = process.argv.slice(2);
 const fps = +(args[args.indexOf("--fps") + 1] || 30) || 30;
 const quick = args.includes("--quick");
-const only = args.filter((a) => /^\d\d$/.test(a));
+const only = args.filter((a, i) => /^\d\d$/.test(a) && args[i - 1] !== "--fps");   // «30» после --fps — не номер сцены
 const REC = process.env.HOME + "/.claude/skills/code-motion/scripts/record.mjs";
 const ENC = process.env.HOME + "/.claude/skills/code-motion/scripts/encode.sh";
 mkdirSync(join(here, "out"), { recursive: true }); mkdirSync(join(here, "frames"), { recursive: true });
