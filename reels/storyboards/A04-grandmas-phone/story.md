@@ -4,10 +4,10 @@
 
 | # | Время | Что в кадре | Движение (для I2V) | Кадр |
 |---|---|---|---|---|
-| 1 | 0–2.5 | Бабушка с старым телефоном за кухонным столом, внук рядом | grandma tilts the phone, boy leans in | ![](shot1.png) |
-| 2 | 2.5–5 | Крупно: старый телефон, на экране игра, палец бабушки | finger taps, the screen brightens, truck wobbles | ![](shot2.png) |
-| 3 | 5–7.5 | Мальчик кричит в телефон, бабушка смеётся | boy shouts, grandma laughs and shakes her head | ![](shot3.png) |
-| 4 | 7.5–10 | Оба смотрят в телефон, машинка прыгает | truck jumps, both heads bob up following the jump | ![](shot4.png) |
+| 1 | 0–2.5 | Бабушка с старым телефоном за кухонным столом, внук рядом | grandma tilts the phone, boy leans in | ![](shot1.jpg) |
+| 2 | 2.5–5 | Крупно: старый телефон, на экране игра, палец бабушки | finger taps, the screen brightens, truck wobbles | ![](shot2.jpg) |
+| 3 | 5–7.5 | Мальчик кричит в телефон, бабушка смеётся | boy shouts, grandma laughs and shakes her head | ![](shot3.jpg) |
+| 4 | 7.5–10 | Оба смотрят в телефон, машинка прыгает | truck jumps, both heads bob up following the jump | ![](shot4.jpg) |
 
 ## Промпты
 

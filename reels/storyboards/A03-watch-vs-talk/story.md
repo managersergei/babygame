@@ -4,10 +4,10 @@
 
 | # | Время | Что в кадре | Движение (для I2V) | Кадр |
 |---|---|---|---|---|
-| 1 | 0–3 | Серый план: мальчик обмяк на диване перед телевизором | very slow zoom, TV flicker on his face, he blinks slowly | ![](shot1.png) |
-| 2 | 3–5.5 | Цвет возвращается: тот же мальчик сидит прямо с планшетом, кричит | color blooms in, he sits up and shouts, hair bounces | ![](shot2.png) |
-| 3 | 5.5–8 | Крупно: экран — машинка прыгает | the truck jumps, sparkles burst | ![](shot3.png) |
-| 4 | 8–10.5 | Мальчик смеётся, мама рядом на диване | both laugh, mom leans in, camera pulls back slightly | ![](shot4.png) |
+| 1 | 0–3 | Серый план: мальчик обмяк на диване перед телевизором | very slow zoom, TV flicker on his face, he blinks slowly | ![](shot1.jpg) |
+| 2 | 3–5.5 | Цвет возвращается: тот же мальчик сидит прямо с планшетом, кричит | color blooms in, he sits up and shouts, hair bounces | ![](shot2.jpg) |
+| 3 | 5.5–8 | Крупно: экран — машинка прыгает | the truck jumps, sparkles burst | ![](shot3.jpg) |
+| 4 | 8–10.5 | Мальчик смеётся, мама рядом на диване | both laugh, mom leans in, camera pulls back slightly | ![](shot4.jpg) |
 
 ## Промпты
 

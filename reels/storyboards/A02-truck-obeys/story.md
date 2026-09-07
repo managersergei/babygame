@@ -4,11 +4,11 @@
 
 | # | Время | Что в кадре | Движение (для I2V) | Кадр |
 |---|---|---|---|---|
-| 1 | 0–2.5 | Общий план: игрушечная дорога через луг, машинка едет | the truck drives forward, clouds drift, grass sways | ![](shot1.png) |
-| 2 | 2.5–5 | Машинка остановилась перед ямой, вопросительное настроение | the truck rocks back slightly, dust settles | ![](shot2.png) |
-| 3 | 5–7.5 | Прыжок через яму | the truck arcs over the pit and lands with a small bounce | ![](shot3.png) |
-| 4 | 7.5–10 | Ночь, фары включаются | headlights flicker on, beams sweep the road, fireflies drift | ![](shot4.png) |
-| 5 | 10–12.5 | Мойка: пена, блестящая машинка | bubbles pop, brushes spin, water sparkles fly | ![](shot5.png) |
+| 1 | 0–2.5 | Общий план: игрушечная дорога через луг, машинка едет | the truck drives forward, clouds drift, grass sways | ![](shot1.jpg) |
+| 2 | 2.5–5 | Машинка остановилась перед ямой, вопросительное настроение | the truck rocks back slightly, dust settles | ![](shot2.jpg) |
+| 3 | 5–7.5 | Прыжок через яму | the truck arcs over the pit and lands with a small bounce | ![](shot3.jpg) |
+| 4 | 7.5–10 | Ночь, фары включаются | headlights flicker on, beams sweep the road, fireflies drift | ![](shot4.jpg) |
+| 5 | 10–12.5 | Мойка: пена, блестящая машинка | bubbles pop, brushes spin, water sparkles fly | ![](shot5.jpg) |
 
 ## Промпты
 

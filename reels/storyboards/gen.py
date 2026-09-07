@@ -18,10 +18,10 @@ def call(url, body):
 
 def gen(story, i, shot):
     d = os.path.join(OUT, story['id']); os.makedirs(d, exist_ok=True)
-    path = os.path.join(d, 'shot%d.png' % (i + 1))
+    path = os.path.join(d, 'shot%d.jpg' % (i + 1))
     if os.path.exists(path): return 'skip'
     if DRY: return 'dry'
-    body = {'prompt': shot['prompt'], 'num_images': 1, 'aspect_ratio': '9:16', 'resolution': '1K', 'output_format': 'png'}
+    body = {'prompt': shot['prompt'], 'num_images': 1, 'aspect_ratio': '9:16', 'resolution': '1K', 'output_format': 'jpeg'}
     tries = [('https://fal.run/fal-ai/nano-banana-pro/edit', dict(body, image_urls=[REF]))] if shot['ref'] else []
     tries.append(('https://fal.run/fal-ai/nano-banana-pro', body))
     err = None
@@ -54,11 +54,11 @@ for s in STORIES:
     d = os.path.join(OUT, s['id']); os.makedirs(d, exist_ok=True)
     md = ['# %s — «%s»\n' % (s['id'], s['title']), 'Крючок: **%s**\n' % s['hook'], '| # | Время | Что в кадре | Движение (для I2V) | Кадр |', '|---|---|---|---|---|']
     for i, sh in enumerate(s['shots']):
-        md.append('| %d | %s | %s | %s | ![](shot%d.png) |' % (i + 1, sh['t'], sh['what'], sh['motion'], i + 1))
+        md.append('| %d | %s | %s | %s | ![](shot%d.jpg) |' % (i + 1, sh['t'], sh['what'], sh['motion'], i + 1))
     md.append('\n## Промпты\n')
     for i, sh in enumerate(s['shots']): md.append('**Shot %d** (%s): %s\n' % (i + 1, 'с референсом машинки' if sh['ref'] else 'без референса', sh['prompt']))
     open(os.path.join(d, 'story.md'), 'w', encoding='utf-8').write('\n'.join(md))
-    have = [os.path.join(d, 'shot%d.png' % (i + 1)) for i in range(len(s['shots']))]
+    have = [os.path.join(d, 'shot%d.jpg' % (i + 1)) for i in range(len(s['shots']))]
     have = [p for p in have if os.path.exists(p)]
     if Image and have:
         w, h = 270, 480; sheet = Image.new('RGB', (w * len(have), h), (43, 33, 64))

@@ -4,11 +4,11 @@
 
 | # | Время | Что в кадре | Движение (для I2V) | Кадр |
 |---|---|---|---|---|
-| 1 | 0–2.5 | Общий план: утро, гостиная, мальчик с планшетом на ковре, мама на кухне на фоне | slow push-in toward the boy, mom stirs her tea, dust motes in the light | ![](shot1.png) |
-| 2 | 2.5–5 | Крупно: экран планшета — машинка перед ямой, детские руки держат планшет | the truck bounces slightly in place, the boy's thumbs tighten on the tablet | ![](shot2.png) |
-| 3 | 5–7.5 | Средний план: лицо мальчика, кричит слово, глаза горят | he leans forward and shouts, curls bounce, slight camera shake on the shout | ![](shot3.png) |
-| 4 | 7.5–10 | Крупно: экран — машинка в прыжке над ямой, искры | the truck arcs over the pit, sparkles burst, camera follows the arc | ![](shot4.png) |
-| 5 | 10–12.5 | Средний план: мама обернулась, удивлённая улыбка; мальчик хлопает на переднем плане | mom turns and smiles, boy claps twice, gentle rack focus from boy to mom | ![](shot5.png) |
+| 1 | 0–2.5 | Общий план: утро, гостиная, мальчик с планшетом на ковре, мама на кухне на фоне | slow push-in toward the boy, mom stirs her tea, dust motes in the light | ![](shot1.jpg) |
+| 2 | 2.5–5 | Крупно: экран планшета — машинка перед ямой, детские руки держат планшет | the truck bounces slightly in place, the boy's thumbs tighten on the tablet | ![](shot2.jpg) |
+| 3 | 5–7.5 | Средний план: лицо мальчика, кричит слово, глаза горят | he leans forward and shouts, curls bounce, slight camera shake on the shout | ![](shot3.jpg) |
+| 4 | 7.5–10 | Крупно: экран — машинка в прыжке над ямой, искры | the truck arcs over the pit, sparkles burst, camera follows the arc | ![](shot4.jpg) |
+| 5 | 10–12.5 | Средний план: мама обернулась, удивлённая улыбка; мальчик хлопает на переднем плане | mom turns and smiles, boy claps twice, gentle rack focus from boy to mom | ![](shot5.jpg) |
 
 ## Промпты
 

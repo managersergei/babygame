@@ -8,3 +8,6 @@ node_modules/
 assets/cars/*.png
 assets/world/*.png
 assets/music/*.wav
+reels/storyboards/*/*.jpg
+reels/storyboards/gen*.log
+reels/out/

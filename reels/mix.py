@@ -12,7 +12,8 @@ missing = [t for _, t in says if not os.path.exists(os.path.join(BASE, 'assets/v
 if missing:
     for t in missing: print('НЕТ ОЗВУЧКИ:', repr(t), fnv(t))
     sys.exit(1)
-cmd = ['ffmpeg', '-y', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', str(dur)]
+# -t ДО -i: ограничение входа anullsrc (иначе тишина бесконечна и WAV растёт, пока не кончится диск — было 46 ГБ)
+cmd = ['ffmpeg', '-y', '-v', 'error', '-f', 'lavfi', '-t', str(dur), '-i', 'anullsrc=r=48000:cl=stereo']
 fl = []
 for i, (t, txt) in enumerate(says):
     cmd += ['-i', os.path.join(BASE, 'assets/voice', fnv(txt) + '.mp3')]
@@ -21,5 +22,5 @@ n = len(says)
 if n:
     fl.append('[0]' + ''.join('[a%d]' % i for i in range(n)) + 'amix=inputs=%d:duration=first:normalize=0[a]' % (n + 1))
     cmd += ['-filter_complex', ';'.join(fl), '-map', '[a]']
-cmd += ['-ar', '48000', '-ac', '2', out]
+cmd += ['-t', str(dur), '-ar', '48000', '-ac', '2', out]
 subprocess.check_call(cmd); print('mix: %d реплик → %s' % (n, out))
