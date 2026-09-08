@@ -233,6 +233,82 @@ function checkTurn() {                            // портрет на тел�
 window.addEventListener('resize', checkTurn);
 
 /* ═══════════════ 2. КАРТИНКИ ═══════════════ */
+/* Анимация окружения: у живого объекта три кадра — <имя>, <имя>_b и <имя>_c.
+   Цикл и скорость свои у каждого, фаза — своя у каждого экземпляра (ph у объектов,
+   мировой индекс у декоративного ряда), иначе всё стадо шевелится синхронно.
+   Кадр ещё не загрузился — возвращаем базовое имя, игра при этом не ломается.
+   ОСТОРОЖНО с новыми именами: monster_b и monster_c в assets/world/ — это отдельные
+   монстрики фона, а не кадры. Имя, у которого <имя>_b уже занято, в таблицу не добавлять. */
+var ANIM = {
+  cow:        { seq: 'abac', fps: 2 },
+  horse:      { seq: 'abac', fps: 2 },
+  chicken:    { seq: 'abcb', fps: 3 },
+  sheep:      { seq: 'abac', fps: 2 },
+  hedgehog:   { seq: 'abcb', fps: 6 },
+  loc_monkey: { seq: 'abcb', fps: 2 },
+  windmill:   { seq: 'abc',  fps: 6 },
+  butterfly:  { seq: 'abcb', fps: 8 },
+  bird:       { seq: 'abcb', fps: 7 },
+  coin:       { seq: 'abc',  fps: 6 }
+};
+/* Живое движение без новых картинок: маленькие сдвиги самого спрайта. Читается как анимация,
+   идентичность и палитра сохраняются идеально (сгенерированные кадры теряли и то, и другое).
+   Якорь спрайта — низ-центр, поэтому rot/sy не отрывают ноги от земли.
+   d — доля высоты спрайта для подъёма; всё считается от общего времени T и фазы объекта.  */
+var MOVE = {
+  cow:        { rot: 0.020, sy: 0.030, sp: 1.1 },                 // жуёт: голова-корпус чуть качается
+  horse:      { rot: 0.026, sy: 0.026, sp: 1.0 },
+  sheep:      { rot: 0.018, sy: 0.034, sp: 1.3 },
+  chicken:    { rot: 0.075, sy: 0.020, sp: 2.4, bias: 0.6 },      // клюёт: наклон вперёд и назад
+  hedgehog:   { rot: 0.030, sy: 0.040, d: 0.030, sp: 5.0 },       // семенит
+  loc_monkey: { rot: 0.090, sy: 0.010, sp: 1.4 },                 // раскачивается
+  windmill:   { rot: 0.012, sy: 0.008, sp: 0.9 },                 // тяжело покачивается на ветру
+  butterfly:  { sx: 0.34, d: 0.030, sp: 7.5 },                    // машет крыльями
+  bird:       { sx: 0.26, d: 0.020, sp: 6.0 },
+  coin:       { sx: 0.75, sp: 3.0 },                              // крутится
+  tree:       { rot: 0.022, sp: 0.8 },                            // качается от ветра
+  loc_palm:   { rot: 0.030, sp: 0.7 },
+  loc_fir:    { rot: 0.016, sp: 0.9 },
+  bush:       { rot: 0.014, sy: 0.012, sp: 1.2 },
+  daisies:    { rot: 0.030, sp: 1.6 },
+  flower:     { rot: 0.034, sp: 1.7 }
+};
+/* Параметры для spr(): подмешиваются к тем, что уже передаёт вызывающий код. */
+function moveFx(name, ph, h) {
+  var m = MOVE[name];
+  if (!m) return null;
+  var t = T * (m.sp || 1) + (ph || 0) * 1.7;
+  var w = Math.sin(t), w2 = Math.sin(t * 2);
+  var o = {};
+  if (m.rot) o.rot = w * m.rot + (m.bias ? Math.max(0, w2) * m.rot * m.bias : 0);
+  if (m.sy)  o.sy = 1 + w2 * m.sy;
+  if (m.sx)  o.sx = 1 - Math.abs(w) * m.sx;
+  if (m.d && h) o.dy = -Math.abs(w) * m.d * h;     // подпрыгивает
+  return o;
+}
+function withMove(name, ph, h, opt) {              // объединяем «своё» движение с уже заданным
+  var m = moveFx(name, ph, h);
+  if (!m) return opt || {};
+  var out = {}, k;
+  for (k in (opt || {})) out[k] = opt[k];
+  if (m.rot != null) out.rot = (out.rot || 0) + m.rot;
+  if (m.sy != null)  out.sy = (out.sy || 1) * m.sy;
+  if (m.sx != null)  out.sx = (out.sx || 1) * m.sx;
+  if (m.dy != null)  out.dy = m.dy;
+  return out;
+}
+function frameOf(name, ph) {
+  var a = ANIM[name];
+  if (!a) return name;
+  var n = a.seq.length;
+  var p = (ph || 0) * 0.61803;                     // золотое сечение: соседи не попадают в такт
+  var i = Math.floor(T * a.fps + (p - Math.floor(p)) * n) % n;
+  if (i < 0) i += n;
+  var c = a.seq.charAt(i);
+  if (c === 'a') return name;
+  var v = name + '_' + c;
+  return ok(IMG[v]) ? v : name;
+}
 var ASSETS = ['monster','fire','race','police',
               'star','balloon','cone','ramp','arch','cloud','tree','house','bush','sun','fuel','wheel'];
 var IMG = {}, loadedN = 0;
@@ -254,6 +330,11 @@ ASSETS.push('bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
             'monster_a_run', 'monster_b_run', 'monster_c_run', 'monster_d_run',
             'paint', 'sheep', 'robot', 'master', 'monster_a', 'monster_b', 'monster_c', 'monster_d',
             'ambulance', 'bus', 'excavator', 'garbage', 'tractor', 'tow');   // части машин (…_body, wheel_…) убраны: подход «колёса отдельно» отменён, файлов нет
+/* ВКЛЮЧИТЬ ВМЕСТЕ С КАДРАМИ: как только в assets/world/ появятся <имя>_b.webp и <имя>_c.webp
+   для всех имён из ANIM — снять комментарий со следующей строки. Раньше нельзя: каждый
+   недостающий файл даёт 404 в консоли, и tools/smoke.mjs краснеет. Пока строка выключена,
+   frameOf() просто всегда возвращает базовое имя и игра выглядит как до правки. */
+// for (var an in ANIM) { if (ANIM.hasOwnProperty(an)) ASSETS.push(an + '_b', an + '_c'); }
 /* Две фазы: первые CORE_N картинок (машинки, дорога, база) — и игра стартует,
    остальное догружается фоном; чего ещё нет, spr() просто пропускает. */
 var CORE_N = 16, coreDone = 0;
@@ -370,7 +451,7 @@ function spr(name, x, y, h, o) {
   o = o || {};
   var k = h / ih(im), w = iw(im) * k;
   g.save();
-  g.translate(x, y);
+  g.translate(x, y + (o.dy || 0));                  // dy — подскок (процедурная анимация)
   if (o.rot) g.rotate(o.rot);
   if (o.sx || o.sy) g.scale(o.sx || 1, o.sy || 1);
   if (o.alpha != null) g.globalAlpha = o.alpha;
@@ -1443,7 +1524,7 @@ function forceSpawn(k) {
   else if (k === 'apple')    o = { t:'apple', x:x, y: 95 * S, ph: rnd(0, TAU) };
   else if (k === 'ball')     o = { t:'ball', x:x, ph: rnd(0, TAU), hit:false };
   else if (k === 'hedgehog') o = { t:'hedgehog', x:x, ph: rnd(0, TAU) };
-  else if (PROP_KIND[k])     o = { t:'prop', x:x, kind: k };
+  else if (PROP_KIND[k])     o = { t:'prop', x:x, kind: k, ph: rnd(0, TAU) };
   else if (k === 'fuel')     o = { t:'fuel', x:x };
   else if (k === 'bucket')   o = { t:'bucket', x:x, ph: rnd(0, TAU) };
   if (!o) { wantEl = null; return; }
@@ -1597,7 +1678,7 @@ function spawnEndless(x) {
     else if (it.t === 'pit')       o = { t:'pit', x:px2, w:150 * S };
     else if (it.t === 'mon')       o = { t:'mon', x:px2, ph:0, hit:false,
                                          skin: pick(['monster_a','monster_b','monster_c','monster_d']) };
-    else if (it.t === 'prop')      o = { t:'prop', x:px2,
+    else if (it.t === 'prop')      o = { t:'prop', x:px2, ph: rnd(0, TAU),
                                          kind: wantEl && PROP_KIND[wantEl] ? wantEl : pick((TH().props || ['tree','house','bush']).concat(TH().extra || [])) };
     else if (it.t === 'flower')    o = { t:'flower', x:px2 };
     else if (it.t === 'apple')     o = { t:'apple', x:px2, y: 95 * S, ph: rnd(0, TAU) };
@@ -2456,8 +2537,8 @@ function drawProps() {
     var nm = pr[(i % pr.length + pr.length) % pr.length];
     if (still && Math.abs(x + 90 * S - CARX) < 150 * S) return;
     shadow(x + 90 * S, pb - 2 * S, (PROP_H[nm] || 150) * 0.26 * S, 0.14);
-    spr(nm, x + 90 * S, pb, (PROP_H[nm] || 150) * 0.86 * S,           // дальний ряд мельче ближнего
-        { alpha: 0.92, sy: 1 + Math.sin(T * 1.1 + i * 1.7) * 0.012 });
+    spr(frameOf(nm, i), x + 90 * S, pb, (PROP_H[nm] || 150) * 0.86 * S,           // дальний ряд мельче ближнего
+        withMove(nm, i, (PROP_H[nm] || 150) * 0.86 * S, { alpha: 0.92 }));
   });
   layer(0.8, 260 * S, function (x, i) { if (i % 2 === 0) spr('bush', x + 40 * S, roadTop() + 14 * S, 66 * S); });
 }
@@ -2597,7 +2678,7 @@ function drawObjs() {
       g.restore();
     } else if (o.t === 'bird') {
       var fl = Math.sin((o.ph || 0) * 7) * 8 * S;
-      spr('bird', sx, o.y + fl, 78 * S, { mid: true, sy: 1 + Math.sin(o.ph * 7) * 0.08 });
+      spr(frameOf('bird', o.ph), sx, o.y + fl, 78 * S, withMove('bird', o.ph, 78 * S, { mid: true }));
     } else if (o.t === 'plane') {
       spr('plane', sx, o.y + Math.sin((o.ph || 0) * 1.6) * 7 * S, 96 * S, { mid: true, sx: -1 });
     } else if (o.t === 'flower') {
@@ -2608,15 +2689,15 @@ function drawObjs() {
     } else if (o.t === 'coin') {
       if (o.got) return;                                     // собрали — не рисуем
       var cb = Math.sin((o.ph || 0) * 2.2 + T * 2.4) * 7 * S;
-      spr('coin', sx, GY - o.y + 30 * S - cb, 52 * S, { sx: Math.abs(Math.cos(T * 2 + (o.ph || 0))) * 0.8 + 0.2 });
+      // есть кадры оборота — крутим ими; нет — как раньше, сжатием по ширине
+      spr(frameOf('coin', o.ph), sx, GY - o.y + 30 * S - cb, 52 * S, withMove('coin', o.ph, 52 * S, {}));
     } else if (o.t === 'ball') {
       var bh = Math.abs(Math.sin((o.ph || 0) * 3 + T * 3)) * 70 * S;
       spr('ball', sx, GY + 4 * S - bh, 62 * S, { rot: T * 3 });
     } else if (o.t === 'hedgehog') {
-      spr('hedgehog', sx, roadTop() + 8 * S, 58 * S,
-          { sy: 1 + Math.sin(T * 6) * 0.04 });
+      spr(frameOf('hedgehog', o.ph), sx, roadTop() + 8 * S, 58 * S, withMove('hedgehog', o.ph, 58 * S, {}));
     } else if (o.t === 'butterfly') {
-      spr('butterfly', sx, o.y + Math.sin(T * 5) * 12 * S, 56 * S, { mid: true });
+      spr(frameOf('butterfly', o.ph), sx, o.y + Math.sin(T * 5) * 12 * S, 56 * S, withMove('butterfly', o.ph, 56 * S, { mid: true }));
     } else if (o.t === 'rocket') {
       var rb = roadTop() - 6 * S;                    // космодром стоит в глубине, за дорогой
       if (!o.gone) spr('launchpad', sx + 34 * S, rb, 118 * S);
@@ -2637,9 +2718,9 @@ function drawObjs() {
     } else if (o.t === 'prop') {
       var pby = roadTop() - 2 * S;                             // на обочине, а не поверх кромки дороги
       shadow(sx, pby - 2 * S, (PROP_H[o.kind] || 130) * 0.30 * S);
-      spr(o.kind, sx, pby, (PROP_H[o.kind] || 130) * S,
-          { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.015,          // «дышит»
-            rot: /^(tree|loc_palm|loc_fir)$/.test(o.kind) ? Math.sin(T * 0.9 + (o.ph || 0)) * 0.025 : 0 });   // деревья качаются
+      spr(frameOf(o.kind, o.ph), sx, pby, (PROP_H[o.kind] || 130) * S,
+          withMove(o.kind, o.ph, (PROP_H[o.kind] || 130) * S,
+                   { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.010 }));   // общий «вдох» плюс своё движение
     } else if (o.t === 'cloudy') {
       spr('cloud', sx, o.y, 110 * S, { mid: true });
     } else if (o.t === 'bucket') {
@@ -2690,8 +2771,8 @@ function drawObjs() {
       g.restore();
     } else if (o.t === 'sheep') {
       var hop = Math.abs(Math.sin((o.ph || 0) * (o.run ? 9 : 2.2))) * (o.run ? 30 : 5) * S;
-      spr('sheep', sx, GY + 4 * S - hop, 100 * S,
-          { rot: o.run ? Math.sin(o.ph * 9) * 0.12 : 0 });
+      spr(frameOf('sheep', o.ph), sx, GY + 4 * S - hop, 100 * S,
+          o.run ? { rot: Math.sin(o.ph * 9) * 0.12 } : withMove('sheep', o.ph, 100 * S, {}));
     } else if (o.t === 'arch') {
       spr('arch', sx, GY + 4 * S, o.h);
     }
@@ -5187,6 +5268,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
   if (DBG || REC || /[?&]test=1/.test(location.search))
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
+    window.__move = moveFx;                                      // тест: параметры процедурной анимации
     window.__bg = function () {
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
