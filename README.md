@@ -4,6 +4,11 @@
 
 ## Запуск
 
+Онлайн: **https://managersergei.github.io/babygame/** (GitHub Pages, деплой из `main` через `.github/workflows/pages.yml`).
+Пульт: https://managersergei.github.io/babygame/pult.html
+
+Локально:
+
 ```bash
 cd ~/Documents/babygame
 python3 -m http.server 8765

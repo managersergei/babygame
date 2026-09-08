@@ -4,11 +4,16 @@ FAL_KEY=… python3 reels/storyboards/gen.py [A01 …] [--dry]
 Кадры с машинкой идут через /edit с референсом assets/cars/fire.png (Image 1)."""
 import base64, json, os, sys, time, urllib.request, concurrent.futures
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from stories import STORIES
+from stories import STORIES as S1
+try:
+    from stories2 import STORIES as S2
+except ImportError:
+    S2 = []
+STORIES = S1 + S2
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.dirname(os.path.abspath(__file__))
 KEY = os.environ.get('FAL_KEY', ''); DRY = '--dry' in sys.argv
-only = [a for a in sys.argv[1:] if a.startswith('A')]
+only = [a for a in sys.argv[1:] if a[:1] in 'AB' and a[1:3].isdigit()]
 REF = 'data:image/png;base64,' + base64.b64encode(open(os.path.join(BASE, 'assets/cars/fire.png'), 'rb').read()).decode()
 LOG = os.path.join(OUT, 'gen-log.csv')
 
