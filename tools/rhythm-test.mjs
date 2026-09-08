@@ -23,7 +23,11 @@ while (true) {
 }
 const last = samples[samples.length - 1];
 console.log(`игрового времени: ${last.T} с, звёзд/погонь: n=${last.n}`);
-const lessons = ev.filter(l => l.includes(" learned ")).map(l => ({ t: +l.split(" ")[1], key: l.split(" ")[3] }));
+const lessons = ev.filter(l => l.includes(" lesson ")).map(l => ({ t: +l.split(" ")[1], key: l.split(" ")[3] }));
+const learned = ev.filter(l => l.includes(" learned ")).map(l => ({ t: +l.split(" ")[1] }));
+const idle = lessons.map((l, i) => { const prev = learned.filter(x => x.t < l.t).pop(); return prev ? +(l.t - prev.t).toFixed(1) : null; }).filter(x => x !== null);
+console.log("пауза между словами (конец урока → начало следующего), с:", idle.join(", "));
+if (idle.length) console.log(`  мин ${Math.min(...idle)} · сред ${(idle.reduce((a,b)=>a+b,0)/idle.length).toFixed(1)} · макс ${Math.max(...idle)}  (цель 15–30)`);
 const chases = ev.filter(l => l.includes(" chase ")).map(l => ({ t: +l.split(" ")[1] }));
 console.log(`уроков: ${lessons.length}, погонь: ${chases.length}`);
 const gaps = lessons.slice(1).map((l, i) => +(l.t - lessons[i].t).toFixed(1));

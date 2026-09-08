@@ -61,6 +61,7 @@
   #stats .dots { letter-spacing:2px; color:#ffb703; }
   #stats .done { color:#2f9e50; font-size:13px; }
   #stats .empty { font-weight:700; color:#8a94a6; font-size:14px; }
+  #stats .danger { background:#ffd6d6; color:#8b1a1a; }
   #stats button { width:100%; margin-top:10px; border:none; border-radius:12px; padding:10px;
     background:#ffcf3d; font:inherit; font-weight:900; cursor:pointer; }
 
@@ -144,6 +145,7 @@
 <div id="stats" style="display:none">
   <h3>ВЫУЧЕННЫЕ СЛОВА</h3>
   <div id="statsBody"></div>
+  <button id="statsReset" class="danger">СБРОСИТЬ ПРОГРЕСС</button>
   <button id="statsClose">ЗАКРЫТЬ</button>
 </div>
 
@@ -780,6 +782,8 @@ var Stats = {
     var d = this.data[word] || (this.data[word] = { n: 0, s: 0 });
     d.n++; d.s = this.session; this.save();
   },
+  known: function (word) { var d = this.data[word]; return !!d && d.n >= this.need; },   // выучено насовсем
+  reset: function () { this.data = {}; this.save(); },
   canTeach: function (word) {
     var d = this.data[word];
     if (!d) return true;
@@ -811,6 +815,7 @@ var Voice = {
     try { localStorage.setItem('babygame.voice', JSON.stringify(this.data)); } catch (e) {}
   },
   setOn: function (v) { this.on = v; try { localStorage.setItem('babygame.mic', v ? '1' : '0'); } catch (e) {} },
+  reset: function () { this.data = {}; try { localStorage.removeItem('babygame.voice'); } catch (e) {} },
 
   dtw: function (a, b) {
     var n = a.length, m = b.length, INF = 1e9, prev = new Array(m + 1), cur = new Array(m + 1), i, j, k;
@@ -1253,6 +1258,31 @@ function orderWord(k) {
   /* бензин, ведро с краской и дорожные предметы заберут spawnAhead / spawnEndless по wantEl */
 }
 function armedObj() { for (var i = 0; i < objs.length; i++) if (objs[i].lesson) return objs[i]; return null; }
+/* Заказ завис (связка с нужным предметом не выпала) — ставим предмет сами, впереди по дороге.
+   Без этого промежуток между словами растягивался до минуты. */
+function forceSpawn(k) {
+  var x = obsFrom(carX + W * 1.15), o = null;
+  if (k === 'star')          o = { t:'star', x:x, y: 95 * S, ph: rnd(0, TAU) };
+  else if (k === 'balloon')  o = { t:'balloon', x:x, y: 200 * S, ph: rnd(0, TAU) };
+  else if (k === 'cone')     o = { t:'cone', x:x, y:0, hit:false };
+  else if (k === 'puddle')   o = { t:'puddle', x:x, w: rnd(110, 175) * S, done:false };
+  else if (k === 'ramp')     o = { t:'ramp', x:x, w: 132 * S, h: 76 * S };
+  else if (k === 'plat')     o = { t:'plat', x:x, w: rnd(250, 330) * S, h: rnd(115, 165) * S };
+  else if (k === 'pit')      o = { t:'pit', x:x, w: 150 * S };
+  else if (k === 'mon')      o = monBlocked() ? null : { t:'mon', x:x, ph:0, hit:false, skin: pick(['monster_a','monster_b','monster_c','monster_d']) };
+  else if (k === 'flower')   o = { t:'flower', x:x };
+  else if (k === 'apple')    o = { t:'apple', x:x, y: 95 * S, ph: rnd(0, TAU) };
+  else if (k === 'ball')     o = { t:'ball', x:x, ph: rnd(0, TAU), hit:false };
+  else if (k === 'hedgehog') o = { t:'hedgehog', x:x, ph: rnd(0, TAU) };
+  else if (PROP_KIND[k])     o = { t:'prop', x:x, kind: k };
+  else if (k === 'fuel')     o = { t:'fuel', x:x };
+  else if (k === 'bucket')   o = { t:'bucket', x:x, ph: rnd(0, TAU) };
+  if (!o) { wantEl = null; return; }
+  if (/^(cone|puddle|ball|pit|mon)$/.test(o.t)) obsMark(x);
+  objs.push(o);
+  EV('force', k);
+  markFirst(o, o.t === 'prop' ? o.kind : o.t);
+}
 /* Монстрикам навстречу нельзя: идёт одна из первых погонь или она вот-вот начнётся. */
 function monBlocked() {
   if (story) return false;
@@ -1270,6 +1300,14 @@ function startChase(lesson) {
   A.siren();
   if (lesson) { wantEl = null; metEl.robot = 1; toLesson('el_robot', { x: robot.x }); return; }
   A.say('Я тебя догоню!');
+}
+/* Что ребёнок уже знает — помечаем сразу на старте, иначе известное слово держит очередь,
+   пока его предмет не выпадет на дороге (у робота это могло не случиться вовсе). */
+function seedKnown() {
+  for (var i = 0; i < LESSON_ORDER.length; i++) {
+    var k = LESSON_ORDER[i], L = LESSONS['el_' + k];
+    if (L && !Stats.canTeach(L.word)) metEl[k] = 1;
+  }
 }
 function markFirst(o, t) {                         // предмет заказанного слова получает урок
   if (!o || metEl[t] || !LESSONS['el_' + t] || wantEl !== t) return;
@@ -1698,7 +1736,11 @@ function updatePlay(dt) {
   if (!story) {                                        // ритм бесконечного режима: слово важнее робота
     if (wordDue <= 0 || robotDue <= 0) resetRhythm();  // старт мимо beginStage (?s=play)
     wordT += dt;
-    if (wantEl) { wantT += dt; if (wantT > 12) wantEl = null; }           // заказ завис — снимаем
+    if (wantEl) {                                    // заказ висит — дорога должна показать предмет
+      wantT += dt;
+      if (wantT > 5 && !wordArmed) forceSpawn(wantEl);   // не выпало само — ставим сами
+      if (wantT > 12) wantEl = null;                     // и совсем не вышло — забываем
+    }
     if (wordArmed && !armedObj()) wordArmed = false;                       // тег потерян — не ждём
     var nk = nextLessonKey();
     robotSoon = (nk === 'robot' && wordT >= wordDue - TUNE.monQuiet)
@@ -2931,7 +2973,7 @@ function repsFor(key) { var L = LESSONS[key]; return (L && L.reps) || REPS; }
 var les = { key: '', got: 0, phase: '', t: 0, obj: null };
 
 function toLesson(key, obj) {
-  state = 'lesson'; les.key = key; les.got = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
+  EV('lesson', key); state = 'lesson'; les.key = key; les.got = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
   var f = lessonFocus(key);
   camTo(f[0], f[1], key === 'one' || key === 'two' || key === 'three' ? 1.5 : 1.8);
   Mic.disarm(); Mic.cancel();
@@ -3501,20 +3543,25 @@ function beginStage() {
 
 function nextStage() { stage++; startStage(); }
 
-/* Выученные слова становятся живыми командами. */
+/* Ключ урока → команда. Одно слово учится в двух местах (сюжет и бесконечный), образцы лежат
+   под разными ключами ('cmd.jump' и 'cmd.el_jump0') — перечисляем оба. */
+var CMD_OF = { jump: 'jump', el_jump0: 'jump', gas: 'gas', el_gas0: 'gas', fuel: 'fuel', light: 'light' };
+
+/* Выученные слова становятся живыми командами — в том числе выученные в прошлые заходы. */
 function armCommands() {
   if (!Voice.on || !Mic.ready()) return;
   Mic.arm(function (sample) {
     if (state !== 'play' || A.talking()) return;
     var words = [];
-    for (var k in learned) if (learned[k] && Voice.count('cmd.' + k) >= 2) words.push('cmd.' + k);
+    for (var k in CMD_OF) if ((learned[k] || (LESSONS[k] && Stats.known(LESSONS[k].word))) && Voice.count('cmd.' + k) >= 2) words.push('cmd.' + k);
     if (!words.length) return;
     var m = Voice.match(sample, words);
     if (!m || !m.ok) return;
-    var key = m.word.slice(4);
+    var key = CMD_OF[m.word.slice(4)];
     if (key === 'jump') { action(); popText('ПРЫЖОК!', carX, carY + car.h * S, '#ffd93d'); }
     else if (key === 'fuel') { fuel = Math.min(1, fuel + 0.5); A.fuelUp(); popText('БЕНЗИН!', carX, carY + car.h * S, '#7bd66b'); }
     else if (key === 'light') { lights = !lights; A.honk(); }
+    else if (key === 'gas') { spd = Math.min(VMAX * 1.2, spd + 300 * S); A.rev(); popText('ГАЗ!', carX, carY + car.h * S, '#ffd93d'); }
   });
 }
 
@@ -4274,7 +4321,8 @@ function startGame() {
   story = GAMEMODES[gmSel].id === 'story';
   track('start', { game: GAMEMODES[gmSel].id, ctl: m });
   tune(); resetWorld();
-  learned = {}; metEl = {}; resetRhythm(); stage = 0; night = 0; lights = false; stageFired = false; damage = 0;
+  learned = {}; metEl = {}; resetRhythm(); if (!story) seedKnown();   // бесконечный: известное — мимо очереди
+  stage = 0; night = 0; lights = false; stageFired = false; damage = 0;
   carPaint = null; damage = 0; carDirty = false; robot.on = false; stopHold = 0; finishing = false;
   themeIx = 0;
   if (story || voiceCtl) { if (Voice.on) Mic.request(false); toName(); return; }
@@ -4398,6 +4446,10 @@ setMicIcon();
     else box.style.display = 'none';
   });
   document.getElementById('statsClose').addEventListener('click', function () { box.style.display = 'none'; });
+  document.getElementById('statsReset').addEventListener('click', function () {
+    if (!confirm('Стереть выученные слова и образцы голоса? Со следующего заезда игра начнёт учить сначала.')) return;
+    Stats.reset(); Voice.reset(); render();
+  });
 })();
 
 (function () {                                   // громкость: диктор, звуки, музыка
@@ -4678,7 +4730,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
                gm: gmSel, gmId: (GAMEMODES[gmSel] || {}).id, ctl: (MODES[modeSel] || {}).id, voiceCtl: voiceCtl, story: story,
-               T: +T.toFixed(1),
+               T: +T.toFixed(1), known: Stats.list().filter(function (r) { return r.n >= Stats.need; }).length,
                word: { t: +wordT.toFixed(1), due: +wordDue.toFixed(1), want: wantEl, armed: wordArmed, next: nextLessonKey(), met: Object.keys(metEl).length },
                chase: { on: robot.on, flee: robot.flee, n: chaseN, t: +robotT.toFixed(1), due: +robotDue.toFixed(1) },
                mons: objs.filter(function (o) { return o.t === 'mon'; }).length,

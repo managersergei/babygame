@@ -5,14 +5,27 @@
 робо-голоса браузера. Имя файла = FNV-1a хеш точного текста реплики,
 такой же хеш игра считает в рантайме.
 
-    export BABYGAME_FAL_KEY=...
-    python3 tools/gen_voice.py                 # чего нет — досоздать
-    python3 tools/gen_voice.py --voice Laura   # перегенерить другим голосом
-    python3 tools/gen_voice.py --samples       # образцы голосов на выбор
+Два движка:
+    --engine fal   (по умолчанию) — ElevenLabs через fal.ai, нужен ключ ИМЕННО этого проекта
+                   в BABYGAME_FAL_KEY. Ключи других проектов брать запрещено (CLAUDE.md).
+    --engine free  — edge-tts (голоса Microsoft, бесплатно, без ключа). Голос задаётся
+                   как ru-RU-SvetlanaNeural / ru-RU-DmitryNeural.
+
+    python3 tools/gen_voice.py                          # чего нет — досоздать (fal)
+    python3 tools/gen_voice.py --engine free            # то же бесплатным движком
+    python3 tools/gen_voice.py --engine free --force    # перегенерить ВСЁ одним голосом
+    python3 tools/gen_voice.py --voice Laura            # другой голос fal
+    python3 tools/gen_voice.py --samples                # образцы голосов на выбор
+
+Важно: голос диктора должен быть один на всю игру. Смешивать движки нельзя — либо
+перегенерировать всё (--force), либо не трогать.
 """
 import json, os, sys, urllib.request, concurrent.futures
 
-KEY = os.environ["BABYGAME_FAL_KEY"]
+ENGINE = "free" if "--engine" in sys.argv and sys.argv[sys.argv.index("--engine") + 1] == "free" else "fal"
+KEY = os.environ.get("BABYGAME_FAL_KEY", "")
+if ENGINE == "fal" and not KEY:
+    sys.exit("нет BABYGAME_FAL_KEY. Либо задайте ключ этого проекта, либо: --engine free (edge-tts)")
 BASE = "/Users/sergei/Documents/babygame"
 OUT = BASE + "/assets/voice"
 MODEL = "https://fal.run/fal-ai/elevenlabs/tts/multilingual-v2"
@@ -161,7 +174,23 @@ def fnv(s):
     return format(h, "08x")
 
 
+FREE_VOICE = "ru-RU-SvetlanaNeural"
+FREE_SPECIAL = {}                      # монстру и роботу бесплатный движок даёт мужской голос
+for _t in MONSTER_LINES + ROBOT_LINES:
+    FREE_SPECIAL[_t] = "ru-RU-DmitryNeural"
+
+
+def tts_free(text, voice, path):
+    """edge-tts: бесплатные голоса Microsoft, ключ не нужен."""
+    import asyncio
+    import edge_tts
+    v = FREE_SPECIAL.get(text, voice if voice.startswith("ru-RU-") else FREE_VOICE)
+    asyncio.run(edge_tts.Communicate(text, v, rate="-5%").save(path))
+
+
 def tts(text, voice, path):
+    if ENGINE == "free":
+        return tts_free(text, voice, path)
     req = urllib.request.Request(MODEL, data=json.dumps(
         {"text": text, "voice": voice, "stability": 0.3, "similarity_boost": 0.75,
          "style": 0.75, "speed": 0.95}).encode(),
@@ -173,6 +202,8 @@ def tts(text, voice, path):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if ENGINE == "free":
+        VOICE = FREE_VOICE
     if "--voice" in args:
         VOICE = args[args.index("--voice") + 1]
     os.makedirs(OUT, exist_ok=True)
@@ -181,7 +212,8 @@ if __name__ == "__main__":
         d = BASE + "/assets/voice_samples"
         os.makedirs(d, exist_ok=True)
         txt = "Ой! Яма! Скажи слово: прыжок! Молодец, ты выучил новое слово!"
-        for v in ("Sarah", "Laura", "Alice", "Matilda", "Jessica"):
+        for v in (("ru-RU-SvetlanaNeural", "ru-RU-DmitryNeural") if ENGINE == "free"
+                  else ("Sarah", "Laura", "Alice", "Matilda", "Jessica")):
             try:
                 tts(txt, v, os.path.join(d, v + ".mp3"))
                 print("OK", v)
@@ -192,7 +224,7 @@ if __name__ == "__main__":
     ph = phrases()
     force = "--force" in args
     todo = [t for t in ph if force or not os.path.exists(os.path.join(OUT, fnv(t) + ".mp3"))]
-    print("всего реплик: %d, генерим: %d, голос: %s" % (len(ph), len(todo), VOICE), flush=True)
+    print("движок: %s, всего реплик: %d, генерим: %d, голос: %s" % (ENGINE, len(ph), len(todo), VOICE), flush=True)
 
     def one(t):
         try:
@@ -201,7 +233,7 @@ if __name__ == "__main__":
         except Exception as e:
             return "FAIL " + t[:40] + " :: " + str(e)[:80]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3 if ENGINE == "free" else 6) as ex:
         for r in ex.map(one, todo):
             print(r, flush=True)
 

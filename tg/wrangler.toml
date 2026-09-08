@@ -1,0 +1,20 @@
+name = "babygame-tg"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://managersergei.github.io"   # через запятую; для локальной проверки добавить http://127.0.0.1:8765
+
+[[kv_namespaces]]
+binding = "LINKS"
+id = "ВСТАВИТЬ_ID"            # из: npx wrangler kv namespace create LINKS
+
+[[ratelimits]]                # Workers Rate Limiting: без записей в KV; period только 10 или 60
+name = "RL_CODE"
+namespace_id = "1001"
+simple = { limit = 2, period = 60 }     # 2 сообщения в минуту на один код (событие + сводка)
+
+[[ratelimits]]
+name = "RL_IP"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
