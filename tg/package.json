@@ -1,0 +1,16 @@
+{
+  "name": "tg",
+  "version": "1.0.0",
+  "description": "Бот присылает родителю, какие слова ребёнок проговорил и сколько звёзд собрал. Токена бота в игре нет: события уходят на этот Worker вместе с кодом привязки, а он уже пишет в Telegram.",
+  "main": "worker.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "wrangler": "^4.130.0"
+  }
+}

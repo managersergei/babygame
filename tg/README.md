@@ -18,15 +18,15 @@
 1. Создать бота у @BotFather → получить токен, запомнить username.
 2. Зарегистрироваться в Cloudflare (бесплатный план) и создать KV-хранилище:
    ```bash
-   npx wrangler login
-   npx wrangler kv namespace create LINKS
+   ./wrangler.sh login
+   ./wrangler.sh kv namespace create LINKS
    ```
    Полученный `id` вписать в `wrangler.toml`.
 3. Положить секреты и выкатить:
    ```bash
-   npx wrangler secret put BOT_TOKEN        # токен от BotFather
-   npx wrangler secret put WEBHOOK_SECRET   # любая строка от 16 знаков
-   npx wrangler deploy
+   ./wrangler.sh secret put BOT_TOKEN        # токен от BotFather
+   ./wrangler.sh secret put WEBHOOK_SECRET   # любая строка от 16 знаков
+   ./wrangler.sh deploy
    ```
 4. Один раз зарегистрировать вебхук и команды бота:
    ```bash
@@ -38,7 +38,7 @@
 ## Проверка без Telegram
 
 `DRY=1` в переменных окружения: Worker не пишет в Telegram, а возвращает текст сообщения в ответе.
-Локально: `npx wrangler dev` и `curl -X POST localhost:8787/ev -d '{"c":"ABCDEFGHJK","sum":{"words":{"ПРЫЖОК":2},"stars":7}}'`.
+Локально: `./wrangler.sh dev` и `curl -X POST localhost:8787/ev -d '{"c":"ABCDEFGHJK","sum":{"words":{"ПРЫЖОК":2},"stars":7}}'`.
 
 ## Лимиты бесплатного плана
 
