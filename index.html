@@ -4616,9 +4616,9 @@ function parentOk() {
    Код — 10 знаков в localStorage; родитель привязывает его по https://t.me/<бот>?start=<код>
    (QR или ссылка на экране «Родителям»). Частота: не чаще 1 сообщения в TG_MIN минут, сводка —
    при уходе со страницы и после TG_IDLE минут тишины. Уходят только код, слова, звёзды, машинка. */
-var TG_BOT  = '';              // username бота без @; '' — функция выключена (как YM_ID = 0).
+var TG_BOT  = 'big_drive_bot';              // username бота без @; '' — функция выключена (как YM_ID = 0).
                                // Как включить: tg/README.md (BotFather → Cloudflare Worker → сюда username и адрес реле)
-var TG_API  = '';              // адрес реле, напр. 'https://babygame-tg.<аккаунт>.workers.dev'
+var TG_API  = 'https://babygame-tg.bigdrive.workers.dev';              // адрес реле, напр. 'https://babygame-tg.<аккаунт>.workers.dev'
 var TG_MIN  = 3;               // минут между сообщениями по ходу игры
 var TG_IDLE = 5;               // минут без событий → накопленное уходит сводкой
 var TG_CAP  = 20;              // потолок промежуточных сообщений за запуск страницы (сводки — вне лимита)

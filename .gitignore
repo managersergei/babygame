@@ -13,3 +13,5 @@ reels/storyboards/gen*.log
 .claude/
 reels/storyboards/.freegen/
 tg/node_modules/
+tg/.secrets*
+tg/.dev.vars
