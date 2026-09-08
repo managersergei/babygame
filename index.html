@@ -98,6 +98,9 @@
     background:#ffcf3d; color:#2b2140; cursor:pointer; box-shadow:0 6px 0 #d9a52a; }
   #pult .code { font-size:48px; letter-spacing:.3em; font-weight:900; color:#2b6cb0; margin:6px 0; }
   #pult canvas { display:none; margin:6px auto 10px; image-rendering:pixelated; }
+  #parent .tg { display:flex; align-items:center; justify-content:center; gap:14px; text-align:left; }
+  #parent .tg canvas { display:none; flex:none; image-rendering:pixelated; }
+  #parent a { color:#2b6cb0; word-break:break-all; }
   #turn { flex-direction:column; font-size:28px; font-weight:900; color:#fff; text-align:center; z-index:30;
     pointer-events:none; background:rgba(43,33,64,.85); }
 </style>
@@ -132,6 +135,14 @@
     <p>Сядьте рядом, разрешите микрофон и скажите первое слово вместе. Всё можно пройти и кнопками.</p>
     <p class="note">🔒 Звук не уходит с устройства: игра запоминает, как слово звучит у вашего ребёнка, и хранит короткую запись второй попытки каждого слова — только на этом устройстве. Послушать, скачать или удалить — кнопка 📊.</p>
     <button id="parentGo">ИГРАТЬ</button>
+    <div id="tgBox" style="display:none">
+      <p style="margin:18px 0 8px">📲 Отчёты о прогрессе — в Telegram</p>
+      <div class="tg">
+        <canvas id="tgQr" width="0" height="0"></canvas>
+        <p class="note">Наведите камеру телефона на код или откройте<br><a id="tgLink" href="#" target="_blank" rel="noopener">…</a><br>и нажмите Start — бот будет присылать, какие слова ребёнок сказал и сколько звёзд собрал.</p>
+      </div>
+      <p class="note" id="tgState">…</p>
+    </div>
   </div>
 </div>
 <div id="pult" style="display:none">
@@ -830,6 +841,7 @@ var Stats = {
     if (!word) return;
     var d = this.data[word] || (this.data[word] = { n: 0, s: 0 });
     d.n++; d.s = this.session; this.save();
+    try { track('word', { word: word, n: d.n }); } catch (e) {}   // → бот: «сказал слово n из 5», на пятом — «выучил»
   },
   known: function (word) { var d = this.data[word]; return !!d && d.n >= this.need; },   // выучено насовсем
   reset: function () { this.data = {}; this.save(); },
@@ -1192,6 +1204,7 @@ var YM_ID = 0;                                            // счётчик Ян
 function EV(name, extra) { if (REC) console.log('EV ' + T.toFixed(3) + ' ' + name + (extra ? ' ' + extra : '')); }
 function track(ev, p) {
   try { if (YM_ID && window.ym) window.ym(YM_ID, 'reachGoal', ev, p || {}); } catch (e) {}
+  try { TG.ev(ev, p || {}); } catch (e) {}                 // отчёты родителю (секция 17e)
   if (DBG) console.log('track', ev, p || {});
 }
 var state = 'load';                 // load | garage | mode | play
@@ -4430,13 +4443,157 @@ var Pult = {
 };
 document.getElementById('bPult').addEventListener('click', function () { Pult.toggle(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('pultClose').addEventListener(ev, function () { Pult.hideBox(); }); });
-document.getElementById('bInfo').addEventListener('click', function () { document.getElementById('parent').style.display = 'flex'; });
+document.getElementById('bInfo').addEventListener('click', function () { document.getElementById('parent').style.display = 'flex'; TG.render(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('parentGo').addEventListener(ev, parentOk); });
 function parentOk() {
   document.getElementById('parent').style.display = 'none';
   try { localStorage.setItem('babygame.parent', '1'); } catch (e) {}
   A.init(); track('parent_ok');
 }
+
+/* ═══════════════ 17e. ОТЧЁТЫ РОДИТЕЛЮ В TELEGRAM ═══════════════
+   Токена бота в игре нет. События копятся тут и уходят POST'ом на реле (tg/worker.js,
+   Cloudflare Worker) вместе с кодом привязки; реле по коду находит chat_id и шлёт sendMessage.
+   Код — 10 знаков в localStorage; родитель привязывает его по https://t.me/<бот>?start=<код>
+   (QR или ссылка на экране «Родителям»). Частота: не чаще 1 сообщения в TG_MIN минут, сводка —
+   при уходе со страницы и после TG_IDLE минут тишины. Уходят только код, слова, звёзды, машинка. */
+var TG_BOT  = '';              // username бота без @; '' — функция выключена (как YM_ID = 0).
+                               // Как включить: tg/README.md (BotFather → Cloudflare Worker → сюда username и адрес реле)
+var TG_API  = '';              // адрес реле, напр. 'https://babygame-tg.<аккаунт>.workers.dev'
+var TG_MIN  = 3;               // минут между сообщениями по ходу игры
+var TG_IDLE = 5;               // минут без событий → накопленное уходит сводкой
+var TG_CAP  = 20;              // потолок промежуточных сообщений за запуск страницы (сводки — вне лимита)
+
+var qrWait = [], qrLoad = 0;   // очередь на отрисовку, пока грузится библиотека: 0 нет, 1 грузим, 2 есть, -1 не вышло
+function qrInto(cvq, text, sz) {
+  if (!cvq) return;
+  if (window.qrcode) {
+    try {
+      var q = window.qrcode(0, 'M'); q.addData(text); q.make();
+      var n = q.getModuleCount(); cvq.width = cvq.height = n * sz;
+      var x = cvq.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cvq.width, cvq.height); x.fillStyle = '#2b2140';
+      for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.isDark(r, c)) x.fillRect(c * sz, r * sz, sz, sz);
+      cvq.style.display = 'block';
+    } catch (e) {}
+    return;
+  }
+  if (qrLoad === -1) return;
+  qrWait.push([cvq, text, sz]);
+  if (qrLoad === 1) return;
+  qrLoad = 1;
+  loadScript(['https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js', 'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js'], function (okk) {
+    qrLoad = okk ? 2 : -1;
+    var w = qrWait; qrWait = [];
+    if (okk) for (var i = 0; i < w.length; i++) qrInto(w[i][0], w[i][1], w[i][2]);
+  });
+}
+
+function tgEmpty() { return { car: '', stars: 0, levels: 0, over: 0, words: {}, learned: [] }; }
+var TG = {
+  code: '', on: false, dirty: false, sent: 0, nAll: 0, lastSent: 0, lastEv: 0, lastStars: 0, t0: 0, pollId: 0, polls: 0,
+  sum: tgEmpty(), tot: tgEmpty(),          // sum — с последней отправки, tot — с начала сессии (для сводки)
+  init: function () {
+    var tq = /[?&]test=1/.test(location.search) && (location.search.match(/[?&]tg=([^&]+)/) || [])[1];
+    if (tq) { TG_API = decodeURIComponent(tq); TG_BOT = TG_BOT || 'test_bot'; }   // автопроверка: реле-заглушка
+    if (!TG_BOT || !TG_API || REC) return;
+    try {
+      this.code = localStorage.getItem('babygame.tg') || '';
+      if (!/^[A-Z2-9]{10}$/.test(this.code)) { this.code = this.mkCode(); localStorage.setItem('babygame.tg', this.code); }
+      this.on = localStorage.getItem('babygame.tg.on') === '1';
+    } catch (e) { this.code = ''; return; }
+    this.t0 = Date.now();
+    var self = this;
+    setInterval(function () { self.tick(); }, 15000);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') self.flush(true); });
+    window.addEventListener('pagehide', function () { self.flush(true); });
+    if (this.on) this.status();                                    // вдруг родитель нажал /stop
+    if (document.getElementById('parent').style.display !== 'none') this.render();
+  },
+  mkCode: function () {
+    var alph = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789', s = '', a = new Uint8Array(10), i;
+    try { crypto.getRandomValues(a); } catch (e) { for (i = 0; i < 10; i++) a[i] = Math.floor(Math.random() * 256); }
+    for (i = 0; i < 10; i++) s += alph[a[i] % alph.length];
+    return s;
+  },
+  link: function () { return 'https://t.me/' + TG_BOT + '?start=' + this.code; },
+  touch: function () { this.dirty = true; this.lastEv = Date.now(); },
+  add: function (k, v) { this.sum[k] += v; this.tot[k] += v; this.touch(); },
+  sample: function () {                                             // звёзды — по глобальному счётчику, без правок в 8 местах
+    if (stars < this.lastStars) this.lastStars = 0;                // новый заезд: resetWorld() обнулил stars
+    if (stars > this.lastStars) { this.add('stars', stars - this.lastStars); this.lastStars = stars; }
+  },
+  ev: function (name, p) {                                          // вызывается из track()
+    if (!this.code) return;
+    if (name === 'start') { this.sample(); this.sum.car = this.tot.car = CARS[sel].name; }
+    else if (name === 'word') {
+      this.sum.words[p.word] = this.tot.words[p.word] = p.n;
+      if (p.n === Stats.need) { this.sum.learned.push(p.word); this.tot.learned.push(p.word); }
+      this.touch();
+    }
+    else if (name === 'stage_done') this.add('levels', 1);
+    else if (name === 'over') this.add('over', 1);
+  },
+  tick: function () {
+    if (!this.on || !this.code) return;
+    this.sample();
+    if (!this.dirty) return;
+    var now = Date.now();
+    if (now - this.lastEv > TG_IDLE * 60000) { this.flush(true); return; }          // ребёнок ушёл — сводка
+    if (now - this.lastSent >= TG_MIN * 60000 && this.nAll < TG_CAP) this.flush(false);
+  },
+  flush: function (fin) {
+    if (!this.on || !this.code) return;
+    this.sample();
+    if (!this.dirty && !(fin && this.sent > 0)) return;            // сводка нужна, только если что-то уже уходило
+    var body = JSON.stringify({ c: this.code, fin: !!fin, dur: Math.round((Date.now() - this.t0) / 60000),
+                                need: Stats.need, sum: fin ? this.tot : this.sum });
+    var car = this.tot.car;
+    this.sum = tgEmpty(); this.dirty = false; this.lastSent = Date.now(); this.nAll++;
+    if (fin) { this.tot = tgEmpty(); this.tot.car = car; this.sent = 0; this.t0 = Date.now(); } else this.sent++;
+    var url = TG_API + '/ev', self = this;
+    if (fin && navigator.sendBeacon) { try { if (navigator.sendBeacon(url, body)) return; } catch (e) {} }
+    try {
+      fetch(url, { method: 'POST', body: body, keepalive: true }).then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.linked === false) self.setOn(false); }).catch(function () {});
+    } catch (e) {}
+  },
+  setOn: function (v) {
+    this.on = !!v;
+    try { localStorage.setItem('babygame.tg.on', v ? '1' : '0'); } catch (e) {}
+    var st = document.getElementById('tgState');
+    if (st) st.textContent = v ? 'Telegram привязан ✓ — отчёты будут приходить' : 'Пока не привязано';
+  },
+  status: function (cb) {
+    var self = this;
+    try {
+      fetch(TG_API + '/status?c=' + this.code).then(function (r) { return r.json(); })
+        .then(function (j) { if (j && typeof j.linked === 'boolean') self.setOn(j.linked); if (cb) cb(); })
+        .catch(function () { if (cb) cb(); });
+    } catch (e) { if (cb) cb(); }
+  },
+  render: function () {                                             // экран «Родителям»
+    var box = document.getElementById('tgBox');
+    if (!box) return;
+    if (!this.code) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    var a = document.getElementById('tgLink'), link = this.link();
+    a.href = link; a.textContent = link.replace(/^https:\/\//, '');
+    this.setOn(this.on);
+    qrInto(document.getElementById('tgQr'), link, 3);
+    this.polls = 0; this.poll(++this.pollId);
+  },
+  poll: function (id) {                                             // пока экран открыт и не привязано — спрашиваем реле раз в 5 с, до 2 минут
+    var self = this;
+    this.status(function () {
+      if (id !== self.pollId || self.on || self.polls++ >= 24) return;
+      setTimeout(function () {
+        if (id === self.pollId && document.getElementById('parent').style.display !== 'none') self.poll(id);
+      }, 5000);
+    });
+  },
+  dbg: function () { return { code: this.code, on: this.on, dirty: this.dirty, sent: this.sent, all: this.nAll, sum: this.sum, tot: this.tot }; }
+};
+
 
 /* ═══════════════ 18. ПЕРЕХОДЫ ═══════════════ */
 function setPad() {
@@ -4864,6 +5021,7 @@ function ready() {
       window.ym(YM_ID, 'init', { clickmap: false, trackLinks: true, accurateTrackBounce: true });
     }
     if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+    TG.init();                                             // отчёты в Telegram (17e); без TG_BOT/TG_API — тихо выключено
   }
   var l = document.getElementById('loader');
   document.getElementById('loadTxt').textContent = 'Готово!';
@@ -4942,7 +5100,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
                gm: gmSel, gmId: (GAMEMODES[gmSel] || {}).id, ctl: (MODES[modeSel] || {}).id, voiceCtl: voiceCtl, story: story,
-               T: +T.toFixed(1), known: Stats.list().filter(function (r) { return r.n >= Stats.need; }).length,
+               tg: TG.dbg(), T: +T.toFixed(1), known: Stats.list().filter(function (r) { return r.n >= Stats.need; }).length,
                said: les.said, recs: Rec.count(), rec: Mic.recording(),
                word: { t: +wordT.toFixed(1), due: +wordDue.toFixed(1), want: wantEl, armed: wordArmed, next: nextLessonKey(), met: Object.keys(metEl).length },
                chase: { on: robot.on, flee: robot.flee, n: chaseN, t: +robotT.toFixed(1), due: +robotDue.toFixed(1) },
