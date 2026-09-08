@@ -62,6 +62,10 @@
   #stats .done { color:#2f9e50; font-size:13px; }
   #stats .empty { font-weight:700; color:#8a94a6; font-size:14px; }
   #stats .danger { background:#ffd6d6; color:#8b1a1a; }
+  #stats .row { display:flex; align-items:center; gap:8px; margin:10px 0 0; font-size:13px; }
+  #stats .r { display:flex; align-items:center; gap:6px; margin:2px 0 6px 14px; font-size:13px; font-weight:700; color:#5b6472; }
+  #stats .r span { flex:1; }
+  #stats .r button { width:auto; margin:0; padding:4px 9px; font-size:13px; }
   #stats button { width:100%; margin-top:10px; border:none; border-radius:12px; padding:10px;
     background:#ffcf3d; font:inherit; font-weight:900; cursor:pointer; }
 
@@ -126,7 +130,7 @@
     <h2>Родителям — на 20 секунд</h2>
     <p>Это игра для ребёнка 2–4 лет. Машинка слушается голоса: ребёнок говорит слово — машинка едет, прыгает, заправляется.</p>
     <p>Сядьте рядом, разрешите микрофон и скажите первое слово вместе. Всё можно пройти и кнопками.</p>
-    <p class="note">🔒 Звук не уходит с устройства: игра запоминает только, как слово звучит у вашего ребёнка, и хранит это на телефоне.</p>
+    <p class="note">🔒 Звук не уходит с устройства: игра запоминает, как слово звучит у вашего ребёнка, и хранит короткую запись второй попытки каждого слова — только на этом устройстве. Послушать, скачать или удалить — кнопка 📊.</p>
     <button id="parentGo">ИГРАТЬ</button>
   </div>
 </div>
@@ -145,6 +149,8 @@
 <div id="stats" style="display:none">
   <h3>ВЫУЧЕННЫЕ СЛОВА</h3>
   <div id="statsBody"></div>
+  <label class="row"><input type="checkbox" id="recOn"> записывать вторую попытку</label>
+  <button id="recClear" class="danger">УДАЛИТЬ ЗАПИСИ</button>
   <button id="statsReset" class="danger">СБРОСИТЬ ПРОГРЕСС</button>
   <button id="statsClose">ЗАКРЫТЬ</button>
 </div>
@@ -604,7 +610,44 @@ var Mic = (function () {
   var lastAsk = -99, err = '', tries = 0, perm = '?';
   var devId = null, devName = '', devList = [], devIx = -1, silent = 0, cur = null, pending = false;
 
+  /* Запись одной попытки для родителя: MediaRecorder на том же потоке. */
+  var rec = null, recTag = null, recT0 = 0, recSpk = -1, recEnd = -1, recMime = null;
+  function nowS() { return (window.performance && performance.now ? performance.now() : Date.now()) / 1000; }
+  function recType() {
+    if (recMime !== null) return recMime;
+    recMime = '';
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return recMime;
+    var list = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];   // mp4 — iOS Safari
+    for (var i = 0; i < list.length; i++) { try { if (MediaRecorder.isTypeSupported(list[i])) { recMime = list[i]; break; } } catch (e) {} }
+    return recMime;
+  }
+  function recBegin(tag) {                          // tag = { word:'ПРЫЖОК', key:'el_jump0' }
+    if (rec || !cur || !rdy || !Voice.on || !Rec.on) return;
+    var mt = recType(); if (!mt) return;
+    var chunks = [], r;
+    try { r = new MediaRecorder(cur, { mimeType: mt, audioBitsPerSecond: 48000 }); } catch (e) { return; }
+    rec = r; recTag = tag; recSpk = -1; recEnd = -1; recT0 = nowS();
+    r.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    r.onerror = function () { if (rec === r) { rec = null; recTag = null; } };
+    r.onstop = function () {
+      var tag2 = recTag, spk = recSpk, end = recEnd, t0 = recT0;
+      if (rec === r) { rec = null; recTag = null; }
+      if (!tag2 || spk < 0 || !chunks.length) return;              // не заговорил или попытка отменена
+      var at = Math.max(0, spk - t0 - 1.5), to = (end < 0 ? nowS() : end) - t0 + 1.5;
+      Rec.fromBlob(new Blob(chunks, { type: mt }), ac, at, to, tag2);
+    };
+    try { r.start(); } catch (e) { rec = null; recTag = null; }     // без timeslice: iOS отдаёт данные только на stop
+  }
+  function recSpoke() { if (rec && recSpk < 0) recSpk = nowS(); }
+  function recDone(keep) {                            // keep=false — попытку выбрасываем
+    var r = rec; if (!r) return;
+    if (!keep) recTag = null;
+    recEnd = nowS();
+    setTimeout(function () { try { if (r.state !== 'inactive') r.stop(); } catch (e) {} }, keep ? 1500 : 0);
+  }
+
   function drop(why) {                             // поток умер — сбрасываем и пробуем снова
+    recDone(false);
     err = why; rdy = false;
     try { if (cur) cur.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
     cur = null; ac = null; an = null; lastAsk = -99;
@@ -703,6 +746,7 @@ var Mic = (function () {
   }
 
   function finish(sample) {
+    recDone(!!sample);
     speaking = false; frames = []; quiet = 0;
     if (!cont) A.duck(false);
     if (cont) {                                   // непрерывный режим: слушаем дальше
@@ -729,7 +773,9 @@ var Mic = (function () {
                                 err: err, ctx: ac ? ac.state : '-', tries: tries, perm: perm,
                                 dev: devName || '-', devs: devList.length }; },
     busy: function () { return listening; },
-    cancel: function () { listening = false; speaking = false; cb = null; cont = null; },
+    record: recBegin,
+    recording: function () { return !!rec; },
+    cancel: function () { listening = false; speaking = false; cb = null; cont = null; recDone(false); },
     arm: function (fn) { if (!rdy) return; cont = fn; listening = true; speaking = false; frames = []; quiet = 0; tout = 1e9; },
     disarm: function () { cont = null; listening = false; speaking = false; },
     armed: function () { return !!cont; },
@@ -760,7 +806,7 @@ var Mic = (function () {
         frames.push(r.f);
         if (r.e < th * 0.7) { quiet += dt; if (quiet > 0.3 || frames.length > 110) finish(frames.length > 7 ? shape(frames) : null); }
         else quiet = 0;
-      } else if (r.e > th) { speaking = true; frames = [r.f]; quiet = 0; }
+      } else if (r.e > th) { speaking = true; frames = [r.f]; quiet = 0; recSpoke(); }
       if (tout <= 0) finish(speaking && frames.length > 7 ? shape(frames) : null);
     }
   };
@@ -859,6 +905,75 @@ var Voice = {
     return best;
   }
 };
+
+/* ═══════════════ 3c. ЗАПИСИ ДЛЯ РОДИТЕЛЯ ═══════════════
+   Вторая попытка слова на уроке — WAV 16 кГц моно в IndexedDB (babygame / rec).
+   Ключ: слово|дата-время. Лимит MAX_N штук или MAX_B байт — старое стираем.  */
+var Rec = (function () {
+  var DB = 'babygame', ST = 'rec', MAX_N = 60, MAX_B = 12e6, RATE = 16000, db = null, n = 0, failed = false;
+  var on = (function () { try { return localStorage.getItem('babygame.rec') !== '0'; } catch (e) { return true; } })();
+  function open(fn) {
+    if (db) { fn(db); return; }
+    if (failed || !window.indexedDB) { fn(null); return; }
+    var rq;
+    try { rq = indexedDB.open(DB, 1); } catch (e) { failed = true; fn(null); return; }
+    rq.onupgradeneeded = function () { rq.result.createObjectStore(ST, { keyPath: 'id' }); };
+    rq.onsuccess = function () { db = rq.result; db.onversionchange = function () { db.close(); db = null; }; fn(db); };
+    rq.onerror = rq.onblocked = function () { failed = true; fn(null); };
+  }
+  function all(fn) {                                    // новые сверху
+    open(function (d) {
+      if (!d) { fn([]); return; }
+      var out = [], rq;
+      try { rq = d.transaction(ST).objectStore(ST).openCursor(); } catch (e) { fn(out); return; }
+      rq.onsuccess = function () { var c = rq.result; if (c) { out.push(c.value); c['continue'](); }
+                                   else { out.sort(function (a, b) { return b.t - a.t; }); n = out.length; fn(out); } };
+      rq.onerror = function () { fn(out); };
+    });
+  }
+  function put(r, fn) { open(function (d) { if (!d) return; var tx = d.transaction(ST, 'readwrite'); tx.objectStore(ST).put(r); tx.oncomplete = function () { n++; if (fn) fn(); trim(); }; }); }
+  function del(id, fn) { open(function (d) { if (!d) return; var tx = d.transaction(ST, 'readwrite'); tx.objectStore(ST)['delete'](id); tx.oncomplete = function () { if (fn) fn(); }; }); }
+  function clear(fn) { open(function (d) { if (!d) return; var tx = d.transaction(ST, 'readwrite'); tx.objectStore(ST).clear(); tx.oncomplete = function () { n = 0; if (fn) fn(); }; }); }
+  function trim() {
+    all(function (rs) {
+      var tot = 0; for (var i = 0; i < rs.length; i++) tot += rs[i].size;
+      while (rs.length && (rs.length > MAX_N || tot > MAX_B)) { var r = rs.pop(); tot -= r.size; del(r.id); }
+    });
+  }
+  function two(x) { return (x < 10 ? '0' : '') + x; }
+  function stamp(t) { var d = new Date(t); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + '_' + two(d.getHours()) + '-' + two(d.getMinutes()) + '-' + two(d.getSeconds()); }
+  function wav(f32, rate) {                             // моно 16 бит
+    var N = f32.length, b = new ArrayBuffer(44 + N * 2), v = new DataView(b), i;
+    function s(o, t) { for (var k = 0; k < t.length; k++) v.setUint8(o + k, t.charCodeAt(k)); }
+    s(0, 'RIFF'); v.setUint32(4, 36 + N * 2, true); s(8, 'WAVE'); s(12, 'fmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); s(36, 'data'); v.setUint32(40, N * 2, true);
+    for (i = 0; i < N; i++) { var x = f32[i]; if (x > 1) x = 1; else if (x < -1) x = -1; v.setInt16(44 + i * 2, x < 0 ? x * 32768 : x * 32767, true); }
+    return new Blob([b], { type: 'audio/wav' });
+  }
+  function slice(ab, at, to) {                          // окно [at,to] → 16 кГц моно, усреднением
+    var sr = ab.sampleRate, ch = ab.getChannelData(0), a = Math.max(0, Math.floor(at * sr)), b = Math.min(ch.length, Math.ceil(to * sr));
+    var k = sr / RATE, N = Math.max(0, Math.floor((b - a) / k)), out = new Float32Array(N);
+    for (var i = 0; i < N; i++) { var s0 = a + Math.floor(i * k), s1 = a + Math.floor((i + 1) * k), sum = 0; for (var j = s0; j < s1; j++) sum += ch[j]; out[i] = sum / (s1 - s0 || 1); }
+    return out;
+  }
+  function save(blob, tag, dur) { var t = Date.now(); put({ id: tag.word + '|' + stamp(t), word: tag.word, key: tag.key, t: t, dur: dur, size: blob.size, mime: blob.type, blob: blob }); }
+  function fromBlob(blob, ac, at, to, tag) {           // сырой webm/mp4 → decode → окно → WAV; не декодировалось — храним как есть
+    if (!on || !ac) return;
+    var fr = new FileReader();
+    fr.onload = function () {
+      var done = false;
+      function raw() { if (!done) { done = true; save(blob, tag, to - at); } }
+      try {
+        ac.decodeAudioData(fr.result, function (ab) { if (done) return; done = true; var pcm = slice(ab, at, to); save(wav(pcm, RATE), tag, pcm.length / RATE); }, raw);
+      } catch (e) { raw(); }
+      setTimeout(raw, 4000);                            // старый Safari может не позвать ни один колбэк
+    };
+    fr.readAsArrayBuffer(blob);
+  }
+  return { on: on, setOn: function (v) { this.on = on = v; try { localStorage.setItem('babygame.rec', v ? '1' : '0'); } catch (e) {} },
+           fromBlob: fromBlob, all: all, del: del, clear: clear, wav: wav, save: save, stamp: stamp, count: function () { return n; } };
+})();
 
 /* ═══════════════ 4. МАШИНКИ И РЕЖИМЫ ═══════════════ */
 /* Пока три машинки: под каждую нужны «сломанные» варианты и покраска. */
@@ -2970,10 +3085,10 @@ function lessonFocus(key) {
 var REPS = 2;                                   // обычное слово — два повтора
 var REPS_CMD = 3;                               // командное слово — три, чтобы точнее узнавалось
 function repsFor(key) { var L = LESSONS[key]; return (L && L.reps) || REPS; }
-var les = { key: '', got: 0, phase: '', t: 0, obj: null };
+var les = { key: '', got: 0, said: 0, phase: '', t: 0, obj: null };   // said — попытки, где ребёнок что-то сказал
 
 function toLesson(key, obj) {
-  EV('lesson', key); state = 'lesson'; les.key = key; les.got = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
+  EV('lesson', key); state = 'lesson'; les.key = key; les.got = 0; les.said = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
   var f = lessonFocus(key);
   camTo(f[0], f[1], key === 'one' || key === 'two' || key === 'three' ? 1.5 : 1.8);
   Mic.disarm(); Mic.cancel();
@@ -2986,7 +3101,7 @@ function toLesson(key, obj) {
 
 function lessonHeard(sample) {
   if (state !== 'lesson' || les.phase !== 'listen') return;
-  if (sample) { Voice.add('cmd.' + les.key, sample); lessonStep(true); }
+  if (sample) { les.said++; Voice.add('cmd.' + les.key, sample); lessonStep(true); }
   else lessonStep(false);            // промолчал — не застреваем, идём дальше
 }
 
@@ -3014,7 +3129,10 @@ function updateLesson(dt) {
   if (les.phase === 'ask') {
     if (les.t > 0.15 && !A.talking()) {
       les.phase = 'listen'; les.t = 0;
-      if (Mic.ready()) Mic.listen(7, lessonHeard);
+      if (Mic.ready()) {
+        if (les.said === 1) Mic.record({ word: LESSONS[les.key].word, key: les.key });   // вторая попытка со звуком — пишем для родителя
+        Mic.listen(7, lessonHeard);
+      }
     }
   } else if (les.phase === 'listen') {
     if ((!Mic.ready() || !Voice.on) && les.t > 1.0) lessonStep(false);   // микрофон выключили посреди урока — не ждём вечно
@@ -4440,12 +4558,57 @@ setMicIcon();
              '<span class="' + (r.n >= Stats.need ? 'done' : '') + '">' +
              (r.n >= Stats.need ? 'выучено' : r.n + '&nbsp;раз') + '</span></div>';
     }).join('');
+    renderRecs();
   }
+  var cache = [], player = null;
+  function two(x) { return (x < 10 ? '0' : '') + x; }
+  function renderRecs() {                               // под каждым словом — до трёх последних записей
+    Rec.all(function (rs) {
+      cache = rs;
+      var old = body.querySelectorAll('.r');            // повторный вызов не должен удваивать строки
+      for (var q = 0; q < old.length; q++) old[q].parentNode.removeChild(old[q]);
+      var by = {}; rs.forEach(function (r) { (by[r.word] || (by[r.word] = [])).push(r); });
+      var rows = body.querySelectorAll('.w');
+      for (var i = 0; i < rows.length; i++) {
+        var list = (by[rows[i].firstChild.textContent] || []).slice(0, 3), html = '';
+        for (var j = 0; j < list.length; j++) {
+          var r = list[j], d = new Date(r.t);
+          html += '<div class="r"><button data-play="' + r.id + '">▶</button><span>' + two(d.getDate()) + '.' + two(d.getMonth() + 1) + ' ' +
+                  two(d.getHours()) + ':' + two(d.getMinutes()) + ' · ' + r.dur.toFixed(1) + ' с</span>' +
+                  '<button data-dl="' + r.id + '">⬇</button><button data-del="' + r.id + '">✕</button></div>';
+        }
+        if (html) rows[i].insertAdjacentHTML('afterend', html);
+      }
+    });
+  }
+  function byId(id) { for (var i = 0; i < cache.length; i++) if (cache[i].id === id) return cache[i]; return null; }
+  function stopPlay() { if (player) { try { player.pause(); } catch (e) {} player = null; A.duck(false); } }
+  body.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null; if (!b) return;
+    var r = byId(b.getAttribute('data-play') || b.getAttribute('data-dl') || b.getAttribute('data-del')); if (!r) return;
+    if (b.hasAttribute('data-del')) { stopPlay(); Rec.del(r.id, render); return; }
+    var url = URL.createObjectURL(r.blob);
+    if (b.hasAttribute('data-dl')) {                    // экспорт файлом; на iOS откроется «Поделиться»
+      var a = document.createElement('a'); a.href = url;
+      a.download = r.word + '_' + Rec.stamp(r.t) + (r.mime === 'audio/wav' ? '.wav' : r.mime.indexOf('mp4') >= 0 ? '.m4a' : '.webm');
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000); return;
+    }
+    stopPlay(); player = new Audio(url); A.duck(true);   // клик ▶ — жест пользователя, iOS пустит play()
+    player.onended = player.onerror = function () { stopPlay(); URL.revokeObjectURL(url); };
+    player.play();
+  });
+  var recOn = document.getElementById('recOn'); recOn.checked = Rec.on;
+  recOn.addEventListener('change', function () { Rec.setOn(this.checked); });
+  document.getElementById('recClear').addEventListener('click', function () {
+    if (!confirm('Удалить все записи голоса?')) return;
+    stopPlay(); Rec.clear(render);
+  });
   document.getElementById('bStats').addEventListener('click', function () {
     if (box.style.display === 'none') { render(); box.style.display = 'block'; }
     else box.style.display = 'none';
   });
-  document.getElementById('statsClose').addEventListener('click', function () { box.style.display = 'none'; });
+  document.getElementById('statsClose').addEventListener('click', function () { stopPlay(); box.style.display = 'none'; });
   document.getElementById('statsReset').addEventListener('click', function () {
     if (!confirm('Стереть выученные слова и образцы голоса? Со следующего заезда игра начнёт учить сначала.')) return;
     Stats.reset(); Voice.reset(); render();
@@ -4731,6 +4894,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
                gm: gmSel, gmId: (GAMEMODES[gmSel] || {}).id, ctl: (MODES[modeSel] || {}).id, voiceCtl: voiceCtl, story: story,
                T: +T.toFixed(1), known: Stats.list().filter(function (r) { return r.n >= Stats.need; }).length,
+               said: les.said, recs: Rec.count(), rec: Mic.recording(),
                word: { t: +wordT.toFixed(1), due: +wordDue.toFixed(1), want: wantEl, armed: wordArmed, next: nextLessonKey(), met: Object.keys(metEl).length },
                chase: { on: robot.on, flee: robot.flee, n: chaseN, t: +robotT.toFixed(1), due: +robotDue.toFixed(1) },
                mons: objs.filter(function (o) { return o.t === 'mon'; }).length,
