@@ -872,17 +872,30 @@ function vehW(id, h) { return sprW(id, h); }
    отдельным скином без колёс (<id>_w0), сами колёса лежат на дороге. */
 function drawVehicle(id, x, y, h, o) { spr(id, x, y, h, o || {}); }
 
-var GAMEMODES = [
-  { id:'story',   title:'СЮЖЕТ',       sub:'уровни и новые слова', icon:'🏁', say:'Сюжет' },
+/* Скрытые пункты меню остаются в коде: ?all=1 показывает их снова (владелец, 09.09.2026). */
+var SHOW_ALL = /[?&]all=1/.test(location.search);
+function visible(list) { return list.filter(function (m) { return !m.hidden || SHOW_ALL; }); }
+function ixById(list, id, dflt) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return i; return dflt || 0; }
+/* Сохранённый выбор: новый формат — id, старый — индекс в ПОЛНОМ списке. Скрытый пункт → первый видимый. */
+function pickIx(list, all, v) {
+  var id = typeof v === 'string' ? v : (all[clamp(v | 0, 0, all.length - 1)] || {}).id;
+  return ixById(list, id, 0);
+}
+
+var ALL_GAMEMODES = [
+  { id:'story',   title:'СЮЖЕТ',       sub:'уровни и новые слова', icon:'🏁', say:'Сюжет', hidden:true },
   { id:'endless', title:'БЕСКОНЕЧНЫЙ', sub:'просто кататься',      icon:'∞',  say:'Бесконечный' },
   { id:'lane',    title:'РУЛЬ',        sub:'объезжай препятствия', icon:'🛞', say:'Руль' }
 ];
+var GAMEMODES = visible(ALL_GAMEMODES);
 
-var MODES = [
+/* Голос — не режим управления, а упражнения внутри игры (кнопка 🎤). Пункт скрыт, ?all=1 вернёт. */
+var ALL_MODES = [
   { id:'easy',  title:'ТОЛЬКО ПРОБЕЛ', sub:'машинка едет сама',    keys:['ПРОБЕЛ'],      say:'Только пробел' },
-  { id:'voice', title:'ГОЛОСОМ',       sub:'учим слова и говорим', keys:['🎤'],          say:'Голосом' },
+  { id:'voice', title:'ГОЛОСОМ',       sub:'учим слова и говорим', keys:['🎤'],          say:'Голосом', hidden:true },
   { id:'full',  title:'СО СТРЕЛКАМИ',  sub:'газ, тормоз и прыжок', keys:['◀','⬆','▶'], say:'Со стрелками' }
 ];
+var MODES = visible(ALL_MODES);
 
 /* ═════ НАСТРОЙКИ БЕСКОНЕЧНОГО РЕЖИМА — правь смело ═════
    ENDLESS_STEPS: что появляется на дороге и с какого числа собранных звёздочек.
@@ -2677,7 +2690,7 @@ function updateName(dt) {
       if (Mic.ready()) Mic.listen(6, nameHeard);
     }
   } else if (nm.phase === 'listen') {
-    if (!Mic.ready() && nm.t > 1.2) nameStep(false);       // без микрофона просто идём дальше
+    if ((!Mic.ready() || !Voice.on) && nm.t > 1.2) nameStep(false);   // без микрофона (или его выключили) просто идём дальше
   } else if (nm.phase === 'good') {
     if (nm.t > (nm.got >= 3 ? 1.4 : 0.35) && !A.talking()) {
       if (nm.got >= 3) startStage();
@@ -2833,7 +2846,7 @@ function updateLesson(dt) {
       if (Mic.ready()) Mic.listen(7, lessonHeard);
     }
   } else if (les.phase === 'listen') {
-    if (!Mic.ready() && les.t > 1.0) lessonStep(false);
+    if ((!Mic.ready() || !Voice.on) && les.t > 1.0) lessonStep(false);   // микрофон выключили посреди урока — не ждём вечно
   } else if (les.phase === 'good') {
     if (les.t > (les.got >= repsFor(les.key) ? 1.6 : 0.35) && !A.talking()) {
       if (les.got >= repsFor(les.key)) applyLesson();
@@ -4119,7 +4132,7 @@ function startGame() {
   A.init();
   if (GAMEMODES[gmSel].id === 'endless' && Voice.on) voiceCtl = true;   // голос всегда наготове
   try {
-    localStorage.setItem('babygame.pick', JSON.stringify({ c: sel, g: gmSel, m: modeSel }));
+    localStorage.setItem('babygame.pick', JSON.stringify({ c: sel, g: GAMEMODES[gmSel].id, m: MODES[modeSel].id }));
   } catch (e) {}
   var m = MODES[modeSel].id;
   easy = m !== 'full';
@@ -4145,7 +4158,7 @@ function moveSel(dir) {
     var ng = clamp(gmSel + dir, 0, GAMEMODES.length - 1);
     if (ng !== gmSel) {
       gmSel = ng; A.whoosh(); A.say(GAMEMODES[gmSel].say);
-      if (GAMEMODES[gmSel].id === 'endless') modeSel = 2;    // по умолчанию: стрелки + голос
+      if (GAMEMODES[gmSel].id === 'endless') modeSel = ixById(MODES, 'full', 0);    // по умолчанию: стрелки (голос — упражнения внутри)
     }
   } else if (state === 'mode') {
     var nm = clamp(modeSel + dir, 0, MODES.length - 1);
@@ -4460,8 +4473,9 @@ function ready() {
   setTimeout(function () { l.style.display = 'none'; }, 600);
   try {
     var pk = JSON.parse(localStorage.getItem('babygame.pick') || 'null');
-    if (pk) { sel = clamp(pk.c | 0, 0, CARS.length - 1); gmSel = clamp(pk.g | 0, 0, GAMEMODES.length - 1);
-              modeSel = clamp(pk.m | 0, 0, MODES.length - 1); }
+    if (pk) { sel = clamp(pk.c | 0, 0, CARS.length - 1);
+              gmSel = pickIx(GAMEMODES, ALL_GAMEMODES, pk.g);      // id или старый индекс; скрытый → первый видимый
+              modeSel = pickIx(MODES, ALL_MODES, pk.m); }
   } catch (e) {}
   fit(); tune(); toGarage();
   requestAnimationFrame(frame);
@@ -4527,7 +4541,8 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
   if (DBG || REC || /[?&]test=1/.test(location.search))
     window.__bg = function () {
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
-      return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on, gm: gmSel };
+      return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
+               gm: gmSel, gmId: (GAMEMODES[gmSel] || {}).id, ctl: (MODES[modeSel] || {}).id, voiceCtl: voiceCtl, story: story };
     };
 })();
 </script>

@@ -33,7 +33,7 @@ await run("desktop: гараж → родители → режим РУЛЬ → 
   await page.click("#parentGo"); if (await shown(page, "parent")) throw new Error("экран родителей не закрылся");
   await page.keyboard.press("Space"); await page.waitForFunction(() => window.__bg().state === "gamemode");
   await page.keyboard.press("ArrowRight"); await page.waitForTimeout(150); await page.keyboard.press("ArrowRight");
-  const gm = (await bg(page)).gm; if (gm !== 2) throw new Error("gmSel=" + gm + " (ожидали 2 = РУЛЬ)");
+  const gm = (await bg(page)).gmId; if (gm !== "lane") throw new Error("gmId=" + gm + " (ожидали lane = РУЛЬ)");
   await quiet(page); await page.keyboard.press("Space"); await page.waitForFunction(() => window.__bg().state === "lane");
   if (!(await shown(page, "pult"))) throw new Error("окно пульта не показано");
   await page.click("#pultClose");
