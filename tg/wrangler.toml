@@ -7,7 +7,7 @@ ALLOWED_ORIGINS = "https://managersergei.github.io"   # через запяту�
 
 [[kv_namespaces]]
 binding = "LINKS"
-id = "ВСТАВИТЬ_ID"            # из: npx wrangler kv namespace create LINKS
+id = "32a5144040bd4618b05f21d2e2f56e2f"   # создано 09.09.2026: ./wrangler.sh kv namespace create LINKS
 
 [[ratelimits]]                # Workers Rate Limiting: без записей в KV; period только 10 или 60
 name = "RL_CODE"
