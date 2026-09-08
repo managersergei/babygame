@@ -1321,6 +1321,7 @@ var ghRamp = false;
 /* Что уже «открыто» по числу собранных звёздочек. */
 function unlockedNow() {
   var set = {};
+  if (!story && Stats.known('РОБОТ')) set.robot = 1;   // уже знаком с роботом — не запираем его заново после рестарта
   for (var i = 0; i < ENDLESS_STEPS.length; i++)
     if (stars >= ENDLESS_STEPS[i].stars)
       for (var j = 0; j < ENDLESS_STEPS[i].add.length; j++) set[ENDLESS_STEPS[i].add[j]] = 1;
@@ -1915,7 +1916,7 @@ function updatePlay(dt) {
     }
     if (!nk && !wantEl && !wordArmed && !robot.on) {   // учить нечего — робот по своему таймеру
       robotT += dt;
-      if (robotT >= robotDue && unlockedNow().robot) startChase(false);
+      if (robotT >= robotDue && unlockedNow().robot) startChase(false);   // (робот открыт по звёздам или уже знаком)
     }
     if (robot.on && !robot.flee) {
       robot.life += dt;
