@@ -229,6 +229,7 @@ var CARFILES = {};
   ['black', 'red', 'yellow', 'd1', 'd2', 'd3', 'w0', 'w1', 'w2', 'w3', 'w4']
     .forEach(function (v) { CARFILES[c + '_' + v] = 1; });
 });
+['ambulance', 'bus', 'excavator', 'garbage', 'tractor', 'tow'].forEach(function (c) { CARFILES[c] = 1; });
 function assetPath(n) { return 'assets/' + (CARFILES[n] ? 'cars/' : 'world/') + n + '.webp'; }
 
 ASSETS.push('bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
@@ -237,7 +238,8 @@ ASSETS.push('bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
             'loc_tower', 'loc_shop', 'loc_palm', 'loc_umbrella', 'loc_jungle', 'loc_monkey',
             'loc_rock', 'loc_rocket', 'loc_fir', 'loc_snowman',
             'monster_a_run', 'monster_b_run', 'monster_c_run', 'monster_d_run',
-            'paint', 'sheep', 'robot', 'master', 'monster_a', 'monster_b', 'monster_c', 'monster_d');   // части машин (…_body, wheel_…) убраны: подход «колёса отдельно» отменён, файлов нет
+            'paint', 'sheep', 'robot', 'master', 'monster_a', 'monster_b', 'monster_c', 'monster_d',
+            'ambulance', 'bus', 'excavator', 'garbage', 'tractor', 'tow');   // части машин (…_body, wheel_…) убраны: подход «колёса отдельно» отменён, файлов нет
 /* Две фазы: первые CORE_N картинок (машинки, дорога, база) — и игра стартует,
    остальное догружается фоном; чего ещё нет, spr() просто пропускает. */
 var CORE_N = 16, coreDone = 0;
@@ -543,6 +545,7 @@ var A = (function () {
         speechSynthesis.speak(u);
       } catch (e) {}
     },
+    have: function (text) { return !!HAVE[fnv(text)]; },   // есть ли записанная реплика
     talking: function () {
       if (cur && !cur.paused && !cur.ended) return true;
       try { return !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; }
@@ -1107,7 +1110,25 @@ var ELEM_WORDS = [
   ['fence','ЗАБОР','забор','забор','🪵','Он стоит у дороги!'],
   ['haystack','СЕНО','сено','стог сена','🌾','Его собирают на поле!'],
   ['windmill','МЕЛЬНИЦА','мельница','мельница','🌬','Её крылья крутит ветер!'],
-  ['daisies','РОМАШКИ','ромашки','ромашки','🌼','Они растут на поле!']
+  ['daisies','РОМАШКИ','ромашки','ромашки','🌼','Они растут на поле!'],
+  ['coin','МОНЕТА','монета','монетка','🪙','Её надо собирать!'],
+  ['chest','СУНДУК','сундук','сундук','🧰','В нём лежит клад!'],
+  ['sheep','ОВЕЧКА','овечка','овечка','🐑','Она кушает травку!'],
+  ['tractor','ТРАКТОР','трактор','трактор','🚜','Он работает на ферме!'],
+  ['bus','АВТОБУС','автобус','автобус','🚌','Он возит людей!'],
+  ['ambulance','СКОРАЯ','скорая','скорая помощь','🚑','Она спешит на помощь!'],
+  ['excavator','ЭКСКАВАТОР','экскаватор','экскаватор','🏗️','Он копает ямы!'],
+  ['garbage','МУСОРОВОЗ','мусоровоз','мусоровоз','🚛','Он увозит мусор!'],
+  ['tow','ЭВАКУАТОР','эвакуатор','эвакуатор','🛻','Он увозит сломанные машинки!'],
+  ['loc_tower','БАШНЯ','башня','башня','🗼','Она очень высокая!'],
+  ['loc_shop','МАГАЗИН','магазин','магазин','🏪','В нём покупают еду!'],
+  ['loc_palm','ПАЛЬМА','пальма','пальма','🌴','Она растёт на пляже!'],
+  ['loc_umbrella','ЗОНТИК','зонтик','зонтик','⛱️','Он прячет от солнца!'],
+  ['loc_monkey','ОБЕЗЬЯНА','обезьяна','обезьянка','🐒','Она живёт в джунглях!'],
+  ['loc_rock','КАМЕНЬ','камень','камень','🪨','Он большой и тяжёлый!'],
+  ['loc_fir','ЁЛКА','ёлка','ёлка','🎄','Она растёт в лесу!'],
+  ['loc_snowman','СНЕГОВИК','снеговик','снеговик','⛄','Его слепили из снега!'],
+  ['master','МАСТЕР','мастер','мастер','👷','Он чинит и красит машинки!']
 ];
 var CMD_ELEMS = {};        // три повтора — только у ПРЫЖОК и ГАЗ (см. el_jump0 / el_gas0)
 ELEM_WORDS.forEach(function (e) {
@@ -1311,7 +1332,10 @@ var LESSON_ORDER = [
   'bird', 'plane', 'sun', 'arch',  // небо
   'tree', 'house', 'bush', 'cloud', // что растёт у дороги
   'flower', 'apple', 'ball', 'butterfly', 'hedgehog', 'rocket', 'train',   // на долгую игру
-  'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies'    // ферма и луг
+  'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies',   // ферма и луг
+  'coin', 'chest', 'sheep', 'tractor', 'bus', 'ambulance', 'excavator', 'garbage', 'tow',
+  'loc_tower', 'loc_shop', 'loc_palm', 'loc_umbrella', 'loc_monkey', 'loc_rock', 'loc_fir', 'loc_snowman', 'master'
+  // ↑ окружение и транспорт: слово входит в очередь, только когда его реплики озвучены (voicedLesson)
   // 'wheel' в очереди нет: слово учим на второй починке, когда бы она ни случилась
 ];
 
@@ -1331,8 +1355,10 @@ function rollRobot() { robotT = 0; robotDue = rnd(TUNE.robotMin, TUNE.robotMax);
 function resetRhythm() { rollWord(); rollRobot(); wantEl = null; wantT = 0; wordArmed = false; chaseN = 0; robotSoon = false; }
 
 /* Чем дорога может показать слово. Нет записи — показать нечем (солнце, радуга): очередь их пропускает. */
-var PROP_KIND = { tree:1, house:1, bush:1, fence:1, cow:1, haystack:1, chicken:1, windmill:1, daisies:1, horse:1 };
-var ROAD_EL   = { star:1, balloon:1, cone:1, puddle:1, ramp:1, plat:1, pit:1, mon:1, flower:1, apple:1, ball:1, hedgehog:1 };
+var PROP_KIND = { tree:1, house:1, bush:1, fence:1, cow:1, haystack:1, chicken:1, windmill:1, daisies:1, horse:1,
+                  chest:1, sheep:1, tractor:1, bus:1, ambulance:1, excavator:1, garbage:1, tow:1, master:1,
+                  loc_tower:1, loc_shop:1, loc_palm:1, loc_umbrella:1, loc_monkey:1, loc_rock:1, loc_fir:1, loc_snowman:1 };
+var ROAD_EL   = { star:1, balloon:1, cone:1, puddle:1, ramp:1, plat:1, pit:1, mon:1, flower:1, apple:1, ball:1, hedgehog:1, coin:1 };
 var SKY_EL    = { bird:1, plane:1, butterfly:1, cloud:1 };
 function hasItem(p, t) { for (var i = 0; i < p.items.length; i++) if (p.items[i].t === t) return true; return false; }
 function patternOk(p, un) {                        // связка открыта по звёздам и не запрещена погоней
@@ -1353,11 +1379,18 @@ function canSummon(k) {                            // можно ли прямо
   if (k === 'train') return stars > 20;
   return !!(SKY_EL[k] || k === 'fuel' || k === 'bucket' || k === 'rocket');
 }
+/* Слово учим, только если все его реплики озвучены: иначе включится робо-голос браузера (ГРАБЛИ §1). */
+var voicedCache = {};
+function voicedLesson(k) {
+  if (voicedCache[k] != null) return voicedCache[k];
+  var L = LESSONS['el_' + k], ok2 = !!L && A.have(L.ask) && A.have('Молодец! Ты выучил слово ' + L.say + '!') && (!L.tip || A.have(L.tip));
+  return (voicedCache[k] = ok2);
+}
 /* Следующее слово: первое в очереди, которое ребёнок ещё не знает и которое есть чем показать. */
 function nextLessonKey() {
   for (var i = 0; i < LESSON_ORDER.length; i++) {
     var k = LESSON_ORDER[i];
-    if (metEl[k] || !LESSONS['el_' + k]) continue;
+    if (metEl[k] || !LESSONS['el_' + k] || !voicedLesson(k)) continue;
     if (!Stats.canTeach(LESSONS['el_' + k].word)) { metEl[k] = 1; continue; }   // уже знает — пропускаем
     if (canSummon(k)) return k;
   }
@@ -1483,6 +1516,7 @@ var PATTERNS = [
   { need:['star'],        len: 260, rest:[440, 640], items:[ {t:'apple',dx:0}, {t:'apple',dx:130} ] },
   { need:['cone'],        len: 200, rest:[520, 700], items:[ {t:'ball',dx:0} ] },
   { need:['prop'],        len: 160, rest:[460, 660], items:[ {t:'hedgehog',dx:0} ] },
+  { need:['star'],        len: 300, rest:[440, 640], items:[ {t:'coin',dx:0}, {t:'coin',dx:110}, {t:'coin',dx:220} ] },
   { need:['mon','star'],  len: 460, rest:[700, 920], items:[
       {t:'mon',dx:0}, {t:'star',dx:60,y:210}, {t:'star',dx:180,y:130} ] }
 ];
@@ -1537,11 +1571,12 @@ function spawnEndless(x) {
     else if (it.t === 'mon')       o = { t:'mon', x:px2, ph:0, hit:false,
                                          skin: pick(['monster_a','monster_b','monster_c','monster_d']) };
     else if (it.t === 'prop')      o = { t:'prop', x:px2,
-                                         kind: wantEl && PROP_KIND[wantEl] ? wantEl : pick((TH().props || ['tree','house','bush']).slice()) };
+                                         kind: wantEl && PROP_KIND[wantEl] ? wantEl : pick((TH().props || ['tree','house','bush']).concat(TH().extra || [])) };
     else if (it.t === 'flower')    o = { t:'flower', x:px2 };
     else if (it.t === 'apple')     o = { t:'apple', x:px2, y: 95 * S, ph: rnd(0, TAU) };
     else if (it.t === 'ball')      o = { t:'ball', x:px2, ph: rnd(0, TAU), hit:false };
     else if (it.t === 'hedgehog')  o = { t:'hedgehog', x:px2, ph: rnd(0, TAU) };
+    else if (it.t === 'coin')      o = { t:'coin', x:px2, y: 95 * S, ph: rnd(0, TAU) };
     if (!o) continue;
     if (/^(cone|puddle|ball|pit|mon)$/.test(it.t)) obsMark(px2);
     objs.push(o);
@@ -1919,6 +1954,14 @@ function updatePlay(dt) {
     if (o.t === 'butterfly') { o.x -= 40 * S * dt; if (!o.met) { o.met = 1; markFirst(o, 'butterfly'); } }
     if (o.t === 'hedgehog') { o.x -= 25 * S * dt; if (!o.met) { o.met = 1; markFirst(o, 'hedgehog'); } }
     if (o.t === 'flower' && !o.met) { o.met = 1; markFirst(o, 'flower'); }
+    if (o.t === 'coin' && !o.got) {
+      if (!o.met) { o.met = 1; markFirst(o, 'coin'); }
+      if (bx1 > o.x - 34 * S && bx0 < o.x + 34 * S && by1 > o.y - 36 * S && by0 < o.y + 36 * S) {
+        o.got = 1; stars += 1; row++; A.coin(3);
+        popText('+1', o.x, o.y + 30 * S, '#ffd93d');
+        burst(o.x, o.y, 10, ['#ffd93d', '#fff3b0', '#fff'], 260 * S, 'spark');
+      }
+    }
     if (o.t === 'apple' && !o.got) {
       if (!o.met) { o.met = 1; markFirst(o, 'apple'); }
       if (bx1 > o.x - 36*S && bx0 < o.x + 36*S && by1 > o.y - 40*S && by0 < o.y + 40*S) {
@@ -2131,13 +2174,13 @@ function drawParts(worldSpace) {
 var THEMES = [
   { name:'деревня', far:'forest', sky:['#4fb6e8','#9fe0f6','#dff6ff'], h1:'#8fd07a', h2:'#79c163',
     road:['#5d6472','#3c414c'], grass:'#6ab04c', sun:1,
-    props:['house','tree','fence','cow','haystack','chicken','windmill'] },
+    props:['house','tree','fence','cow','haystack','chicken','windmill'], extra:['tractor','sheep','master'] },
   { name:'город', far:'city',   sky:['#6fb3d8','#bcd8ea','#e8f2f8'], h1:'#8f9bb0', h2:'#78849a',
-    road:['#4e5560','#33383f'], grass:'#7d8896', sun:1, props:['loc_tower','loc_shop'] },
+    road:['#4e5560','#33383f'], grass:'#7d8896', sun:1, props:['loc_tower','loc_shop'], extra:['bus','ambulance','garbage'] },
   { name:'пляж', far:'sea',    sky:['#38c6e8','#9fe8f6','#eafcff'], h1:'#8fd8e8', h2:'#f2dfa8',
-    road:['#7a6f5c','#514738'], grass:'#f0dda4', sun:1, props:['loc_palm','loc_umbrella'] },
+    road:['#7a6f5c','#514738'], grass:'#f0dda4', sun:1, props:['loc_palm','loc_umbrella'], extra:['chest'] },
   { name:'джунгли', far:'jungle', sky:['#4fd0a8','#a8ecc9','#e6ffe9'], h1:'#3f9c62', h2:'#2f7a4c',
-    road:['#4f5a4a','#333c30'], grass:'#3f9457', sun:1, props:['loc_jungle','loc_monkey'] },
+    road:['#4f5a4a','#333c30'], grass:'#3f9457', sun:1, props:['loc_jungle','loc_monkey'], extra:['chest'] },
   { name:'закат', far:'forest',   sky:['#ff7e5f','#feb47b','#ffe3c0'], h1:'#c98f5e', h2:'#a86f45',
     road:['#5a4a55','#38303a'], grass:'#b9834a', sun:1, props:['house','tree'] },
   { name:'космос', far:'peaks',  sky:['#0b1030','#1b2450','#3a4680'], h1:'#4a4470', h2:'#37325a',
@@ -2146,9 +2189,9 @@ var THEMES = [
     road:['#6a7280','#454c58'], grass:'#e8f2f8', sun:1, props:['loc_fir','loc_snowman'] },
   { name:'луг', far:'forest',     sky:['#57c7e8','#a8ecc9','#e6ffe9'], h1:'#7fd18c', h2:'#5eb96f',
     road:['#5f6a63','#3d443f'], grass:'#67bd63', sun:1,
-    props:['daisies','horse','tree','cow','fence','bush'] },
+    props:['daisies','horse','tree','cow','fence','bush'], extra:['sheep','tractor'] },
   { name:'пустыня', far:'dunes', sky:['#5fbfe0','#ffe0a3','#ffefcf'], h1:'#e8c98a', h2:'#d4ac63',
-    road:['#6b6357','#443f38'], grass:'#dfc07f', sun:1, props:['loc_rock','house'] }
+    road:['#6b6357','#443f38'], grass:'#dfc07f', sun:1, props:['loc_rock','house'], extra:['excavator','tow'] }
 ];
 var themeIx = 0;
 var thForce = null;                       // dev: ?th=N — посмотреть конкретную локацию
@@ -2282,7 +2325,9 @@ function drawHills() {
 var PROP_H = { cow:96, horse:104, chicken:56, fence:78, haystack:88, windmill:170, daisies:64,
                house:132, tree:158, bush:60, loc_tower:210, loc_shop:150, loc_palm:190,
                loc_umbrella:120, loc_jungle:200, loc_monkey:90, loc_rock:110, loc_rocket:170,
-               loc_fir:175, loc_snowman:120 };
+               loc_fir:175, loc_snowman:120,
+               chest:82, sheep:96, bus:118, ambulance:112, excavator:122, tractor:118,
+               garbage:116, tow:114, master:150 };
 /* Переезд. Рельсы уходят от горизонта на зрителя и пересекают дорогу целиком,
    поезд идёт по ним наискось — сверху вниз, а не вдоль дороги. */
 function railGeom(sx) {
@@ -2507,6 +2552,10 @@ function drawObjs() {
     } else if (o.t === 'apple') {
       var ab = Math.sin((o.ph || 0) * 2.4 + T * 2) * 8 * S;
       spr('apple', sx, GY - o.y + 30 * S - ab, 58 * S);
+    } else if (o.t === 'coin') {
+      if (o.got) return;                                     // собрали — не рисуем
+      var cb = Math.sin((o.ph || 0) * 2.2 + T * 2.4) * 7 * S;
+      spr('coin', sx, GY - o.y + 30 * S - cb, 52 * S, { sx: Math.abs(Math.cos(T * 2 + (o.ph || 0))) * 0.8 + 0.2 });
     } else if (o.t === 'ball') {
       var bh = Math.abs(Math.sin((o.ph || 0) * 3 + T * 3)) * 70 * S;
       spr('ball', sx, GY + 4 * S - bh, 62 * S, { rot: T * 3 });
