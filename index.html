@@ -108,6 +108,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script src="assets/voice/list.js"></script>
+<script src="assets/paths.js"></script>
 
 <div id="tools">
   <button class="tool" id="bHome" title="Гараж">🏠</button>
@@ -320,7 +321,12 @@ var CARFILES = {};
     .forEach(function (v) { CARFILES[c + '_' + v] = 1; });
 });
 ['ambulance', 'bus', 'excavator', 'garbage', 'tractor', 'tow'].forEach(function (c) { CARFILES[c] = 1; });
-function assetPath(n) { return 'assets/' + (CARFILES[n] ? 'cars/' : 'world/') + n + '.webp'; }
+/* Спрайты разложены по смысловым папкам, путь берём из карты assets/paths.js
+   (её пишет tools/organize_assets.py). Нет карты или имени в ней — работает прежнее правило. */
+function assetPath(n) {
+  var m = (typeof ASSET_PATH !== 'undefined') && ASSET_PATH[n];
+  return 'assets/' + (m || ((CARFILES[n] ? 'cars/' : 'world/') + n)) + '.webp';
+}
 
 ASSETS.push('bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
             'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies',

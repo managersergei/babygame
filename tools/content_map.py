@@ -27,13 +27,20 @@ GROUPS = [
     ("Прочее", "world", r"^(headlight)$"),
 ]
 
+import sys
+sys.path.insert(0, os.path.join(BASE, "tools"))
+from assets_paths import all_sprites, sprite_path
+
 def files(sub):
-    d = os.path.join(BASE, "assets", sub)
-    return sorted(f[:-5] for f in os.listdir(d) if f.endswith(".webp"))
+    return [n for n, _p in all_sprites(sub, "webp")]
 
 def size_kb(sub, name):
-    p = os.path.join(BASE, "assets", sub, name + ".webp")
+    p = sprite_path(name, "webp")
     return os.path.getsize(p) // 1024 if os.path.exists(p) else 0
+
+def folder_of(name):
+    from assets_paths import paths
+    return os.path.dirname(paths().get(name, ""))
 
 def fnv(s):
     h = 0x811c9dc5
@@ -63,7 +70,7 @@ for title, sub, pat in GROUPS:
     if not got:
         continue
     tot = sum(size_kb(sub, f) for f in got)
-    out.append("**%s** — `assets/%s/`, %d файлов, %d КБ" % (title, sub, len(got), tot))
+    out.append("**%s** — `assets/%s/`, %d файлов, %d КБ" % (title, folder_of(got[0]) or sub, len(got), tot))
     out.append(": " + ", ".join("`%s`" % f for f in got) + "\n")
 rest = [(sub, f) for sub in ("cars", "world") for f in files(sub) if (sub, f) not in used]
 if rest:

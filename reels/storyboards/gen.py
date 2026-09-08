@@ -23,7 +23,7 @@ def ref_data_url():
     """Референс машинки читается лениво — только в fal-ветке; --dry и freegen без него."""
     global _REF
     if _REF is None:
-        _REF = 'data:image/png;base64,' + base64.b64encode(open(os.path.join(BASE, 'assets/cars/fire.png'), 'rb').read()).decode()
+        _REF = 'data:image/png;base64,' + base64.b64encode(open(os.path.join(BASE, 'assets/cars/players/fire.png'), 'rb').read()).decode()
     return _REF
 
 def is_valid_image(path):
@@ -75,7 +75,7 @@ def run_freegen(jobs):
             'defaults': {'size': '1080x1920', 'format': 'jpg', 'fit': 'cover', 'style': 'babygame-3d',
                          'ref_policy': 'prefer', 'ref_less_replacements': {TRUCK: TRUCK_PLAIN}},
             'jobs': [{'id': '%s/shot%d' % (s['id'], i + 1), 'prompt': sh['prompt'],
-                      'reference': os.path.join(BASE, 'assets/cars/fire.png') if sh['ref'] else None,
+                      'reference': os.path.join(BASE, 'assets/cars/players/fire.png') if sh['ref'] else None,
                       'out': os.path.join(OUT, s['id'], 'shot%d.jpg' % (i + 1)),
                       'tags': {'story': s['id'], 'shot': str(i + 1)}} for s, i, sh in todo]}
     with open(spec_path, 'w', encoding='utf-8') as f: json.dump(spec, f, ensure_ascii=False, indent=1)

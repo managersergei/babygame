@@ -1,5 +1,11 @@
 /* Мир для сцен: небо, солнце, облака, холмы, дорога с разметкой, трава. world({night}) → узлы.
    Спрайты игры: car(id) — машинка (вид сбоку, едет вправо), sprite(name, h). Пути относительно reels/scenes/. */
+/* Путь спрайта: сначала карта assets/paths.js (её грузит сцена), иначе прежнее правило. */
+function spritePath(name) {
+  var m = (typeof ASSET_PATH !== 'undefined') && ASSET_PATH[name];
+  if (m) return '../../assets/' + m + '.webp';
+  return '../../assets/' + (/^(monster|fire|race|police|ambulance|bus|excavator|garbage|tractor|tow)(_|$)/.test(name) ? 'cars/' : 'world/') + name + '.webp';
+}
 function world(opt) {
   opt = opt || {};
   var s = document.getElementById('stage');
@@ -19,7 +25,7 @@ function world(opt) {
 /* спрайт машинки: якорь низ-центр в точке (x, groundY), высота h px */
 function car(id, x, groundY, h, extraClass) {
   var img = document.createElement('img');
-  img.className = 'el ' + (extraClass || ''); img.id = 'car'; img.src = '../../assets/cars/' + id + '.webp';
+  img.className = 'el ' + (extraClass || ''); img.id = 'car'; img.src = spritePath(id);
   img.style.height = h + 'px'; img.style.left = x + 'px'; img.style.top = (groundY - h) + 'px';
   img.style.transform = 'translate(-50%,0)';
   document.getElementById('stage').appendChild(img);
@@ -28,7 +34,7 @@ function car(id, x, groundY, h, extraClass) {
 function sprite(name, x, groundY, h, id, cls) {
   var img = document.createElement('img');
   img.className = 'el ' + (cls || ''); if (id) img.id = id;
-  img.src = '../../assets/' + (/^(monster|fire|race|police)(_|$)/.test(name) ? 'cars/' : 'world/') + name + '.webp';
+  img.src = spritePath(name);
   img.style.height = h + 'px'; img.style.left = x + 'px'; img.style.top = (groundY - h) + 'px';
   document.getElementById('stage').appendChild(img);
   return img;

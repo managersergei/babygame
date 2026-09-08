@@ -12,6 +12,8 @@
 из gen_sprites.py и gen_variants.py.
 """
 import os, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from assets_paths import all_sprites, sprite_path
 from PIL import Image, ImageChops, ImageStat
 
 CARS_DIR = "/Users/sergei/Documents/babygame/assets/cars"
@@ -60,7 +62,7 @@ def base_of(f):
     stem = f[:-4]
     if "_" not in stem:
         return None
-    b = os.path.join(CARS_DIR, stem.split("_")[0] + ".png")
+    b = sprite_path(stem.split("_")[0])
     return b if os.path.exists(b) else None
 
 
@@ -87,11 +89,11 @@ def check_variants(fix=False, tone_tol=0.12):
     у побитых машин глаз не видно, а зеркало ловится только сравнением. Заодно смотрим,
     не «уехал» ли общий тон — повреждение не должно перекрашивать машинку."""
     bad, off = [], []
-    for f in sorted(x for x in os.listdir(CARS_DIR) if x.endswith(".png")):
+    for name, path in all_sprites("cars"):
+        f = name + ".png"
         b = base_of(f)
         if not b:
             continue
-        path = os.path.join(CARS_DIR, f)
         im = Image.open(path)
         same, mirror = same_or_mirror(im, Image.open(b))
         okd = same < mirror
@@ -115,10 +117,10 @@ def check_variants(fix=False, tone_tol=0.12):
 
 
 def check(fix=False):
-    files = sorted(f for f in os.listdir(CARS_DIR) if f.endswith(".png") and not base_of(f))   # варианты — в check_variants()
+    files = sorted(n + ".png" for n, _p in all_sprites("cars") if not base_of(n + ".png"))   # варианты — в check_variants()
     bad, unknown = [], []
     for f in files:
-        path = os.path.join(CARS_DIR, f)
+        path = sprite_path(f[:-4])
         im = Image.open(path)
         c = eye_center(im)
         if c is None:
@@ -161,7 +163,7 @@ def check_world(fix=False):
     """Те же правила для фоновых персонажей: смотреть надо туда, куда движешься."""
     bad = []
     for name, want in sorted(WORLD_FACE.items()):
-        path = os.path.join(WORLD_DIR, name + ".png")
+        path = sprite_path(name)
         if not os.path.exists(path):
             continue
         im = Image.open(path)

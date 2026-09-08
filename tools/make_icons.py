@@ -1,8 +1,10 @@
 """Иконки PWA и OG-картинка из спрайта машинки. python3 tools/make_icons.py"""
-import os
+import os, sys
 from PIL import Image, ImageDraw, ImageFont
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-car = Image.open(os.path.join(BASE, 'assets/cars/fire.png')).convert('RGBA')
+sys.path.insert(0, os.path.join(BASE, 'tools'))
+from assets_paths import sprite_path
+car = Image.open(sprite_path('fire')).convert('RGBA')
 def icon(size):
     im = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
