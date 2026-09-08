@@ -173,6 +173,9 @@
   <div class="row"><span>🎤 Чуткость</span><input type="range" id="vSens" min="0" max="100"></div>
   <div style="font-size:12px;font-weight:700;color:#8a94a6;margin:-4px 0 6px">
     左 — реагирует только на громкую речь, 右 — ловит тихую</div>
+  <label class="row" style="gap:8px"><input type="checkbox" id="vSwap"> поменять местами ПРОБЕЛ и ▶</label>
+  <div style="font-size:12px;font-weight:700;color:#8a94a6;margin:-4px 0 6px">
+    тогда прыжок — на стрелке вправо, а газ — на пробеле</div>
   <button id="setClose">ГОТОВО</button>
 </div>
 
@@ -843,12 +846,13 @@ var Stats = {
     d.n++; d.s = this.session; this.save();
     try { track('word', { word: word, n: d.n }); } catch (e) {}   // → бот: «сказал слово n из 5», на пятом — «выучил»
   },
-  known: function (word) { var d = this.data[word]; return !!d && d.n >= this.need; },   // выучено насовсем
+  again: 6,                                    // через столько заходов выученное слово повторяем
+  known: function (word) { var d = this.data[word]; return !!d && d.n >= this.need; },   // умеет говорить и как команда
   reset: function () { this.data = {}; this.save(); },
   canTeach: function (word) {
     var d = this.data[word];
     if (!d) return true;
-    if (d.n >= this.need) return false;
+    if (d.n >= this.need) return (this.session - d.s) >= this.again;   // повторяем, но редко
     return (this.session - d.s) >= this.gap;
   },
   list: function () {
@@ -1026,7 +1030,7 @@ var GAMEMODES = visible(ALL_GAMEMODES);
 
 /* Голос — не режим управления, а упражнения внутри игры (кнопка 🎤). Пункт скрыт, ?all=1 вернёт. */
 var ALL_MODES = [
-  { id:'easy',  title:'ТОЛЬКО ПРОБЕЛ', sub:'машинка едет сама',    keys:['ПРОБЕЛ'],      say:'Только пробел' },
+  { id:'easy',  title:'ТОЛЬКО ПРОБЕЛ', sub:'машинка едет сама',    keys:['ПРОБЕЛ'],      say:'Только пробел', hidden:true },   // скрыт: газовать всё равно нужно стрелкой
   { id:'voice', title:'ГОЛОСОМ',       sub:'учим слова и говорим', keys:['🎤'],          say:'Голосом', hidden:true },
   { id:'full',  title:'СО СТРЕЛКАМИ',  sub:'газ, тормоз и прыжок', keys:['◀','⬆','▶'], say:'Со стрелками' }
 ];
@@ -1065,6 +1069,7 @@ var TUNE = {
   wordMin:     15,     // c езды между новыми словами (мин)
   wordMax:     30,     // …и макс — таймер случайный
   wordLead:    5,      // c — предмет заказываем заранее: ему ещё ехать в кадр
+  robotIdle:   2.0,    // во столько раз реже приходит робот, пока ребёнку ещё есть чему учиться
   monQuiet:    6,      // c до погони, за которые монстриков навстречу уже не ставим
   monFreeChases: 2     // сколько первых погонь идут без монстриков
 };
@@ -1217,6 +1222,8 @@ var stars = 0, row = 0, combo = 0, comboT = 0;
 var objs = [], parts = [], texts = [];
 var nextX = 0, lastFuelX = 0, archPending = false;
 var fuel = 1, outOfFuel = false, emptyShown = false, beepT = 0, lowT = 0, refuels = 0;
+/* Каждый десятый собранный бензин чуть увеличивает бак: видно по шкале, сбрасывается после проигрыша. */
+var fuelPicks = 0, tankMul = 1;
 var celebrate = 0, flash = 0, shake = 0, sirenT = 0, fxT = 0, T = 0;
 
 var CARX = 0;
@@ -1231,7 +1238,7 @@ function tune() {
   GRAV    = 2100 * S;
   JUMP1   = 830 * S * (car && car.jump ? car.jump : 1);
   JUMP2   = 690 * S * (car && car.jump ? car.jump : 1);
-  FUELDIST= 3600 * S;              // на сколько метров хватает полного бака
+  FUELDIST= 3600 * S * tankMul;    // на сколько метров хватает полного бака (растёт от собранного бензина)
 }
 
 /* ═══════════════ 6. ЧАСТИЦЫ И НАДПИСИ ═══════════════ */
@@ -1256,7 +1263,7 @@ function resetWorld() {
   objs.length = 0; parts.length = 0; texts.length = 0;
   carX = 0; carY = 0; vy = 0; spd = easy ? EASYSPD : CRUISE;
   grounded = true; jumps = 0; lastGroundH = 0; lastObsX = -1e9; breakN = 0; railT = 0;
-  stars = 0; row = 0; combo = 0; nextX = W * 0.9; lastFuelX = 0;
+  stars = 0; row = 0; combo = 0; nextX = W * 0.9; lastFuelX = 0; fuelPicks = 0; tankMul = 1; bestShown = 0; tune();
   archPending = false; celebrate = 0; flash = 0; shake = 0;
   fuel = 1; outOfFuel = false; emptyShown = false; beepT = 0; lowT = 0; refuels = 0;
 }
@@ -1513,6 +1520,8 @@ var PATTERNS = [
       {t:'balloon',dx:0,y:180}, {t:'balloon',dx:110,y:255}, {t:'balloon',dx:220,y:180} ] },
   { need:['cone'],        len: 480, rest:[520, 700], items:[
       {t:'cone',dx:0}, {t:'cone',dx:440} ] },
+  { need:['cone'],        len: 920, rest:[560, 760], w: 3, items:[      // редко — ряд из трёх
+      {t:'cone',dx:0}, {t:'cone',dx:440}, {t:'cone',dx:880} ] },
   { need:['puddle'],      len: 200, rest:[480, 660], items:[ {t:'puddle',dx:0} ] },
   { need:['cone','puddle'], len: 560, rest:[560, 760], items:[
       {t:'cone',dx:0}, {t:'puddle',dx:460} ] },
@@ -1552,7 +1561,11 @@ function spawnEndless(x) {
     for (i = 0; i < PATTERNS.length; i++) if (patternOk(PATTERNS[i], un)) pool.push(PATTERNS[i]);
   }
   if (!pool.length) pool = [PATTERNS[0]];
-  var pt = pick(pool), platH = 0;
+  var wsum = 0, wi;                                // w — как часто встречается связка (по умолчанию 10)
+  for (wi = 0; wi < pool.length; wi++) wsum += (pool[wi].w || 10);
+  var roll = RNG() * wsum, pt = pool[pool.length - 1];
+  for (wi = 0; wi < pool.length; wi++) { roll -= (pool[wi].w || 10); if (roll <= 0) { pt = pool[wi]; break; } }
+  var platH = 0;
 
   if (pt.chain && ++platN % 2 === 0) {             // каждая вторая — целая эстакада
     var tall = RNG() < 0.35;                 // иногда — высокая эстакада
@@ -1716,6 +1729,12 @@ function drawFuelBar() {
   g.fillStyle = 'rgba(20,25,40,.35)'; roundRect(bx - 4*S, y - 4*S, w + 8*S, h + 8*S, (h+8*S)/2); g.fill();
   g.fillStyle = 'rgba(255,255,255,.45)'; roundRect(bx, y, w, h, h/2); g.fill();
 
+  if (tankMul > 1) {                                    // бак вырос — шкала длиннее и с отметкой
+    w = Math.min(w * tankMul, W * 0.42);
+    g.save(); g.globalAlpha = 0.9;
+    outText('×' + tankMul.toFixed(1), bx + w + 26 * S, y + h * 0.5, 22 * S, '#ffd93d', '#7a4b00');
+    g.restore();
+  }
   var f = clamp(fuel, 0, 1);
   var col = f > 0.5 ? '#4ade80' : f > 0.25 ? '#ffd93d' : '#ff4d4d';
   if (f < 0.25) g.globalAlpha = 0.55 + Math.abs(Math.sin(T * 7)) * 0.45;
@@ -1883,6 +1902,7 @@ function updatePlay(dt) {
     }
   }
 
+  noteStars();                                   // рекорд обновляется на лету, «РЕКОРД!» — один раз за заезд
   idleT += dt;                                   // ребёнок ничего не делает — подсказываем
   if (idleT > 15 && !A.talking() && !emptyShown) {
     idleT = 0;
@@ -1914,9 +1934,9 @@ function updatePlay(dt) {
       orderWord(nk);
       if (state !== 'play') return;                    // слово РОБОТ начало урок прямо сейчас
     }
-    if (!nk && !wantEl && !wordArmed && !robot.on) {   // учить нечего — робот по своему таймеру
-      robotT += dt;
-      if (robotT >= robotDue && unlockedNow().robot) startChase(false);   // (робот открыт по звёздам или уже знаком)
+    if (!robot.on && !wantEl && !wordArmed) {          // робот идёт по своему таймеру всегда,
+      robotT += dt * (nk ? 1 / TUNE.robotIdle : 1);     // но пока есть чему учиться — вдвое медленнее
+      if (robotT >= robotDue && unlockedNow().robot && state === 'play') startChase(false);
     }
     if (robot.on && !robot.flee) {
       robot.life += dt;
@@ -2059,7 +2079,13 @@ function updatePlay(dt) {
       if (bx1 > o.x - 44*S && bx0 < o.x + 44*S && by1 > fy - 52*S && by0 < fy + 52*S) {
         fuel = Math.min(1, fuel + 0.45);
         A.fuelUp();
-        popText('+БЕНЗИН', o.x, fy + 60 * S, '#7bd66b');
+        fuelPicks++;
+        if (fuelPicks % 10 === 0 && tankMul < 2.0) {          // десятая канистра — бак побольше
+          tankMul = Math.min(2.0, tankMul + 0.12); tune();
+          A.fanfare(); flash = 0.35;
+          popText('БАК БОЛЬШЕ!', o.x, fy + 110 * S, '#ffd93d');
+          burst(o.x, fy + 40 * S, 16, ['#7bd66b', '#ffd93d', '#fff'], 300 * S, 'spark');
+        } else popText('+БЕНЗИН', o.x, fy + 60 * S, '#7bd66b');
         if (story && curStage().t === 'fuelrun' && stageSub === 3) {
           stageSub = 4; fuel = 1; finishLine();
           A.say('Ура! Полный бак! Едем к финишу!');
@@ -2784,7 +2810,11 @@ function drawHUD() {
   }
 
   outText(car.name, W / 2, 44 * S, 34 * S, '#ffffff', '#2b6cb0');
-  if (score > 0) outText(String(score) + ' б.', W - 30 * S, 104 * S, 26 * S, '#fff', '#2b6cb0', 'right');
+  if (best > 0) {                                       // рекорд — мелко и спокойно, под счётчиком звёзд
+    g.save(); g.globalAlpha = 0.75;
+    outText('рекорд ' + best, W - 30 * S, 104 * S, 24 * S, '#fff', '#2b6cb0', 'right');
+    g.restore();
+  }
 
   texts.forEach(function (t) {
     g.save(); g.globalAlpha = clamp(t.life / t.max, 0, 1);
@@ -3375,11 +3405,20 @@ function drawLesson() {
 }
 
 /* ═══════════════ 17bz. ФИНИШ УРОВНЯ И БАЛЛЫ ═══════════════ */
-var score = (function () { try { return +localStorage.getItem('babygame.score') || 0; } catch (e) { return 0; } })();
+/* Счёт один на всю игру — звёздочки. `best` — рекорд за один заезд, `total` — сколько собрано всего. */
+var best = (function () { try { return +localStorage.getItem('babygame.best') || 0; } catch (e) { return 0; } })();
+var total = (function () { try { return +localStorage.getItem('babygame.total') || 0; } catch (e) { return 0; } })();
+var score = 0;   // ← старые очки больше не показываем; переменная осталась, чтобы не трогать сюжетный экран
 var finishing = false, levelStars = 0, lastWord = '';
 var res = { t: 0, stars: 0, word: '', pts: 0, lvl: 1 };
 
-function saveScore() { try { localStorage.setItem('babygame.score', String(score)); } catch (e) {} }
+function saveScore() {
+  try { localStorage.setItem('babygame.best', String(best)); localStorage.setItem('babygame.total', String(total)); } catch (e) {}
+}
+function noteStars() {                                  // звезда собрана: обновляем рекорд на лету
+  if (stars > best) { if (best > 0 && !bestShown) { bestShown = 1; popText('РЕКОРД!', carX, carY + car.h * S, '#ffd93d'); A.fanfare(); } best = stars; saveScore(); }
+}
+var bestShown = 0;
 
 /* Бесконечный режим: уровней нет, просто маленькие праздники и редкие поломки. */
 var miles = 0;
@@ -3505,14 +3544,14 @@ function drawCrash() {
 }
 
 /* ═══════════════ 17bw. ПРОИГРЫШ В БЕСКОНЕЧНОМ ═══════════════ */
-var over = { t: 0, reason: '', said: false };
+var over = { t: 0, reason: '', said: false, mon: '', sel: 0 };   // sel: 0 — ещё раз, 1 — сменить машинку
 
 function gameOver(reason) {
   track('over', { reason: reason });
   if (state !== 'play') return;
-  state = 'over'; over.t = 0; over.reason = reason; over.said = false;
+  state = 'over'; over.t = 0; over.reason = reason; over.said = false; over.sel = 0;
   over.mon = reason === 'robot' ? 'robot' : pick(['monster_a', 'monster_b', 'monster_c', 'monster_d']);
-  score += stars * 10; saveScore();
+  total += stars; if (stars > best) best = stars; bestShown = 0; saveScore();
   Mic.disarm(); A.engine(0, 1, false);
   A.land(); A.clunk();
   shake = 0;
@@ -3557,11 +3596,27 @@ function drawOver() {
   g.save(); g.fillStyle = 'rgba(40,50,80,.12)';
   g.fillRect(px + 40 * S, py + 140 * S, pw - 80 * S, 3 * S); g.restore();
 
-  spr('coin', W / 2 - 58 * S, py + 244 * S, 76 * S);                  // за эту поездку — крупно
-  outText('+' + (stars * 10), W / 2 + 62 * S, py + 206 * S, 58 * S, '#ffd93d', '#7a4b00');
+  spr('star', W / 2 - 58 * S, py + 244 * S, 76 * S);                  // за эту поездку — крупно
+  outText(String(stars), W / 2 + 62 * S, py + 206 * S, 58 * S, '#ffd93d', '#7a4b00');
 
-  spr('chest', W / 2 - 58 * S, py + 318 * S, 52 * S);                 // всего в копилке — мельче
-  outText(String(score), W / 2 + 56 * S, py + 292 * S, 36 * S, '#2b6cb0', '#fff');
+  spr('chest', W / 2 - 58 * S, py + 318 * S, 52 * S);                 // рекорд — мельче
+  outText('рекорд ' + best, W / 2 + 56 * S, py + 292 * S, 32 * S, '#2b6cb0', '#fff');
+
+  /* Две кнопки: «ещё раз» и «другая машинка». Стрелки переключают, пробел нажимает выбранную. */
+  var byy = py + ph + 54 * S, bw2 = pw * 0.46, bh2 = 74 * S;
+  [['↻  ЕЩЁ РАЗ', W / 2 - pw / 2], ['🚗  ДРУГАЯ', W / 2 + pw / 2 - bw2]].forEach(function (b, i) {
+    var on = over.sel === i, k2 = on ? 1 + Math.sin(T * 5) * 0.02 : 0.94;
+    g.save(); g.translate(b[1] + bw2 / 2, byy + bh2 / 2); g.scale(k2, k2); g.translate(-bw2 / 2, -bh2 / 2);
+    g.fillStyle = 'rgba(0,0,0,.22)'; roundRect(4 * S, 8 * S, bw2, bh2, 22 * S); g.fill();
+    g.fillStyle = on ? '#ffd93d' : 'rgba(255,255,255,.82)'; roundRect(0, 0, bw2, bh2, 22 * S); g.fill();
+    g.lineWidth = on ? 6 * S : 3 * S; g.strokeStyle = on ? '#e0691f' : 'rgba(43,33,64,.3)';
+    roundRect(0, 0, bw2, bh2, 22 * S); g.stroke();
+    outText(b[0], bw2 / 2, bh2 / 2, 26 * S, on ? '#2b2140' : '#5a6472', '#fff');
+    g.restore();
+  });
+  g.save(); g.globalAlpha = 0.5 + Math.sin(T * 4) * 0.35;
+  outText('◀ ▶ выбрать · ПРОБЕЛ — поехали', W / 2, byy + bh2 + 40 * S, 24 * S, '#fff', '#2b6cb0');
+  g.restore();
 }
 
 /* ═══════════════ 17bd. СЦЕНАРИЙ ГОЛОСОВОГО РЕЖИМА ═══════════════ */
@@ -4316,7 +4371,7 @@ var Lane = {
         var p = Lane.pos(o.z, o.lane);
         if (o.good) {
           if (o.t === 'star') {
-            stars++; row++; A.coin(row); popText('+1', p.x, p.y - 60 * S, '#ffd93d');
+            stars++; row++; noteStars(); A.coin(row); popText('+1', p.x, p.y - 60 * S, '#ffd93d');
             burst(p.x, p.y - 30 * S, 10, ['#ffd93d', '#fff'], 260 * S, 'spark'); EV('lane', 'star');
             if (stars % TUNE.praiseEvery === 0) { celebrate = 2; A.fanfare(); A.say(pick(['Хорошо!', 'Здорово!'])); track('lane_praise', { stars: stars }); }
           } else {
@@ -4378,7 +4433,7 @@ var Lane = {
     if (celebrate > 0) { g.save(); g.globalAlpha = Math.min(1, celebrate); outText('УРА!', W / 2, H * 0.3, 90 * S, '#ffd93d', '#e0691f'); g.restore(); }
   },
   auto: function () {                        // автоигра: полоса без препятствий, лучше со звездой
-    var best = 0, bestScore = -9;
+    var bestLane = 0, bestScore = -9;
     for (var l = -1; l <= 1; l++) {
       var danger = 1.2, bonus = 0;
       for (var i = 0; i < ln.objs.length; i++) {
@@ -4387,9 +4442,9 @@ var Lane = {
         if (o.good) bonus += 0.25; else if (o.z < danger) danger = o.z;
       }
       var score = danger + bonus - Math.abs(l - ln.x) * 0.05;
-      if (score > bestScore) { bestScore = score; best = l; }
+      if (score > bestScore) { bestScore = score; bestLane = l; }
     }
-    ln.autoT = best;
+    ln.autoT = bestLane;
   },
   dbg: function () { return { x: +ln.x.toFixed(2), objs: ln.objs.length, spd: +ln.spd.toFixed(2), hit: ln.hitT > 0 }; }
 };
@@ -4627,7 +4682,7 @@ function setPad() {
                   : state === 'result' ? '▶ ДАЛЬШЕ'
                   : state === 'lane'   ? '📣 БИ-БИ'
                   : state === 'intro'  ? '▶ ПОЕХАЛИ'
-                  : state === 'over'   ? '↻ ЕЩЁ РАЗ'
+                  : state === 'over'   ? (over.sel === 1 ? '🚗 ДРУГАЯ МАШИНКА' : '↻ ЕЩЁ РАЗ')
                   : state === 'crash'  ? '…' 
                   : state === 'wash'   ? '▶ ДАЛЬШЕ'
                   : state === 'lesson' ? '▶ СКАЗАЛ'
@@ -4691,6 +4746,9 @@ function moveSel(dir) {
 
 /* ═══════════════ 19. УПРАВЛЕНИЕ ═══════════════ */
 var K = { left: false, right: false };
+/* Настройка для левшей и для тех, кому удобнее наоборот: пробел и стрелка вправо меняются местами. */
+var swapKeys = (function () { try { return localStorage.getItem('babygame.swap') === '1'; } catch (e) { return false; } })();
+function mapKey(k) { return swapKeys ? (k === 'space' ? 'right' : k === 'right' ? 'space' : k) : k; }
 var repeatT = 0;
 
 function keyDown(k) {
@@ -4705,7 +4763,10 @@ function keyDown(k) {
     else if (state === 'ask')    { askAnswer(true); }
     else if (state === 'result')  { nextStage(); }
     else if (state === 'intro')   { beginStage(); }
-    else if (state === 'over')    { resetWorld(); chaseT = 0; robot.on = false; beginStage(); }
+    else if (state === 'over')    {
+      if (over.sel === 1) { toGarage(); return; }          // выбрана смена машинки
+      resetWorld(); chaseT = 0; robot.on = false; beginStage();
+    }
     else if (state === 'lesson') { if (les.phase !== 'good') { Mic.cancel(); lessonStep(false); } }
     else if (state === 'mode') startGame();
     else if (state === 'lane') Lane.action();
@@ -4713,20 +4774,25 @@ function keyDown(k) {
     return;
   }
   K[k] = true;
+  if (state === 'over') {                          // на экране проигрыша стрелки переключают действие
+    var ns = clamp(over.sel + (k === 'left' ? -1 : 1), 0, 1);
+    if (ns !== over.sel) { over.sel = ns; A.whoosh(); setPad(); }
+    return;
+  }
   if (state !== 'play' && state !== 'lane') { moveSel(k === 'left' ? -1 : 1); repeatT = 0.42; }
 }
 function keyUp(k) { if (k !== 'space') K[k] = false; }
 
 window.addEventListener('keydown', function (e) {
-  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) keyDown('space'); }
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) keyDown(mapKey('space')); }
   else if (e.code === 'ArrowLeft')  { e.preventDefault(); if (!e.repeat) keyDown('left');  }
-  else if (e.code === 'ArrowRight') { e.preventDefault(); if (!e.repeat) keyDown('right'); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); if (!e.repeat) keyDown(mapKey('right')); }
   else if (e.code === 'Escape' || e.code === 'Backspace') { e.preventDefault(); toGarage(); }
   else if (e.code === 'KeyM') { setSoundIcon(A.toggle()); }
 });
 window.addEventListener('keyup', function (e) {
   if (e.code === 'ArrowLeft') keyUp('left');
-  else if (e.code === 'ArrowRight') keyUp('right');
+  else if (e.code === 'ArrowRight') keyUp(mapKey('right'));
 });
 
 function bindKey(el, k) {
@@ -4860,6 +4926,13 @@ setMicIcon();
   });
   document.getElementById('bSet').addEventListener('click', function () {
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  });
+  var swapEl = document.getElementById('vSwap');
+  swapEl.checked = swapKeys;
+  swapEl.addEventListener('change', function () {
+    swapKeys = this.checked;
+    try { localStorage.setItem('babygame.swap', swapKeys ? '1' : '0'); } catch (e) {}
+    K.left = K.right = false; setPad();
   });
   document.getElementById('setClose').addEventListener('click', function () { box.style.display = 'none'; });
 })();
@@ -5113,6 +5186,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
 
   if (DBG || REC || /[?&]test=1/.test(location.search))
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
+    window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__bg = function () {
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
@@ -5123,6 +5197,8 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
                chase: { on: robot.on, flee: robot.flee, n: chaseN, t: +robotT.toFixed(1), due: +robotDue.toFixed(1) },
                mons: objs.filter(function (o) { return o.t === 'mon'; }).length,
                S: S, spd: Math.round(spd / S), damage: damage, breakN: breakN,
+               carY: Math.round(carY / S), best: best, total: total, tank: +tankMul.toFixed(2),
+               fuelPicks: fuelPicks, swap: swapKeys, overSel: over.sel,
                rep: { n: rep.n, fixed: rep.fixed, phase: rep.phase },
                rail: (function () {
                  for (var qi = 0; qi < objs.length; qi++) if (objs[qi].t === 'rail')
