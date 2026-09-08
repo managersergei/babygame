@@ -22,9 +22,9 @@ await page.goto(B + "?s=play&rec=1&auto=1&test=1&seed=11&fast=3");
 await page.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
 const t0 = Date.now();
 let last = null;
-while (Date.now() - t0 < 200000) {
+while (Date.now() - t0 < 380000) {
   last = await page.evaluate(() => window.__bg());
-  if (last.T > 260) break;
+  if (last.T > 340) break;
   await page.waitForTimeout(1000);
 }
 console.log(`игрового времени: ${last.T} с · слов к изучению: ${last.word.next} · погонь: ${last.chase.n}`);
@@ -35,6 +35,6 @@ if (gaps.length) {
   console.log("промежутки между погонями, с:", gaps.join(", "), `(цель 45–75 плюс время самой погони)`);
   const ok = gaps.every(g => g >= 45 && g <= 110);
   console.log(`  ${ok ? "ok " : "ВНИМАНИЕ"} все промежутки в разумных пределах`);
-} else console.log("  ВНИМАНИЕ: погонь не было — проверить, открыт ли робот по звёздам:", last.stars);
+} else console.log(`  ${chases.length ? "мало данных: погоня одна, промежуток измерить не на чем" : "ВНИМАНИЕ: погонь не было"} · звёзд ${last.stars} (робот открывается с 56)`);
 if (errs.length) console.log("ОШИБКИ:", errs.slice(0, 3).join(" | "));
 await browser.close();
