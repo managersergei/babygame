@@ -1,0 +1,27 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C11 Бензин</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(12);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.4, { x: [-750, 0] });
+sprite('fuel', 1250, 1300, 150, 'fuel');
+document.getElementById('stage').insertAdjacentHTML('beforeend',
+  '<div class="el" id="bar" style="left:640px;top:180px;width:380px;height:56px;border-radius:28px;background:rgba(255,255,255,.6);box-shadow:inset 0 3px 8px rgba(0,0,0,.15);overflow:hidden"><div id="barIn" style="height:100%;width:60%;border-radius:28px;background:linear-gradient(90deg,#7bd66b,#ffd93d)"></div></div>' +
+  '<div class="el txt" id="barLbl" style="left:640px;width:380px;top:110px;font-size:40px;color:#fff;text-shadow:0 4px 0 #2b6cb0">⛽ бензин</div>');
+text('hook', 'О нет, бензин\nкончается!', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+var speed = 900, level = 0.6; every(function (t) { w.road(t, speed); if (t > 0.5 && t < 4.6) level = Math.max(0.06, 0.6 - (t - 0.5) * 0.14); document.getElementById('barIn').style.width = (level * 100) + '%'; document.getElementById('barIn').style.background = level < 0.2 ? '#ff5252' : 'linear-gradient(90deg,#7bd66b,#ffd93d)'; });
+say(1.0, 'О неееет! У нас заканчивается бензин, мы не сможем доехать… Нам нужен бензин!');
+at(4.6, function () { speed = 150; });
+tw('#fuel', 4.8, 1.4, { x: [0, -600] });
+say(5.4, 'Скажи слово: бензин!');
+text('word', 'БЕНЗИН', 'word'); document.getElementById('word').classList.add('sm'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — БЕНЗИН!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 7.4, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 7.5, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+tw('#fuel', 8.0, 0.45, { x: [-600, -900], y: [0, -160], scale: [1, 0.2], o: [1, 0] }, 'in');
+at(8.2, function () { speed = 900; level = 1; });
+say(8.4, 'Ура! Полный бак! Едем к финишу!');
+tw('#word', 9.6, 0.3, { o: [1, 0] }); tw('#kid', 9.6, 0.3, { o: [1, 0] });
+jump('#car', 9.4, 260, 0.8);
+endCard(10.8, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

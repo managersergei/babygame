@@ -1,0 +1,35 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C20 Телефон стал рулём</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(11.5);
+var s = document.getElementById('stage'); s.style.background = 'linear-gradient(#63b8ea, #8fd3f4 45%, #79c86a 45%, #5fae52)';
+text('hook', 'Телефон стал\nрулём', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+// дорога от третьего лица
+s.insertAdjacentHTML('beforeend', '<div style="position:absolute;left:0;top:860px;width:1080px;height:760px;background:#5b6470;clip-path:polygon(44% 0,56% 0,100% 100%,0 100%)"></div>' +
+  '<div style="position:absolute;left:0;top:860px;width:1080px;height:760px;clip-path:polygon(44% 0,56% 0,100% 100%,0 100%);background:repeating-linear-gradient(180deg, transparent 0 60px, rgba(255,255,255,.85) 60px 90px);opacity:.9" id="dash"></div>');
+function rearCar(id, x) { s.insertAdjacentHTML('beforeend', '<div class="el" id="' + id + '" style="left:' + x + 'px;top:1420px;width:240px;height:150px">' +
+  '<div style="position:absolute;left:-16px;top:70px;width:52px;height:80px;border-radius:26px;background:#2b2140"></div><div style="position:absolute;right:-16px;top:70px;width:52px;height:80px;border-radius:26px;background:#2b2140"></div>' +
+  '<div style="position:absolute;left:0;top:40px;width:240px;height:100px;border-radius:26px;background:#e63946"></div><div style="position:absolute;left:0;top:110px;width:240px;height:34px;border-radius:14px;background:#a4161a"></div>' +
+  '<div style="position:absolute;left:36px;top:0;width:168px;height:70px;border-radius:22px;background:#e63946"></div><div style="position:absolute;left:52px;top:10px;width:136px;height:40px;border-radius:14px;background:#bfe9ff"></div>' +
+  '<div style="position:absolute;left:12px;top:78px;width:34px;height:16px;border-radius:8px;background:#ff5252"></div><div style="position:absolute;right:12px;top:78px;width:34px;height:16px;border-radius:8px;background:#ff5252"></div></div>'); }
+rearCar('rc', 420);
+s.insertAdjacentHTML('beforeend', '<img class="el" id="cone" src="../../assets/world/cone.webp" style="left:520px;top:900px;height:40px;transform-origin:50% 100%">');
+set('#cone', { o: 0 });
+// телефон в руках: наклон
+s.insertAdjacentHTML('beforeend', '<div class="el mid" id="ph" style="left:340px;top:520px;width:400px;height:220px;border-radius:34px;background:#2b2140;box-shadow:0 20px 40px rgba(0,0,0,.35)"><div style="position:absolute;left:16px;top:16px;right:16px;bottom:16px;border-radius:24px;background:#8fd3f4"></div><div style="position:absolute;left:0;right:0;top:80px;text-align:center;font-size:56px">📱</div></div>');
+set('#ph', { o: 0, y: 40 }); tw('#ph', 0.8, 0.5, { o: [0, 1], y: [40, 0] }, 'back');
+var dashEl = document.getElementById('dash'); every(function (t) { dashEl.style.backgroundPosition = '0 ' + ((t * 420) % 90) + 'px'; });
+say(1.0, 'Руль'); say(2.2, 'Объезжай препятствия!');
+// конус приближается, наклон телефона влево — машинка уходит влево
+tw('#cone', 3.2, 2.2, { o: [0, 1], y: [0, 560], scale: [1, 5] }, 'in');
+tw('#ph', 4.2, 0.5, { rot: [0, -22] }); tw('#rc', 4.3, 0.7, { x: [0, -260], rot: [0, -8] }, 'out'); tw('#rc', 5.0, 0.4, { rot: [-8, 0] });
+tw('#cone', 5.4, 0.5, { y: [560, 900], o: [1, 0] }, 'in');
+text('kid', '📐 наклонил — повернула', 'kid'); set('#kid', { o: 0, y: 40 }); tw('#kid', 4.5, 0.35, { o: [0, 1], y: [40, 0] }, 'back');
+tw('#ph', 6.2, 0.6, { rot: [-22, 18] }); tw('#rc', 6.3, 0.8, { x: [-260, 200], rot: [0, 8] }, 'out'); tw('#rc', 7.1, 0.4, { rot: [8, 0] });
+s.insertAdjacentHTML('beforeend', '<img class="el" id="star" src="../../assets/world/star.webp" style="left:600px;top:900px;height:40px;transform-origin:50% 100%">'); set('#star', { o: 0 });
+tw('#star', 5.8, 2.0, { o: [0, 1], y: [0, 560], scale: [1, 5] }, 'in'); tw('#star', 7.8, 0.3, { o: [1, 0], scale: [5, 7] });
+say(8.0, 'Здорово!');
+text('cap', 'Играем на большом экране,\nрулим телефоном.', 'cap'); set('#cap', { o: 0, y: 30 }); tw('#cap', 8.2, 0.5, { o: [0, 1], y: [30, 0] });
+endCard(10.2, 'МАШИНКИ', 'режим РУЛЬ', 'ссылка в профиле');
+</script></body></html>

@@ -1,0 +1,25 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C14 Робот догоняет</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(12);
+var w = world();
+sprite('robot', 60, 1300, 240, 'robot'); set('#robot', { x: -700 });
+car('fire', 420, 1300, 200); set('#car', { x: -800 }); tw('#car', 0, 1.4, { x: [-800, 0] });
+for (var i = 0; i < 6; i++) document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="el" id="sl' + i + '" style="left:' + (60 + i * 30) + 'px;top:' + (1150 + i * 26) + 'px;width:' + (160 + (i % 3) * 60) + 'px;height:10px;border-radius:5px;background:rgba(255,255,255,.9);opacity:0"></div>');
+text('hook', 'Злой робот\nдогоняет!', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+var speed = 900; every(function (t) { w.road(t, speed); });
+tw('#robot', 1.2, 1.6, { x: [-700, 0] }); tw('#robot', 1.2, 4, { y: [0, -10] }, 'bounce');
+say(1.6, 'Я тебя догоню!');
+say(3.0, 'Ой-ой! Злой робот нас догоняет! Скажи слово: газ!');
+text('word', 'ГАЗ', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ГАЗ!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 6.4, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 6.5, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+at(6.9, function () { speed = 1900; for (var i = 0; i < 6; i++) set('#sl' + i, { o: 0.9 }); });
+tw('#car', 6.9, 0.2, { rot: [0, -6], x: [0, 80] }); tw('#car', 7.1, 0.6, { rot: [-6, 0] }, 'back');
+every(function (t) { if (t > 6.9) for (var i = 0; i < 6; i++) set('#sl' + i, { x: -((t * 2600 + i * 300) % 1400), o: 0.9 }); });
+tw('#robot', 7.0, 1.6, { x: [0, -900] }, 'in');
+say(7.8, 'Газ! Ура, мы убежали от робота!');
+tw('#word', 9.6, 0.3, { o: [1, 0] }); tw('#kid', 9.6, 0.3, { o: [1, 0] });
+endCard(10.8, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

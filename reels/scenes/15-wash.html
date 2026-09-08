@@ -1,0 +1,25 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C15 Вода</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(13);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.4, { x: [-750, 0] });
+var s = document.getElementById('stage');
+[[250,1170,70],[330,1230,50],[410,1190,60],[300,1270,40],[440,1260,45]].forEach(function (m, i) { s.insertAdjacentHTML('beforeend', '<div class="el mid" id="mud' + i + '" style="left:' + m[0] + 'px;top:' + m[1] + 'px;width:' + m[2] + 'px;height:' + (m[2] * 0.7) + 'px;border-radius:50%;background:#6b4f2a;opacity:.85"></div>'); });
+for (var b = 0; b < 14; b++) s.insertAdjacentHTML('beforeend', '<div class="el mid" id="bb' + b + '" style="left:' + (200 + (b * 53) % 320) + 'px;top:' + (1000 + (b * 37) % 300) + 'px;width:' + (40 + (b % 4) * 18) + 'px;height:' + (40 + (b % 4) * 18) + 'px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:inset -6px -6px 0 rgba(191,233,255,.9);opacity:0"></div>');
+text('hook', 'Машинка вся\nгрязная!', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+var speed = 900; every(function (t) { w.road(t, speed); });
+say(1.2, 'Ой, посмотри, машинка вся грязная! Мы приехали на мойку.');
+at(3.0, function () { speed = 0; });
+say(5.0, 'Машинка вся грязная! Скажи слово: вода!');
+text('word', 'ВОДА', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ВОДА!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 7.6, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 7.7, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+for (var k = 0; k < 14; k++) { tw('#bb' + k, 8.0 + k * 0.05, 0.3, { o: [0, 1], scale: [0.3, 1] }, 'back'); tw('#bb' + k, 8.3 + k * 0.05, 1.6, { y: [0, -260 - (k % 3) * 80] }, 'out'); tw('#bb' + k, 9.6 + k * 0.05, 0.3, { o: [1, 0] }); }
+for (var m2 = 0; m2 < 5; m2++) tw('#mud' + m2, 8.4 + m2 * 0.15, 0.4, { o: [0.85, 0], scale: [1, 0.3] });
+say(9.0, 'Вода! Ура, машинка чистая и блестит!');
+at(10.6, function () { speed = 900; });
+tw('#word', 10.8, 0.3, { o: [1, 0] }); tw('#kid', 10.8, 0.3, { o: [1, 0] });
+endCard(11.8, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

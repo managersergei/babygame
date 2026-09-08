@@ -1,0 +1,26 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C12 Сколько колёс</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(13);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.4, { x: [-750, 0] });
+sprite('wheel', 300, 1300, 62, 'wheel'); set('#wheel', { o: 0 });
+text('hook', 'Мастерская:\nсколько колёс?', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+var speed = 900; every(function (t) { w.road(t, speed); });
+at(2.0, function () { speed = 0; document.getElementById('car').src = '../../assets/cars/fire_w1.webp'; set('#wheel', { o: 1 }); });
+tw('#car', 2.0, 0.12, { sy: [1, 0.9], rot: [0, 3] }); tw('#car', 2.12, 0.5, { sy: [0.9, 1], rot: [3, 0] }, 'back');
+tw('#wheel', 2.0, 1.1, { x: [0, 420], rot: [0, 720] }, 'out'); tw('#wheel', 2.0, 0.55, { y: [0, -90] }, 'arc');
+say(2.2, 'Ой-ой! Машинка сломалась! Смотри, колёса упали!');
+say(5.4, 'Сколько колёс надо починить?');
+text('word', 'ОДИН', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — ОДИН!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 7.6, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 7.7, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+say(8.2, 'Правильно! одно колесо!');
+tw('#wheel', 9.3, 0.6, { x: [420, 0], rot: [720, 0] }, 'in'); tw('#wheel', 9.3, 0.6, { y: [0, -120] }, 'arc');
+at(9.9, function () { set('#wheel', { o: 0 }); document.getElementById('car').src = '../../assets/cars/fire.webp'; speed = 900; });
+tw('#car', 9.9, 0.1, { sy: [1, 0.85] }); tw('#car', 10.0, 0.5, { sy: [0.85, 1] }, 'back');
+say(10.1, 'Ура! Починили! Поехали дальше!');
+tw('#word', 10.4, 0.3, { o: [1, 0] }); tw('#kid', 10.4, 0.3, { o: [1, 0] });
+endCard(11.9, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

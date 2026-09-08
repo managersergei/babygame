@@ -1,0 +1,26 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C17 Это ссылка</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(11);
+var s = document.getElementById('stage'); s.style.background = 'linear-gradient(#63b8ea,#cdeefb)';
+text('hook', 'Это не приложение.\nЭто ссылка.', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+s.insertAdjacentHTML('beforeend',
+  '<div class="el mid" id="phone" style="left:250px;top:560px;width:580px;height:1100px;border-radius:60px;background:#2b2140;box-shadow:0 30px 60px rgba(0,0,0,.35)">' +
+  '<div style="position:absolute;left:24px;top:24px;right:24px;bottom:24px;border-radius:44px;background:#fffdf8;overflow:hidden">' +
+  '<div style="position:absolute;left:0;right:0;top:0;height:90px;background:#e9edf3;display:flex;align-items:center;padding:0 26px;font-size:30px;font-weight:900;color:#5a6472"><span id="url">&nbsp;</span></div>' +
+  '<div id="scr" style="position:absolute;left:0;right:0;top:90px;bottom:0;background:#8fd3f4"></div>' +
+  '<div id="ld" style="position:absolute;left:60px;right:60px;top:520px;height:26px;border-radius:13px;background:rgba(255,255,255,.6);overflow:hidden"><div id="ldIn" style="height:100%;width:0;background:linear-gradient(90deg,#ffd93d,#ff8f3f)"></div></div>' +
+  '<div id="ldT" style="position:absolute;left:0;right:0;top:570px;text-align:center;font-size:30px;font-weight:900;color:#2b6cb0">Загрузка…</div>' +
+  '<div style="position:absolute;left:-20px;top:-10px;width:140px;height:3px;background:rgba(0,0,0,.35);transform:rotate(38deg)"></div>' +
+  '</div></div>');
+set('#phone', { o: 0, y: 60 }); tw('#phone', 0.7, 0.6, { o: [0, 1], y: [60, 0] }, 'back');
+var URL = 'mashinki.ru'; every(function (t) { if (t > 1.6) { var n = Math.min(URL.length, Math.floor((t - 1.6) * 9)); document.getElementById('url').textContent = URL.slice(0, n) + (n < URL.length && Math.floor(t * 4) % 2 ? '|' : ''); } if (t > 3.4) document.getElementById('ldIn').style.width = Math.min(100, (t - 3.4) * 60) + '%'; });
+text('cap', 'Без установки. Без магазина.\nРаботает на старом Android.', 'cap'); set('#cap', { o: 0, y: 30 }); tw('#cap', 2.2, 0.5, { o: [0, 1], y: [30, 0] });
+var scr = document.getElementById('scr');
+at(5.2, function () { document.getElementById('ld').style.display = 'none'; document.getElementById('ldT').style.display = 'none'; scr.innerHTML = '<div style="position:absolute;left:0;right:0;top:300px;height:110px;background:#5b6470;border-top:5px solid #f2f6fb;border-bottom:5px solid #f2f6fb"></div><div style="position:absolute;left:0;right:0;top:410px;bottom:0;background:#79c86a"></div><img id="pcar" class="el" src="../../assets/cars/fire.webp" style="height:120px;left:120px;top:190px"><div class="txt" style="position:absolute;left:0;right:0;top:40px;font-size:44px;color:#fff;text-shadow:0 4px 0 #2b6cb0">МАШИНКИ</div>'; set('#pcar', { x: -400 }); });
+tw('#pcar', 5.25, 1.2, { x: [-400, 0] });
+say(5.4, 'Поехали!');
+jump('#pcar', 7.2, 150, 0.7);
+endCard(9.6, 'МАШИНКИ', 'открыл ссылку — играешь', 'ссылка в профиле');
+</script></body></html>

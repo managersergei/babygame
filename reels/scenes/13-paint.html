@@ -1,0 +1,27 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C13 Чёрный</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(13.5);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.4, { x: [-750, 0] });
+sprite('paint', 1250, 1300, 150, 'paint');
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="el" id="flash" style="left:0;top:0;width:1080px;height:1920px;background:#fff"></div>'); set('#flash', { o: 0 });
+text('hook', 'Покрасим машинку?', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+var speed = 900; every(function (t) { w.road(t, speed); });
+tw('#paint', 0.6, 1.4, { x: [0, -600] }); at(2.0, function () { speed = 0; });
+say(2.2, 'Ооо, смотри! Нам предлагают покрасить машину в чёрный цвет. Будем красить в чёрный?');
+text('kid', '🧒 — ДА!', 'kid'); set('#kid', { o: 0, y: 40 }); tw('#kid', 6.6, 0.35, { o: [0, 1], y: [40, 0] }, 'back');
+say(7.2, 'Скажи слово: чёрный!');
+text('word', 'ЧЁРНЫЙ', 'word'); document.getElementById('word').classList.add('sm'); document.getElementById('word').style.color = '#2b2140'; document.getElementById('word').style.textShadow = '0 10px 0 #ffd93d, 0 24px 44px rgba(0,0,0,.4)';
+set('#word', { o: 0, scale: 0.4 });
+at(9.0, function () { document.getElementById('kid').textContent = '🧒 — ЧЁРНЫЙ!'; });
+tw('#word', 9.1, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+tw('#paint', 9.5, 0.5, { x: [-600, -820], y: [0, -220], rot: [0, -120] }, 'in');
+tw('#flash', 9.95, 0.08, { o: [0, 0.9] }); at(10.0, function () { document.getElementById('car').src = '../../assets/cars/fire_black.webp'; }); tw('#flash', 10.03, 0.5, { o: [0.9, 0] });
+tw('#paint', 10.0, 0.01, { o: [1, 0] });
+say(10.3, 'Ух ты! Какая красивая машинка!');
+at(10.4, function () { speed = 900; });
+tw('#word', 11.0, 0.3, { o: [1, 0] }); tw('#kid', 11.0, 0.3, { o: [1, 0] });
+endCard(12.3, 'МАШИНКИ', 'игра, где ребёнок говорит', 'ссылка в профиле');
+</script></body></html>

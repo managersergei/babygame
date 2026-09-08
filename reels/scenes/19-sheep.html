@@ -1,0 +1,24 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C19 Слово №4 БИБИ</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(11.5);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.4, { x: [-750, 0] });
+sprite('sheep', 1250, 1300, 170, 'sheep');
+text('label', 'СЛОВО №4', 'lab'); set('#lab', { o: 0, y: -30 }); tw('#lab', 0.1, 0.4, { o: [0, 1], y: [-30, 0] });
+text('hook', 'На дороге овечка.\nСкажи БИБИ', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.3, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+var speed = 900; every(function (t) { w.road(t, speed); });
+tw('#sheep', 0.6, 1.5, { x: [0, -560] }); at(2.1, function () { speed = 0; });
+every(function (t) { if (t > 2.1 && t < 7.6) set('#sheep', { x: -560, y: Math.abs(Math.sin(t * 3)) * -6 }); });
+say(2.3, 'Смотри, на дороге овечка! Скажи слово: би-би!');
+text('word', 'БИ-БИ', 'word'); set('#word', { o: 0, scale: 0.4 });
+text('kid', '🧒 — БИ-БИ!', 'kid'); set('#kid', { o: 0, y: 40 });
+tw('#kid', 5.6, 0.35, { o: [0, 1], y: [40, 0] }, 'back'); tw('#word', 5.7, 0.35, { o: [0, 1], scale: [0.4, 1] }, 'back');
+tw('#car', 6.1, 0.1, { sy: [1, 0.92] }); tw('#car', 6.2, 0.4, { sy: [0.92, 1] }, 'back');
+tw('#sheep', 7.6, 1.0, { x: [-560, -1500] }, 'in'); tw('#sheep', 7.6, 1.0, { y: [0, -30] }, 'bounce');
+at(7.8, function () { speed = 900; });
+say(7.9, 'Би-би! Овечка ушла с дороги. Спасибо!');
+tw('#word', 9.4, 0.3, { o: [1, 0] }); tw('#kid', 9.4, 0.3, { o: [1, 0] });
+endCard(10.3, 'МАШИНКИ', 'игра, где ребёнок говорит', 'Слово №5 — завтра · ссылка в профиле');
+</script></body></html>

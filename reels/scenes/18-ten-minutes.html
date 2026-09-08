@@ -1,0 +1,18 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C18 10 минут</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(12);
+var w = world();
+car('fire', 330, 1300, 200); set('#car', { x: -750 }); tw('#car', 0, 1.4, { x: [-750, 0] });
+every(function (t) { w.road(t, 800); });
+text('hook', '10 минут,\nгде ребёнок говорит', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="el txt" id="timer" style="left:0;width:1080px;top:540px;font-size:150px;color:#fff;text-shadow:0 8px 0 #2b6cb0">10:00</div>');
+var words = ['ПРЫЖОК', 'БЕНЗИН', 'ФАРА', 'СТОП', 'ВОДА', 'БИБИ', 'ГАЗ', 'ОДИН'];
+words.forEach(function (wd, i) { document.getElementById('stage').insertAdjacentHTML('beforeend', '<div class="el txt" id="c' + i + '" style="left:' + (90 + (i % 2) * 460) + 'px;width:440px;top:' + (760 + Math.floor(i / 2) * 96) + 'px;font-size:52px;color:#2b2140;text-shadow:none;background:rgba(255,253,248,.95);border-radius:30px;padding:12px 0;opacity:0">' + wd + '</div>'); set('#c' + i, { o: 0, x: -40 }); tw('#c' + i, 1.6 + i * 0.85, 0.35, { o: [0, 1], x: [-40, 0] }, 'back'); });
+every(function (t) { var left = Math.max(0, 600 - (t - 1.0) * 66); if (t < 1.0) left = 600; var m = Math.floor(left / 60), sx = Math.floor(left % 60); document.getElementById('timer').textContent = m + ':' + (sx < 10 ? '0' : '') + sx; });
+say(1.2, 'Молодец! Ты выучил слово прыжок!'); say(4.4, 'Молодец! Ты выучил слово бензин!'); say(7.6, 'Ух ты, как ты далеко уехал!');
+jump('#car', 3.0, 280, 0.8); jump('#car', 8.6, 280, 0.8);
+text('cap', 'Слов сказано: 8.\nМультиков посмотрено: 0.', 'cap'); set('#cap', { o: 0, y: 30 }); tw('#cap', 9.2, 0.5, { o: [0, 1], y: [30, 0] });
+endCard(10.8, 'МАШИНКИ', 'экранное время, за которое не стыдно', 'ссылка в профиле');
+</script></body></html>

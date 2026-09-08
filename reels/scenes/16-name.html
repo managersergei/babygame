@@ -1,0 +1,20 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>C16 Как тебя зовут</title>
+<link rel="stylesheet" href="../kit/reel.css"></head><body><div id="stage"></div>
+<script src="../kit/engine.js"></script><script src="../kit/world.js"></script>
+<script>
+dur(12.5);
+var s = document.getElementById('stage'); s.style.background = '#2b6cb0';
+text('hook', 'Первое, что\nспросит игра', 'hook'); set('#hook', { o: 0, y: 30 }); tw('#hook', 0.2, 0.5, { o: [0, 1], y: [30, 0] }, 'back');
+s.insertAdjacentHTML('beforeend', '<div class="el mid txt" id="mic" style="left:0;width:1080px;top:560px;font-size:220px;text-shadow:none">🎤</div>');
+set('#mic', { scale: 0.6, o: 0 }); tw('#mic', 0.6, 0.5, { scale: [0.6, 1], o: [0, 1] }, 'back');
+function wave(id, x) { s.insertAdjacentHTML('beforeend', '<div class="el" id="' + id + '" style="left:' + x + 'px;top:900px;width:280px;height:160px;display:flex;align-items:center;justify-content:space-between;opacity:0"></div>'); var w = document.getElementById(id); for (var i = 0; i < 12; i++) { var b = document.createElement('div'); b.style.cssText = 'width:14px;height:20px;border-radius:7px;background:#ffd93d'; w.appendChild(b); } return w; }
+var w1 = wave('w1', 80), w2 = wave('w2', 400), w3 = wave('w3', 720);
+var talk = [0, 0, 0], kidT = [3.2, 6.0, 8.6];
+say(1.2, 'Привет! Как тебя зовут?'); say(4.2, 'Как-как? Ещё раз!'); say(6.9, 'И ещё разок!');
+text('kid', '🧒 — Миша!', 'kid'); set('#kid', { o: 0, y: 40 });
+kidT.forEach(function (t0, i) { tw('#kid', t0, 0.3, { o: [0, 1], y: [40, 0] }, 'back'); tw('#kid', t0 + 1.2, 0.3, { o: [1, 0] }); tw('#w' + (i + 1), t0, 0.3, { o: [0, 1] }); });
+every(function (t) { [w1, w2, w3].forEach(function (w, i) { var on = t > kidT[i] && t < kidT[i] + 1.1; for (var k = 0; k < w.children.length; k++) w.children[k].style.height = (on ? 24 + Math.abs(Math.sin(t * 11 + k * 1.3 + i)) * 130 : (t > kidT[i] ? 24 + Math.abs(Math.sin(k * 1.3 + i * 2)) * 110 : 20)) + 'px'; }); });
+text('cap', 'Три раза — и игра запомнила,\nкак звучит именно твой голос.', 'cap'); set('#cap', { o: 0, y: 30 }); tw('#cap', 9.6, 0.5, { o: [0, 1], y: [30, 0] });
+say(9.9, 'Очень приятно! Поехали кататься!');
+endCard(11.6, 'МАШИНКИ', 'игра, которая узнаёт твой голос', 'ссылка в профиле');
+</script></body></html>
