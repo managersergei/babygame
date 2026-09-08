@@ -11,8 +11,8 @@
 Запускать после ЛЮБОЙ генерации или переобработки машинок. Вызывается автоматически
 из gen_sprites.py и gen_variants.py.
 """
-import os, sys
-from PIL import Image
+import os, subprocess, sys
+from PIL import Image, ImageChops, ImageStat
 
 CARS_DIR = "/Users/sergei/Documents/babygame/assets/cars"
 
@@ -44,8 +44,78 @@ def eye_center(im):
     return cx
 
 
+def _alpha(im):
+    return im.convert("RGBA").split()[3].point(lambda v: 255 if v >= 200 else 0)
+
+
+def to_webp(path):
+    """Игра грузит .webp — после разворота PNG пересобираем его тем же качеством (README: cwebp -q 88)."""
+    wp = path[:-4] + ".webp"
+    if os.path.exists(wp):
+        subprocess.run(["cwebp", "-quiet", "-q", "88", path, "-o", wp], check=False)
+
+
+def base_of(f):
+    """monster_d3.png -> путь к monster.png, если такой есть; иначе None (значит, это не вариант)."""
+    stem = f[:-4]
+    if "_" not in stem:
+        return None
+    b = os.path.join(CARS_DIR, stem.split("_")[0] + ".png")
+    return b if os.path.exists(b) else None
+
+
+def same_or_mirror(var, base):
+    """Ошибка по серому на пересечении масок: (к базе, к зеркалу базы)."""
+    var = var.convert("RGBA"); base = base.convert("RGBA")
+    if var.size != base.size:
+        var = var.resize(base.size, Image.LANCZOS)
+    out = []
+    for b in (base, base.transpose(Image.FLIP_LEFT_RIGHT)):
+        m = ImageChops.multiply(_alpha(var), _alpha(b))
+        d = ImageChops.difference(var.convert("L"), b.convert("L"))
+        out.append(ImageStat.Stat(d, mask=m).mean[0])
+    return out
+
+
+def tone(im):
+    st = ImageStat.Stat(im.convert("RGB"), mask=_alpha(im))
+    return st.mean
+
+
+def check_variants(fix=False, tone_tol=0.12):
+    """Варианты машинки (цвета, повреждения, без колёс) сверяем с базой попиксельно:
+    у побитых машин глаз не видно, а зеркало ловится только сравнением. Заодно смотрим,
+    не «уехал» ли общий тон — повреждение не должно перекрашивать машинку."""
+    bad, off = [], []
+    for f in sorted(x for x in os.listdir(CARS_DIR) if x.endswith(".png")):
+        b = base_of(f)
+        if not b:
+            continue
+        path = os.path.join(CARS_DIR, f)
+        im = Image.open(path)
+        same, mirror = same_or_mirror(im, Image.open(b))
+        okd = same < mirror
+        bt, vt = tone(Image.open(b)), tone(im)
+        drift = max(abs(vt[i] - bt[i]) / max(1.0, bt[i]) for i in range(3))
+        skin = f[:-4].split("_", 1)[1]
+        tone_ok = skin.startswith("d") or drift <= tone_tol      # цветные скины меняют тон намеренно
+        print("  %s %-22s к базе %5.1f, к зеркалу %5.1f, тон %+.0f%%"
+              % ("OK " if okd and (tone_ok or not skin.startswith("d")) else "!!!", f, same, mirror, drift * 100))
+        if not okd:
+            bad.append(f)
+            if fix:
+                im.convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT).save(path)
+                to_webp(path)
+                print("      → развернул и пересобрал webp")
+        elif skin.startswith("d") and drift > tone_tol:
+            off.append("%s (%+.0f%%)" % (f, drift * 100))
+    if off:
+        print("ТОН УЕХАЛ у повреждений:", ", ".join(off), "— повреждение не должно перекрашивать машинку")
+    return bad
+
+
 def check(fix=False):
-    files = sorted(f for f in os.listdir(CARS_DIR) if f.endswith(".png"))
+    files = sorted(f for f in os.listdir(CARS_DIR) if f.endswith(".png") and not base_of(f))   # варианты — в check_variants()
     bad, unknown = [], []
     for f in files:
         path = os.path.join(CARS_DIR, f)
@@ -61,6 +131,7 @@ def check(fix=False):
             bad.append(f)
             if fix:
                 im.convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT).save(path)
+                to_webp(path)
                 print("      → развернул")
     print()
     if bad:
@@ -111,7 +182,7 @@ def check_world(fix=False):
 
 if __name__ == "__main__":
     fix = "--fix" in sys.argv
-    bad1 = check(fix)
+    bad1 = check(fix) + check_variants(fix)
     print("\n=== фоновые персонажи ===")
     bad2 = check_world(fix)
     if bad2:
