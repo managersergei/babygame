@@ -75,7 +75,7 @@ python3 -m http.server 8765
 Игра грузит `.webp` (из PNG: `cwebp -q 88`), музыку — `.mp3`; PNG и WAV остаются на диске, но не в git.
 
 ```bash
-export FAL_KEY='...'
+export BABYGAME_FAL_KEY='...'
 python3 tools/gen_sprites.py            # всё, что ещё не скачано в assets_raw/
 python3 tools/gen_sprites.py fire star  # только эти
 ```

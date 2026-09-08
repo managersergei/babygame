@@ -5,14 +5,14 @@
 робо-голоса браузера. Имя файла = FNV-1a хеш точного текста реплики,
 такой же хеш игра считает в рантайме.
 
-    export FAL_KEY=...
+    export BABYGAME_FAL_KEY=...
     python3 tools/gen_voice.py                 # чего нет — досоздать
     python3 tools/gen_voice.py --voice Laura   # перегенерить другим голосом
     python3 tools/gen_voice.py --samples       # образцы голосов на выбор
 """
 import json, os, sys, urllib.request, concurrent.futures
 
-KEY = os.environ["FAL_KEY"]
+KEY = os.environ["BABYGAME_FAL_KEY"]
 BASE = "/Users/sergei/Documents/babygame"
 OUT = BASE + "/assets/voice"
 MODEL = "https://fal.run/fal-ai/elevenlabs/tts/multilingual-v2"

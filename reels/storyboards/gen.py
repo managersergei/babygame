@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Сториборды через fal.ai Nano Banana Pro: по кадру 9:16 (1K) на каждый шот.
-FAL_KEY=… python3 reels/storyboards/gen.py [A01 …] [--dry]
+BABYGAME_FAL_KEY=… python3 reels/storyboards/gen.py [A01 …] [--dry]
 Кадры с машинкой идут через /edit с референсом assets/cars/fire.png (Image 1)."""
 import base64, json, os, sys, time, urllib.request, concurrent.futures
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -12,7 +12,7 @@ except ImportError:
 STORIES = S1 + S2
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.dirname(os.path.abspath(__file__))
-KEY = os.environ.get('FAL_KEY', ''); DRY = '--dry' in sys.argv
+KEY = os.environ.get('BABYGAME_FAL_KEY', ''); DRY = '--dry' in sys.argv
 only = [a for a in sys.argv[1:] if a[:1] in 'AB' and a[1:3].isdigit()]
 REF = 'data:image/png;base64,' + base64.b64encode(open(os.path.join(BASE, 'assets/cars/fire.png'), 'rb').read()).decode()
 LOG = os.path.join(OUT, 'gen-log.csv')
@@ -61,7 +61,14 @@ for s in STORIES:
     for i, sh in enumerate(s['shots']):
         md.append('| %d | %s | %s | %s | ![](shot%d.jpg) |' % (i + 1, sh['t'], sh['what'], sh['motion'], i + 1))
     md.append('\n## Промпты\n')
-    for i, sh in enumerate(s['shots']): md.append('**Shot %d** (%s): %s\n' % (i + 1, 'с референсом машинки' if sh['ref'] else 'без референса', sh['prompt']))
+    used = {}
+    if os.path.exists(LOG):
+        for line in open(LOG, encoding='utf-8'):
+            parts = line.strip().split(',')
+            if len(parts) == 4 and parts[1] == s['id']: used[int(parts[2])] = parts[3]
+    for i, sh in enumerate(s['shots']):
+        how = used.get(i + 1)
+        md.append('**Shot %d** (%s): %s\n' % (i + 1, ('сгенерирован через ' + how) if how else ('с референсом машинки' if sh['ref'] else 'без референса'), sh['prompt']))
     open(os.path.join(d, 'story.md'), 'w', encoding='utf-8').write('\n'.join(md))
     have = [os.path.join(d, 'shot%d.jpg' % (i + 1)) for i in range(len(s['shots']))]
     have = [p for p in have if os.path.exists(p)]

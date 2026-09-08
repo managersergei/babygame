@@ -3,7 +3,7 @@
 import json, os, sys, sys, urllib.request, concurrent.futures, time
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-KEY = os.environ["FAL_KEY"]
+KEY = os.environ["BABYGAME_FAL_KEY"]
 BASE = "/Users/sergei/Documents/babygame"
 RAW, OUT = BASE + "/assets_raw", BASE + "/assets"
 CARFILES = {"monster", "fire", "race", "police", "ambulance", "garbage", "excavator", "bus",

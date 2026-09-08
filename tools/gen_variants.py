@@ -5,14 +5,14 @@
 (оригинал идёт референсом), поэтому форма, лицо и стиль сохраняются.
 Обрезаем строго по рамке оригинала, чтобы все варианты совпадали пиксель в пиксель.
 
-    export FAL_KEY=...
+    export BABYGAME_FAL_KEY=...
     python3 tools/gen_variants.py            # чего нет — досоздать
     python3 tools/gen_variants.py --force    # перегенерить всё
 """
 import base64, json, os, sys, urllib.request, concurrent.futures
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-KEY = os.environ["FAL_KEY"]
+KEY = os.environ["BABYGAME_FAL_KEY"]
 BASE = "/Users/sergei/Documents/babygame"
 RAW, OUT = BASE + "/assets_raw", BASE + "/assets/cars"
 MODEL = "https://fal.run/fal-ai/flux-pro/kontext"
