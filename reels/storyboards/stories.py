@@ -10,6 +10,7 @@ MOM = "his mother in her early thirties with dark hair in a low bun and a mustar
 DAD = "his father in his thirties with a short beard, grey hoodie"
 GRAN = "his grandmother, silver hair, round reading glasses, floral blouse"
 TRUCK = "the small red toy fire truck from Image 1 (keep its exact design, proportions and friendly headlights)"
+TRUCK_PLAIN = "a small red toy fire truck with round friendly headlight eyes, a short white ladder on top and a simple rounded cartoon design"  # для провайдеров без референса; текст утверждает владелец
 TABLET_GAME = "the tablet screen shows a bright cartoon road game with " + TRUCK + " on a road"
 
 def sh(t, what, prompt, motion, ref=True):

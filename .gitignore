@@ -10,5 +10,5 @@ assets/world/*.png
 assets/music/*.wav
 reels/storyboards/*/*.jpg
 reels/storyboards/gen*.log
-reels/out/
 .claude/
+reels/storyboards/.freegen/
