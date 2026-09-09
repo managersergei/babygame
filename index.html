@@ -746,6 +746,7 @@ if ('speechSynthesis' in window) {
 var Mic = (function () {
   var ac = null, an = null, bins = null, rdy = false, denied = false, asked = false;
   var listening = false, frames = [], speaking = false, quiet = 0, tout = 0, floorE = 10, lvl = 0, cb = null, cont = null;
+  var spokeT = 0, talkT = 0;          // сколько длится фраза и сколько ещё не слушаем после своей же речи
 
   var lastAsk = -99, err = '', tries = 0, perm = '?';
   var devId = null, devName = '', devList = [], devIx = -1, silent = 0, cur = null, pending = false;
@@ -861,7 +862,8 @@ var Mic = (function () {
 
   function bands() {                       // 16 логарифмических полос
     an.getByteFrequencyData(bins);
-    var f = [], e = 0, n = bins.length;
+    var f = [], e = 0, es = 0, ns = 0, n = bins.length;
+    var hz = (ac ? ac.sampleRate : 48000) / (an ? an.fftSize : 2048);   // ширина одной корзины по частоте
     for (var b = 0; b < 16; b++) {
       var lo = Math.floor(Math.pow(n, b / 16)) - 1, hi = Math.floor(Math.pow(n, (b + 1) / 16));
       if (lo < 0) lo = 0; if (hi <= lo) hi = lo + 1;
@@ -869,8 +871,9 @@ var Mic = (function () {
       for (var i = lo; i < hi; i++) sum += bins[i];
       var v = sum / (hi - lo);
       f.push(v); e += v;
+      if (hi * hz > 300 && lo * hz < 3400) { es += v; ns++; }           // речевая полоса
     }
-    return { f: f, e: e / 16 };
+    return { f: f, e: e / 16, es: ns ? es / ns : e / 16 };
   }
 
   function shape(fr) {                     // 24 кадра, нормировка по максимуму
@@ -885,9 +888,13 @@ var Mic = (function () {
     return out;
   }
 
+  /* Слишком короткое — не слово: хлопок, стук, скрип стула. Четверть секунды речи —
+     нижняя граница, ниже начинают проходить шумы, выше отсекаются короткие «би», «дай». */
+  function good() { return spokeT > 0.25 && frames.length > 5; }
+
   function finish(sample) {
     recDone(!!sample);
-    speaking = false; frames = []; quiet = 0;
+    speaking = false; frames = []; quiet = 0; spokeT = 0;
     if (!cont) A.duck(false);
     if (cont) {                                   // непрерывный режим: слушаем дальше
       listening = true; tout = 1e9;
@@ -908,7 +915,7 @@ var Mic = (function () {
     level: function () { return clamp((lvl - floorE * 0.8) / 22, 0, 1); },
     alive: function () { return rdy && silent < 2; },
     dbg: function () { var sn = (Voice.sens == null ? 0.35 : Voice.sens);
-                       return { lvl: lvl, floor: floorE,
+                       return { lvl: lvl, floor: floorE, spoke: +spokeT.toFixed(2), talkT: +talkT.toFixed(2),
                                 th: Math.max(11, Math.min(60, (floorE * 1.5 + 6) * (1.7 - sn))),
                                 err: err, ctx: ac ? ac.state : '-', tries: tries, perm: perm,
                                 dev: devName || '-', devs: devList.length }; },
@@ -932,22 +939,29 @@ var Mic = (function () {
       }
       var r = bands();
       lvl = r.e;
-      if (!speaking && !listening) floorE = floorE * 0.97 + r.e * 0.03;   // при прослушивании порог не двигаем
-      floorE = Math.min(floorE, 26);                                       // и не даём ему уползти от музыки
+      /* Игра слышит саму себя: пока говорит диктор — не слушаем и обрываем начатую фразу,
+         плюс четверть секунды на хвост эха. */
+      if (A.talking()) { talkT = 0.25; if (speaking) { speaking = false; frames = []; quiet = 0; } }
+      else if (talkT > 0) talkT = Math.max(0, talkT - dt);
+      /* Шумовой порог подстраивается под комнату ВСЕГДА, кроме своей речи и чужой фразы.
+         Раньше он замерзал на весь заезд (в бою listening всегда true) и любой громкий
+         звук открывал запись. */
+      if (!speaking && talkT <= 0) floorE = floorE * 0.97 + r.es * 0.03;
+      floorE = Math.min(floorE, 36);                                       // потолок: в шумной комнате порог должен успевать подняться
       var sn = (Voice.sens == null ? 0.35 : Voice.sens);      // 0 — глухо, 1 — очень чутко
       var th = Math.max(11, Math.min(60, (floorE * 1.5 + 6) * (1.7 - sn)));
       if (r.e < 0.4) {                            // поток есть, а звука нет — вход мёртвый
         silent += dt;
         if (silent > (listening ? 4 : 7)) { silent = 0; drop('вход молчит'); nextDevice(); }
       } else silent = 0;
-      if (!listening) return;
+      if (!listening || talkT > 0) return;
       tout -= dt;
       if (speaking) {
-        frames.push(r.f);
-        if (r.e < th * 0.7) { quiet += dt; if (quiet > 0.3 || frames.length > 110) finish(frames.length > 7 ? shape(frames) : null); }
+        frames.push(r.f); spokeT += dt;
+        if (r.es < th * 0.7) { quiet += dt; if (quiet > 0.45 || frames.length > 110) finish(good() ? shape(frames) : null); }
         else quiet = 0;
-      } else if (r.e > th) { speaking = true; frames = [r.f]; quiet = 0; recSpoke(); }
-      if (tout <= 0) finish(speaking && frames.length > 7 ? shape(frames) : null);
+      } else if (r.es > th) { speaking = true; spokeT = 0; frames = [r.f]; quiet = 0; recSpoke(); }
+      if (tout <= 0) finish(speaking && good() ? shape(frames) : null);
     }
   };
 })();
@@ -1281,10 +1295,10 @@ ELEM_WORDS.forEach(function (e) {
   };
 });
 LESSONS.el_gas0 = {
-  reps: REPS_CMD, key: '▶', keyName: 'СТРЕЛКА ВПРАВО', keySay: 'Или нажми стрелку вправо!',
+  reps: REPS_CMD, key: '▶', keyName: 'СТРЕЛКА ВПРАВО',
   word: 'ГАЗ', say: 'газ', icon: '💨', why: 'Жми стрелку вправо или скажи газ!',
-  ask: 'А ещё твоя машина умеет ехать быстро! Скажи: газ!',
-  tip: 'Жми стрелку вправо или скажи газ!',
+  ask: 'Чтобы машина научилась ехать быстро, скажи: гааааз!',
+  tip: 'Нажми стрелку вправо, чтобы машина ехала быстро!',
   after: function () {
     state = 'play';
     spd = Math.min(VMAX * 1.2, spd + 300 * S);
@@ -2130,8 +2144,12 @@ function updatePlay(dt) {
     }
     if (o.t === 'ball') {
       if (!o.met) { o.met = 1; markFirst(o, 'ball'); }
-      if (!o.hit && bx1 > o.x - 34*S && bx0 < o.x + 34*S && by0 < 60*S) { o.hit = 1; A.clunk(); hurt('ball'); }
-      else if (!o.hit && !o.over && carX > o.x + 30 * S && by0 >= 60*S) {
+      /* Мяч нарисован прыгающим, а бился как неподвижный столб: машина проезжала
+         ПОД мячом в верхней точке и всё равно получала удар. Считаем по той же
+         высоте, по которой он рисуется (ballH), и требуем перекрытия по вертикали. */
+      var bh = ballH(o), bTop = bh + 62 * S;
+      if (!o.hit && bx1 > o.x - 34*S && bx0 < o.x + 34*S && by0 < bTop && by1 > bh) { o.hit = 1; A.clunk(); hurt('ball'); }
+      else if (!o.hit && !o.over && carX > o.x + 30 * S) {
         o.over = 1; stars += 1; A.coin(5); praiseJump();
       }
     }
@@ -2624,6 +2642,9 @@ function drawNearSide(t) {
   g.restore();
 }
 
+/* Высота мяча над землёй: одна формула для отрисовки и для удара. */
+function ballH(o) { return Math.abs(Math.sin((o.ph || 0) * 3 + T * 3)) * 70 * S; }
+
 /* ═══════════════ 13. ОБЪЕКТЫ ═══════════════ */
 /* Контактная тень: объект «стоит» на земле, а не наклеен поверх фона. w — полуширина эллипса. */
 function shadow(x, y, w, a) {
@@ -2734,8 +2755,7 @@ function drawObjs() {
       // есть кадры оборота — крутим ими; нет — как раньше, сжатием по ширине
       spr(frameOf('coin', o.ph), sx, GY - o.y + 30 * S - cb, 52 * S, withMove('coin', o.ph, 52 * S, {}));
     } else if (o.t === 'ball') {
-      var bh = Math.abs(Math.sin((o.ph || 0) * 3 + T * 3)) * 70 * S;
-      spr('ball', sx, GY + 4 * S - bh, 62 * S, { rot: T * 3 });
+      spr('ball', sx, GY + 4 * S - ballH(o), 62 * S, { rot: T * 3 });
     } else if (o.t === 'hedgehog') {
       spr(frameOf('hedgehog', o.ph), sx, roadTop() + 8 * S, 58 * S, withMove('hedgehog', o.ph, 58 * S, {}));
     } else if (o.t === 'butterfly') {
@@ -3916,9 +3936,13 @@ function nextStage() { stage++; startStage(); }
    под разными ключами ('cmd.jump' и 'cmd.el_jump0') — перечисляем оба. */
 var CMD_OF = { jump: 'jump', el_jump0: 'jump', gas: 'gas', el_gas0: 'gas', fuel: 'fuel', light: 'light' };
 
-/* Выученные слова становятся живыми командами — в том числе выученные в прошлые заходы. */
+/* Выученные слова становятся живыми командами — в том числе выученные в прошлые заходы.
+   ВЫКЛЮЧЕНО 09.09.2026 по просьбе владельца: во время свободной езды микрофон не слушает
+   вовсе, поэтому машинка не дёргается от громких звуков. Слова по-прежнему живут в уроках.
+   Вернуть — поставить VOICE_CMD = true. */
+var VOICE_CMD = false;
 function armCommands() {
-  if (!Voice.on || !Mic.ready()) return;
+  if (!VOICE_CMD || !Voice.on || !Mic.ready()) return;
   Mic.arm(function (sample) {
     if (state !== 'play' || A.talking()) return;
     var words = [];

@@ -15,3 +15,4 @@ reels/storyboards/.freegen/
 tg/node_modules/
 tg/.secrets*
 tg/.dev.vars
+.venv/
