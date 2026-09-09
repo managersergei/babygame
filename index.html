@@ -376,7 +376,7 @@ ASSETS.push('bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
    для всех имён из ANIM — снять комментарий со следующей строки. Раньше нельзя: каждый
    недостающий файл даёт 404 в консоли, и tools/smoke.mjs краснеет. Пока строка выключена,
    frameOf() просто всегда возвращает базовое имя и игра выглядит как до правки. */
-// for (var an in ANIM) { if (ANIM.hasOwnProperty(an)) ASSETS.push(an + '_b', an + '_c'); }
+for (var an in ANIM) { if (ANIM.hasOwnProperty(an)) ASSETS.push(an + '_b', an + '_c'); }   // кадры выпущены 09.09.2026, tools/gen_frames.py
 /* Две фазы: первые CORE_N картинок (машинки, дорога, база) — и игра стартует,
    остальное догружается фоном; чего ещё нет, spr() просто пропускает. */
 var CORE_N = 16, coreDone = 0;
