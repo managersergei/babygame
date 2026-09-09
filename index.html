@@ -173,10 +173,7 @@
   <div class="row"><span>🎵 Музыка</span><input type="range" id="vMus" min="0" max="100"></div>
   <div class="row"><span>🎤 Чуткость</span><input type="range" id="vSens" min="0" max="100"></div>
   <div style="font-size:12px;font-weight:700;color:#8a94a6;margin:-4px 0 6px">
-    左 — реагирует только на громкую речь, 右 — ловит тихую</div>
-  <label class="row" style="gap:8px"><input type="checkbox" id="vSwap"> поменять местами ПРОБЕЛ и ▶</label>
-  <div style="font-size:12px;font-weight:700;color:#8a94a6;margin:-4px 0 6px">
-    тогда прыжок — на стрелке вправо, а газ — на пробеле</div>
+    ◀ — реагирует только на громкую речь, ▶ — ловит тихую</div>
   <button id="setClose">ГОТОВО</button>
 </div>
 
@@ -2957,10 +2954,9 @@ function drawGarage(dt) {
   }
   updateParts(dt); drawParts(false);
 
-  outText('ВЫБЕРИ МАШИНКУ', W / 2, 56 * S, 44 * S, '#fff', '#2b6cb0');
-  outText(CARS[sel].name, W / 2, 122 * S, 54 * S, '#ffd93d', '#7a4b00');
+  outText(CARS[sel].name, W / 2, 78 * S, 54 * S, '#ffd93d', '#7a4b00');
   g.save(); g.globalAlpha = 0.5 + Math.sin(garageT * 4) * 0.5;
-  outText('ПРОБЕЛ — ДАЛЬШЕ ▶', W / 2, 178 * S, 28 * S, '#fff', '#e0691f');
+  outText('ПРОБЕЛ — ДАЛЬШЕ ▶', W / 2, 134 * S, 28 * S, '#fff', '#e0691f');
   g.restore();
 
   garageVoice(dt);
@@ -3119,8 +3115,8 @@ function drawMicBubble(cx, cy, title, word, listening) {
   g.fillStyle = 'rgba(255,255,255,.95)'; roundRect(cx - w / 2, cy - h / 2, w, h, 26 * S); g.fill();
   g.lineWidth = 5 * S; g.strokeStyle = listening ? '#4ade80' : '#ffb703';
   roundRect(cx - w / 2, cy - h / 2, w, h, 26 * S); g.stroke();
-  outText(title, cx, cy - h * 0.26, 22 * S, listening ? '#2f9e50' : '#e0691f', 'rgba(255,255,255,.9)');
-  outText(word, cx, cy + h * 0.14, 34 * S, '#2b2140', 'rgba(255,255,255,.9)');
+  outText(title, cx, word ? cy - h * 0.26 : cy - h * 0.12, word ? 22 * S : 30 * S, listening ? '#2f9e50' : '#e0691f', 'rgba(255,255,255,.9)');
+  if (word) outText(word, cx, cy + h * 0.14, 34 * S, '#2b2140', 'rgba(255,255,255,.9)');
   if (listening) {                                  // индикатор громкости
     var lw = w * 0.7, lv = Mic.level(), dead = !Mic.alive();
     g.fillStyle = 'rgba(0,0,0,.12)'; roundRect(cx - lw / 2, cy + h * 0.36, lw, 10 * S, 5 * S); g.fill();
@@ -3445,13 +3441,6 @@ function drawKeyHint(kind, cx, cy) {
     g.moveTo(cx - 20 * S, cy - 26 * S); g.lineTo(cx + 26 * S, cy); g.lineTo(cx - 20 * S, cy + 26 * S);
     g.closePath(); g.fill();
   }
-  // палец, который нажимает
-  g.globalAlpha = 0.9;
-  g.fillStyle = '#f6c9a0';
-  var fy = y + kh + 16 * S + Math.abs(Math.sin(T * 3)) * 10 * S;
-  g.beginPath(); g.ellipse(cx + kw * 0.18, fy + 16 * S, 15 * S, 22 * S, -0.3, 0, TAU); g.fill();
-  g.fillStyle = '#e0a97e';
-  g.beginPath(); g.ellipse(cx + kw * 0.18, fy + 2 * S, 12 * S, 9 * S, -0.3, 0, TAU); g.fill();
   g.restore();
 }
 
@@ -3462,12 +3451,14 @@ function drawLesson() {
     else if (bg === 'paint') drawPaintScene();
     else if (bg === 'wash') drawWashScene();
     else drawPlayScene();
-    // круг внимания вокруг предмета разговора
-    g.save();
-    g.globalAlpha = 0.35 + Math.abs(Math.sin(cam.t * 2.2)) * 0.35;
-    g.strokeStyle = '#ffd93d'; g.lineWidth = 6 / cam.z;
-    g.beginPath(); g.arc(cam.fx, cam.fy, (110 + Math.sin(cam.t * 2.2) * 10) * S / cam.z, 0, TAU); g.stroke();
-    g.restore();
+    // круг внимания вокруг предмета разговора; на уроках клавиш предмета нет — круг обводил бы воздух
+    if (!L.key) {
+      g.save();
+      g.globalAlpha = 0.35 + Math.abs(Math.sin(cam.t * 2.2)) * 0.35;
+      g.strokeStyle = '#ffd93d'; g.lineWidth = 6 / cam.z;
+      g.beginPath(); g.arc(cam.fx, cam.fy, (110 + Math.sin(cam.t * 2.2) * 10) * S / cam.z, 0, TAU); g.stroke();
+      g.restore();
+    }
   });
   spotlight(1);
 
@@ -3477,7 +3468,7 @@ function drawLesson() {
 
   drawMicBubble(W / 2, H * 0.79,
     les.phase === 'listen' ? '🎤 ГОВОРИ!' : les.phase === 'good' ? 'МОЛОДЕЦ!' : 'СЛУШАЙ…',
-    L.word, les.phase === 'listen');
+    L.key ? '' : L.word, les.phase === 'listen');   // на уроках клавиш слово уже крупно стоит сверху
 
   var need = repsFor(les.key);
   for (var i = 0; i < need; i++) {
@@ -4834,9 +4825,7 @@ function moveSel(dir) {
 
 /* ═══════════════ 19. УПРАВЛЕНИЕ ═══════════════ */
 var K = { left: false, right: false };
-/* Настройка для левшей и для тех, кому удобнее наоборот: пробел и стрелка вправо меняются местами. */
-var swapKeys = (function () { try { return localStorage.getItem('babygame.swap') === '1'; } catch (e) { return false; } })();
-function mapKey(k) { return swapKeys ? (k === 'space' ? 'right' : k === 'right' ? 'space' : k) : k; }
+try { localStorage.removeItem('babygame.swap'); } catch (e) {}   // настройка обмена клавиш удалена 09.09.2026
 var repeatT = 0;
 
 function keyDown(k) {
@@ -4872,15 +4861,15 @@ function keyDown(k) {
 function keyUp(k) { if (k !== 'space') K[k] = false; }
 
 window.addEventListener('keydown', function (e) {
-  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) keyDown(mapKey('space')); }
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) keyDown('space'); }
   else if (e.code === 'ArrowLeft')  { e.preventDefault(); if (!e.repeat) keyDown('left');  }
-  else if (e.code === 'ArrowRight') { e.preventDefault(); if (!e.repeat) keyDown(mapKey('right')); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); if (!e.repeat) keyDown('right'); }
   else if (e.code === 'Escape' || e.code === 'Backspace') { e.preventDefault(); toGarage(); }
   else if (e.code === 'KeyM') { setSoundIcon(A.toggle()); }
 });
 window.addEventListener('keyup', function (e) {
   if (e.code === 'ArrowLeft') keyUp('left');
-  else if (e.code === 'ArrowRight') keyUp(mapKey('right'));
+  else if (e.code === 'ArrowRight') keyUp('right');
 });
 
 function bindKey(el, k) {
@@ -5014,13 +5003,6 @@ setMicIcon();
   });
   document.getElementById('bSet').addEventListener('click', function () {
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
-  });
-  var swapEl = document.getElementById('vSwap');
-  swapEl.checked = swapKeys;
-  swapEl.addEventListener('change', function () {
-    swapKeys = this.checked;
-    try { localStorage.setItem('babygame.swap', swapKeys ? '1' : '0'); } catch (e) {}
-    K.left = K.right = false; setPad();
   });
   document.getElementById('setClose').addEventListener('click', function () { box.style.display = 'none'; });
 })();
@@ -5287,7 +5269,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
                mons: objs.filter(function (o) { return o.t === 'mon'; }).length,
                S: S, spd: Math.round(spd / S), damage: damage, breakN: breakN,
                carY: Math.round(carY / S), best: best, total: total, tank: +tankMul.toFixed(2),
-               fuelPicks: fuelPicks, swap: swapKeys, overSel: over.sel,
+               fuelPicks: fuelPicks, overSel: over.sel,
                rep: { n: rep.n, fixed: rep.fixed, phase: rep.phase },
                rail: (function () {
                  for (var qi = 0; qi < objs.length; qi++) if (objs[qi].t === 'rail')

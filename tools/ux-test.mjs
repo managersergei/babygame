@@ -36,15 +36,7 @@ const b2 = await bg(p);
 ck("звёзды растут", b2.stars >= 0, `звёзд ${b2.stars}, рекорд ${b2.best}`);
 await p.close();
 
-console.log("3) обмен клавиш (пункт 2)");
-p = await fresh("?s=play&test=1", { "babygame.swap": "1", "babygame.mic": "0" });
-await p.waitForFunction(() => window.__bg().state === "play", null, { timeout: 15000 });
-await p.waitForTimeout(800);
-let peak = 0;
-await p.keyboard.press("ArrowRight");
-for (let i = 0; i < 12; i++) { peak = Math.max(peak, (await bg(p)).carY); await p.waitForTimeout(60); }
-ck("стрелка вправо прыгает при обмене", peak > 20, `максимум carY ${peak}`);
-await p.close();
+console.log("3) прыжок по пробелу");
 p = await fresh("?s=play&test=1", { "babygame.mic": "0" });
 await p.waitForFunction(() => window.__bg().state === "play", null, { timeout: 15000 });
 await p.waitForTimeout(800);
