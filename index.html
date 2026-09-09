@@ -411,6 +411,7 @@ function ih(im) { return im.naturalHeight || im.height; }
 
 /* Скины машинки — настоящие картинки: цвет и три степени повреждений. */
 var PAINTED = {}, carPaint = null, damage = 0, noWheels = false, missWheels = 1;
+var dmgT = 0;                                  // сколько ещё показывать вмятины поверх покраски
 
 function lazyImg(name) {                       // варианты подгружаем по требованию
   if (!IMG[name]) { var im = new Image(); im.src = assetPath(name); IMG[name] = im; }
@@ -418,7 +419,10 @@ function lazyImg(name) {                       // варианты подгру�
 }
 function carSkin(id) {
   if (noWheels) return id + '_w' + Math.min(4, Math.max(1, missWheels));   // сколько колёс упало
-  if (damage > 0) return id + '_d' + Math.min(3, damage);
+  /* Покрашенных повреждённых скинов не бывает, и раньше первый же удар навсегда
+     стирал покраску — награда исчезала без объяснения. Теперь вмятины показываются
+     полторы секунды после удара, а дальше кузов снова свой, крашеный. */
+  if (damage > 0 && (!carPaint || dmgT > 0)) return id + '_d' + Math.min(3, damage);
   if (carPaint) return id + '_' + carPaint;
   return id;
 }
@@ -742,6 +746,15 @@ var A = (function () {
       if (engGain && ac) engGain.gain.setTargetAtTime(d ? (this.ducked ? 0 : 0.012) : 0.05, ac.currentTime, 0.08);
     },
     tracks: ['loop.mp3', 'loop2.mp3', 'loop3.mp3', 'loop4.mp3', 'loop5.mp3'],
+    /* Напряжение музыкой. Ускорение темпа — самый дешёвый и самый читаемый приём:
+       не нужен второй трек, и ребёнок слышит разницу мгновенно. */
+    tense: function (on) {
+      var m = document.getElementById('bgm');
+      if (!m || this.tensed === on) return;
+      this.tensed = on;
+      try { m.playbackRate = on ? 1.14 : 1; } catch (e) {}
+    },
+    tensed: false,
     music: function () {
       var self = this;
       var m = document.getElementById('bgm');
@@ -1471,6 +1484,9 @@ function P(o) {
   parts.push(o);
 }
 function popText(txt, x, y, col) { texts.push({ t: txt, x: x, y: y, c: col || '#fff', life: 1.1, max: 1.1 }); }
+/* Ряд наград до похвалы. Считать его в одном месте обязательно: проверка вехи
+   стояла у двух предметов из восьми, и перепрыгнутый поезд «не считался». */
+function bumpRow() { row++; if (!story && row >= TUNE.praiseEvery) { row = 0; milestone(); } }
 function burst(x, y, n, col, spdv, kind) {
   for (var i = 0; i < n; i++) {
     var a = rnd(0, TAU), v = rnd(0.35, 1) * spdv;
@@ -1486,7 +1502,7 @@ function resetWorld() {
   carX = 0; carY = 0; vy = 0; spd = easy ? EASYSPD : CRUISE;
   grounded = true; jumps = 0; lastGroundH = 0; lastObsX = -1e9; breakN = 0; railT = 0;
   stars = 0; row = 0; combo = 0; nextX = W * 0.9; lastFuelX = 0; fuelPicks = 0; tankMul = 1; bestShown = 0; tune();
-  archPending = false; celebrate = 0; flash = 0; shake = 0;
+  archPending = false; celebrate = 0; flash = 0; shake = 0; idleT = 0; idleN = 0;
   fuel = 1; outOfFuel = false; emptyShown = false; beepT = 0; lowT = 0; refuels = 0;
 }
 
@@ -1501,7 +1517,7 @@ function spawnAhead() {
     var x = obsFrom(nextX), r = RNG();
 
     if (archPending) {
-      objs.push({ t:'arch', x: x + 260 * S, h: 340 * S, used: false });
+      objs.push({ t:'arch', x: x + 260 * S, h: 340 * S, used: false, gate: true });   // радуга-ворота: за ней новая локация
       nextX = x + 900 * S; archPending = false; continue;
     }
     // канистра обязательно появляется раз в ~1100 px пути
@@ -1690,7 +1706,7 @@ function monBlocked() {
 function startChase(lesson) {
   EV('chase', (chaseN + 1) + ' robotT=' + robotT.toFixed(1));
   chaseN++; rollRobot();
-  robot.on = true; robot.flee = false; robot.x = carX - TUNE.robotStart * S; robot.life = 0;
+  robot.on = true; robot.flee = false; robot.x = carX - TUNE.robotStart * S; robot.life = 0; robot.told = 0;
   if (chaseN <= TUNE.monFreeChases)                // первые погони — без монстриков: убираем тех, кто ещё не в кадре
     for (var i = objs.length - 1; i >= 0; i--)
       if (objs[i].t === 'mon' && scr(objs[i]) > W) objs.splice(i, 1);
@@ -1771,6 +1787,7 @@ var PATTERNS = [
       {t:'pit',dx:0}, {t:'star',dx:0,y:200}, {t:'star',dx:120,y:170} ] },
   { need:['mon'],         len: 260, rest:[680, 900], items:[ {t:'mon',dx:0} ] },
   { need:['prop'],        len: 120, rest:[420, 620], items:[ {t:'prop',dx:0} ] },
+  { need:['prop'],        len: 240, rest:[560, 760], items:[ {t:'traffic',dx:0} ] },
   { need:['prop'],        len: 200, rest:[420, 600], items:[ {t:'flower',dx:0}, {t:'flower',dx:120} ] },
   { need:['star'],        len: 260, rest:[440, 640], items:[ {t:'apple',dx:0}, {t:'apple',dx:130} ] },
   { need:['cone'],        len: 200, rest:[520, 700], items:[ {t:'ball',dx:0} ] },
@@ -1835,6 +1852,11 @@ function spawnEndless(x) {
                                          skin: pick(['monster_a','monster_b','monster_c','monster_d']) };
     else if (it.t === 'prop')      o = { t:'prop', x:px2, ph: rnd(0, TAU),
                                          kind: wantEl && PROP_KIND[wantEl] ? wantEl : pick((TH().props || ['tree','house','bush']).concat(TH().extra || [])) };
+    else if (it.t === 'traffic') {
+      var tk = (TH().extra || []).filter(function (n) { return TRAFFIC_KIND[n]; });
+      o = tk.length ? { t:'traffic', x:px2, ph: rnd(0, TAU), kind: pick(tk),
+                        sp: rnd(0.42, 0.62), passed: 0 } : null;
+    }
     else if (it.t === 'flower')    o = { t:'flower', x:px2 };
     else if (it.t === 'apple')     o = { t:'apple', x:px2, y: 95 * S, ph: rnd(0, TAU) };
     else if (it.t === 'ball')      o = { t:'ball', x:px2, ph: rnd(0, TAU), hit:false };
@@ -1865,7 +1887,7 @@ function groundHeightAt(x, y) {
 
 /* ═══════════════ 8. ДЕЙСТВИЕ (ПРОБЕЛ) ═══════════════ */
 function action() {
-  A.init(); idleT = 0;
+  A.init(); idleT = 0; idleN = 0;
   if (outOfFuel) { refuel(); return; }
   var cw = vehW(car.id, car.h * S);
   if (jumps < 2) {
@@ -2160,9 +2182,12 @@ function updatePlay(dt) {
   }
 
   noteStars();                                   // рекорд обновляется на лету, «РЕКОРД!» — один раз за заезд
-  idleT += dt;                                   // ребёнок ничего не делает — подсказываем
-  if (idleT > 15 && !A.talking() && !emptyShown) {
-    idleT = 0;
+  /* Подсказка при простое. Раньше она долбила одну фразу каждые 15 секунд и
+     срабатывала даже у активного ребёнка: idleT рос от времени, а не от безделья.
+     Теперь его обнуляет любое действие, а интервал растёт: 15 → 24 → 38 с. */
+  idleT += dt;
+  if (idleT > 15 + idleN * 9 && !A.talking() && !emptyShown && idleN < 3) {
+    idleT = 0; idleN++;
     A.say(voiceCtl && learned.jump ? 'Скажи прыжок — и машинка подпрыгнет!'
                                    : 'Нажимай пробел — машинка подпрыгнет!');
   }
@@ -2197,16 +2222,24 @@ function updatePlay(dt) {
     }
     if (robot.on && !robot.flee) {
       robot.life += dt;
+      /* Пассивный ребёнок раньше проигрывал ВСЕГДА: робот идёт 350*S/с, крейсерская
+         машинка — 235*S/с, разрыв в 760*S закрывался за 6,6 с при погоне в 14 с.
+         И за эти шесть секунд ему ни разу не говорили, что делать. */
+      if (robot.life > 1.4 && !robot.told && !A.talking()) { robot.told = 1; A.say('Скорее, жми газ!'); }
+      if (carX - robot.x < 40 * S) { gameOver('robot'); return; }
       if (robot.life > TUNE.robotLife || carX - robot.x > 1500 * S) {
         robot.flee = true; A.cheer();
         A.say('Я тебя ещё потом догоню!');
       }
-      if (carX - robot.x < 40 * S) { gameOver('robot'); return; }
     }
   }
+  A.tense(robot.on && !robot.flee);            // погоня слышна, а не только видна
   if (robot.on) {
     // робот едет со своей скоростью: на полном газу от него можно уехать
-    var rs = robot.flee ? -420 * S : (story ? spd + 62 * S : EASYSPD * TUNE.robotSpeed);
+    /* Вплотную робот сбавляет: угроза остаётся, но проигрыш перестаёт быть неизбежным. */
+    var rs = robot.flee ? -420 * S
+           : (story ? spd + 62 * S
+                    : (carX - robot.x < 300 * S ? spd + 30 * S : EASYSPD * TUNE.robotSpeed));
     robot.x += rs * dt;
     if (robot.flee && carX - robot.x > W * 1.3) robot.on = false;
     if (!robot.flee && RNG() < dt * 8)
@@ -2248,7 +2281,7 @@ function updatePlay(dt) {
     if (o.t === 'coin' && !o.got) {
       if (!o.met) { o.met = 1; markFirst(o, 'coin'); }
       if (bx1 > o.x - 34 * S && bx0 < o.x + 34 * S && by1 > o.y - 36 * S && by0 < o.y + 36 * S) {
-        o.got = 1; stars += 1; row++; A.coin(3);
+        o.got = 1; stars += 1; bumpRow(); A.coin(3);
         popText('+1', o.x, o.y + 30 * S, '#ffd93d');
         burst(o.x, o.y, 10, ['#ffd93d', '#fff3b0', '#fff'], 260 * S, 'spark');
       }
@@ -2256,7 +2289,7 @@ function updatePlay(dt) {
     if (o.t === 'apple' && !o.got) {
       if (!o.met) { o.met = 1; markFirst(o, 'apple'); }
       if (bx1 > o.x - 36*S && bx0 < o.x + 36*S && by1 > o.y - 40*S && by0 < o.y + 40*S) {
-        o.got = 1; stars += 2; A.coin(4);
+        o.got = 1; stars += 2; bumpRow(); A.coin(4);
         popText('+2', o.x, o.y + 40 * S, '#ff6b6b');
         burst(o.x, o.y, 12, ['#ff4d4d', '#7bd66b', '#fff'], 280 * S, 'spark');
         objs.splice(q, 1); continue;
@@ -2270,7 +2303,7 @@ function updatePlay(dt) {
       var bh = ballH(o), bTop = bh + 62 * S;
       if (!o.hit && bx1 > o.x - 34*S && bx0 < o.x + 34*S && by0 < bTop && by1 > bh) { o.hit = 1; A.clunk(); hurt('ball'); }
       else if (!o.hit && !o.over && carX > o.x + 30 * S) {
-        o.over = 1; stars += 1; A.coin(5); praiseJump();
+        o.over = 1; stars += 1; bumpRow(); A.coin(5); praiseJump();
       }
     }
     if (o.t === 'rail') {                          // переезд: поезд идёт ПОПЕРЁК дороги
@@ -2289,7 +2322,7 @@ function updatePlay(dt) {
           o.flying = 1;                            // машинка сейчас над составом
         }
         if (o.flying && !o.over && carX > o.x + 60 * S) {   // перепрыгнули состав — награда
-          o.over = 1; stars += 3; A.coin(6);
+          o.over = 1; stars += 3; bumpRow(); A.coin(6);
           if (!A.talking()) A.say('Здорово!');
           popText('ПЕРЕПРЫГНУЛ!', o.x, 150 * S, '#7bd66b');
           burst(o.x, 60 * S, 14, ['#7bd66b', '#ffd93d', '#fff'], 280 * S, 'spark');
@@ -2303,9 +2336,16 @@ function updatePlay(dt) {
       var bsx = (o.x - carX) + CARX;
       if (!o.met && bsx < W * 0.8) { o.met = 1; markFirst(o, o.t); }
     }
+    if (o.t === 'traffic') {
+      o.x += spd * o.sp * dt;                                  // едет в ту же сторону, но медленнее
+      if (!o.passed && carX > o.x + 40 * S) {
+        o.passed = 1; stars += 1; bumpRow(); A.coin(4); A.honk();
+        popText('ОБГОН!', o.x, 170 * S, '#7bd66b');
+      }
+    }
     if (o.t === 'bucket' && bx1 > o.x - 46 * S && bx0 < o.x + 46 * S && by0 < 120 * S) {
       carPaint = o.col.skin; damage = 0;
-      A.fanfare(stars); A.splash(); flash = 0.3;
+      A.fanfare(stars); A.splash(); flash = 0.12;   // мягкий отблеск вместо вспышки на весь экран
       A.say('Ух ты! Какая красивая машинка!');
       popText(o.col.name + '!', o.x, 150 * S, o.col.c === '#16161d' ? '#fff' : o.col.c);
       burst(o.x, 90 * S, 30, [o.col.c, '#fff', '#ffd93d'], 320 * S, 'conf');
@@ -2318,7 +2358,7 @@ function updatePlay(dt) {
       }                                    // монстрик бежит навстречу
       if (!o.hit && bx1 > o.x - 36 * S && bx0 < o.x + 36 * S) {
         if (by0 < 66 * S) { o.hit = true; gameOver('mon'); return; }
-        o.hit = true; stars += 2; A.coin(6);
+        o.hit = true; stars += 2; bumpRow(); A.coin(6);
         if (!A.talking()) { monTalk = T; A.say('Ой, перепрыгнул!'); }
         popText('ПЕРЕПРЫГНУЛ!', o.x, 150 * S, '#7bd66b');
         burst(o.x, 60 * S, 14, ['#7bd66b', '#ffd93d', '#fff'], 280 * S, 'spark');
@@ -2326,13 +2366,19 @@ function updatePlay(dt) {
     }
 
     if (o.t === 'star') {
+      /* Магнит. Трёхлетка не целится: без притяжения дуга звёзд над трамплином
+         пролетала мимо почти всегда. Радиус небольшой — это помощь, а не автосбор. */
+      var mdx = carX - o.x, mdy = (carY + car.h * S * 0.5) - o.y, mr = 120 * S;
+      if (mdx * mdx + mdy * mdy < mr * mr) {
+        o.x += mdx * Math.min(1, dt * 7); o.y += mdy * Math.min(1, dt * 7);
+      }
       if (bx1 > o.x - 34*S && bx0 < o.x + 34*S && by1 > o.y - 36*S && by0 < o.y + 36*S) {
-        stars++; row++; combo++; comboT = 1.2;
+        stars++; combo++; comboT = 1.2;
         A.coin(combo);
-        if (!story && stars % TUNE.themeEvery === 0) { themeIx++; flash = 0.3; A.cheer(); }
+        if (!story && stars % TUNE.themeEvery === 0) { archPending = true; A.cheer(); }   // впереди встанет радуга — место сменится под ней, без вспышки
         popText('+1', o.x, o.y + 30 * S, '#ffd93d');
         burst(o.x, o.y, 12, ['#ffd93d','#fff3b0','#ffb703'], 300 * S, 'spark');
-        if (!story && row >= TUNE.praiseEvery) { row = 0; milestone(); }
+        bumpRow();
         objs.splice(q, 1); continue;
       }
     } else if (o.t === 'fuel') {
@@ -2357,11 +2403,11 @@ function updatePlay(dt) {
     } else if (o.t === 'balloon') {
       var by = o.y + Math.sin(o.ph * 1.6) * 16 * S;
       if (bx1 > o.x - 32*S && bx0 < o.x + 32*S && by1 > by - 38*S && by0 < by + 38*S) {
-        stars++; row++;
-        A.pop(); A.coin(row);   // звёздочку дали — значит и чим награды тоже
+        stars++;
+        A.pop(); A.coin(row + 1);   // звёздочку дали — значит и чим награды тоже
         burst(o.x, by, 16, ['#ff4d6d','#ffd93d','#4fc3f7','#7bd66b'], 340 * S, 'conf');
         popText('ХЛОП!', o.x, by, '#ff4d6d');
-        if (!story && row >= TUNE.praiseEvery) { row = 0; milestone(); }
+        bumpRow();
         objs.splice(q, 1); continue;
       }
     } else if (o.t === 'cone' && !o.hit) {
@@ -2372,13 +2418,22 @@ function updatePlay(dt) {
         hurt('cone');
         burst(o.x, 40 * S, 8, ['#fff','#ffb703'], 180 * S, 'dot');
       }
+    } else if (o.t === 'cone' && !o.hit && !o.over && carX > o.x + 24 * S && carY > 26 * S) {
+      /* Перепрыгнул конус — раньше ровно ничего не происходило, зато сбил — минус
+         здоровье. Награда за удачный прыжок обязана быть заметнее наказания. */
+      o.over = 1; stars += 1; bumpRow(); A.coin(5); praiseJump();
+      popText('+1', o.x, 150 * S, '#7bd66b');
     } else if (o.t === 'cone' && o.hit) {
       o.vy -= GRAV * 0.55 * dt; o.x += o.vx * dt; o.y += o.vy * dt; o.rot += o.vr * dt;
       if (o.y < 0) { o.y = 0; o.vy *= -0.35; o.vx *= 0.6; o.vr *= 0.5; }
     } else if (o.t === 'puddle' && !o.done) {
       if (Math.abs(carX - o.x) < o.w * 0.5 && carY < 30 * S) {
+        /* Диктор обещает «проедем — будут брызги», а код снимал здоровье: первое,
+           чему игра учила, — что диктору верить нельзя. Лужа теперь пачкает и
+           притормаживает (и тем оправдывает мойку), но не наказывает. */
         o.done = true; A.splash(); A.hiss();
-        hurt('puddle');
+        carDirty = true; spd *= 0.82;
+        popText('БРЫЗГИ!', o.x, 150 * S, '#4fc3f7');
         for (var w2 = 0; w2 < 26; w2++)
           P({ x: carX + rnd(-o.w*0.4, o.w*0.4), y: 6*S, vx: rnd(-320,420)*S, vy: rnd(220,560)*S,
               r: rnd(5,14)*S, c: pick(['#4fc3f7','#81d4fa','#e1f5fe']), kind:'drop', life: rnd(0.4,0.8) });
@@ -2388,12 +2443,24 @@ function updatePlay(dt) {
         o.fell = true; o.bite = 1.1; A.fall(); A.clatter(); spd *= 0.45;
         hurt('pit');
       } else if (!o.fell && !o.over && carX > o.x + o.w * 0.5 && carY > 26 * S) {
-        o.over = true; stars += 1; A.coin(5); praiseJump();
+        o.over = true; stars += 1; bumpRow(); A.coin(5); praiseJump();
         popText('+1', o.x, 150 * S, '#7bd66b');
       }
     } else if (o.t === 'arch' && !o.used) {
       if (carX > o.x) {
-        o.used = true; celebrate = 2.4; flash = 0.5; stars += 5; fuel = Math.min(1, fuel + 0.3);
+        o.used = true; celebrate = 2.4; fuel = Math.min(1, fuel + 0.3);
+        /* Радуга-ворота посреди заезда — это смена места, а не конец уровня:
+           ни очков за уровень, ни мастерской, ни реплики «Уровень пройден». */
+        if (o.gate) {
+          themeIx++; stars += 2; A.fanfare(stars); A.cheer(); A.say('Молодец! Поехали!');
+          popText('НОВОЕ МЕСТО!', carX, carY + ch, '#ffd93d');
+          for (var cg = 0; cg < 40; cg++)
+            P({ x: o.x + rnd(-120, 120) * S, y: rnd(40, 300) * S, vx: rnd(-160, 160) * S, vy: rnd(60, 260) * S,
+                r: rnd(6, 14) * S, c: pick(['#ff4d6d', '#ffd93d', '#4fc3f7', '#7bd66b']), kind: 'conf',
+                life: rnd(0.7, 1.4), vr: rnd(-8, 8) });
+          continue;
+        }
+        stars += 5;
         level++;
         if (story) { finishing = true; A.say('Финиш!'); }
         else { pendingRepair = true; themeIx++; }
@@ -2411,6 +2478,7 @@ function updatePlay(dt) {
 
   if (comboT > 0) { comboT -= dt; if (comboT <= 0) combo = 0; }
   if (sirenT > 0) sirenT -= dt;
+  if (dmgT > 0) dmgT = Math.max(0, dmgT - dt);
   if (fxT > 0) fxT -= dt;
   if (celebrate > 0) celebrate -= dt;
   if (flash > 0) flash -= dt;
@@ -2505,11 +2573,77 @@ function drawSky() {
   g.fillStyle = sky; g.fillRect(0, 0, W, roadTop() + 2 * S);
   if (t.sun) spr('sun', W * 0.87, 160 * S + Math.sin(T * 0.7) * 6 * S, 118 * S, { mid: true });
   else {
+    /* Звёзды были приклеены к экрану: дорога ехала, небо стояло. Даём им
+       собственный медленный параллакс — как самому дальнему слою. */
+    var scr0 = (bgX == null ? carX : bgX) * 0.04;
     g.save(); g.fillStyle = '#fff9d6';
     for (var i = 0; i < 26; i++) {
-      var sx2 = ((i * 137) % 100) / 100 * W, sy2 = ((i * 71) % 40) / 100 * H;
+      var sx2 = ((((i * 137) % 100) / 100 * W - scr0) % W + W) % W;
+      var sy2 = ((i * 71) % 40) / 100 * H;
       g.globalAlpha = 0.35 + Math.abs(Math.sin(T * 0.8 + i)) * 0.5;
       g.beginPath(); g.arc(sx2, sy2, 2.2 * S, 0, TAU); g.fill();
+    }
+    g.restore();
+  }
+  airLayer(t);
+}
+
+/* Воздух локации. Раньше девять мест отличались только палитрой: в «зиме» не было
+   ни снежинки, на «закате» не летело ни листа. Всё процедурное — ни одного ассета,
+   ни одной частицы в общем пуле, на кадр это 18–26 мелких заливок. */
+function airLayer(t) {
+  var n, i, k, x, y;
+  var scroll = (bgX == null ? carX : bgX);
+  if (t.snow) {                                            // зима: снег
+    g.save(); g.fillStyle = '#ffffff';
+    for (i = 0; i < 26; i++) {
+      k = (i * 0.618) % 1;
+      x = (((k * W * 1.3 + T * (14 + k * 26) * S - scroll * 0.08) % (W + 60 * S)) + W + 60 * S) % (W + 60 * S) - 30 * S;
+      y = ((T * (26 + k * 34) * S + k * H) % (roadTop() + 40 * S));
+      g.globalAlpha = 0.45 + k * 0.4;
+      g.beginPath(); g.arc(x + Math.sin(T * 1.4 + i) * 9 * S, y, (1.6 + k * 2.2) * S, 0, TAU); g.fill();
+    }
+    g.restore();
+  } else if (t.name === 'закат') {                         // листья по ветру
+    g.save();
+    for (i = 0; i < 12; i++) {
+      k = (i * 0.618) % 1;
+      x = (((k * W * 1.3 - T * (48 + k * 40) * S - scroll * 0.12) % (W + 60 * S)) + W + 60 * S) % (W + 60 * S) - 30 * S;
+      y = 60 * S + ((T * (18 + k * 22) * S + k * H * 0.5) % (roadTop() - 40 * S));
+      g.globalAlpha = 0.55;
+      g.fillStyle = k > 0.6 ? '#e07a3f' : k > 0.3 ? '#c9552e' : '#e6a94f';
+      g.save(); g.translate(x, y + Math.sin(T * 2 + i) * 12 * S); g.rotate(T * 2 + i);
+      g.beginPath(); g.ellipse(0, 0, 7 * S, 3.4 * S, 0, 0, TAU); g.fill(); g.restore();
+    }
+    g.restore();
+  } else if (t.name === 'пустыня') {                       // позёмка песка у горизонта
+    g.save(); g.fillStyle = '#e8d3a0';
+    for (i = 0; i < 14; i++) {
+      k = (i * 0.618) % 1;
+      x = (((k * W * 1.3 - T * (90 + k * 80) * S - scroll * 0.2) % (W + 80 * S)) + W + 80 * S) % (W + 80 * S) - 40 * S;
+      y = roadTop() - 30 * S - k * 60 * S;
+      g.globalAlpha = 0.16 + k * 0.14;
+      g.beginPath(); g.ellipse(x, y, (26 + k * 40) * S, 2.4 * S, 0, 0, TAU); g.fill();
+    }
+    g.restore();
+  } else if (t.name === 'джунгли') {                       // светлячки
+    g.save(); g.fillStyle = '#eaff9c';
+    for (i = 0; i < 14; i++) {
+      k = (i * 0.618) % 1;
+      x = (((k * W * 1.3 - scroll * 0.25) % (W + 40 * S)) + W + 40 * S) % (W + 40 * S) - 20 * S;
+      y = 120 * S + k * (roadTop() - 160 * S) + Math.sin(T * 1.1 + i) * 18 * S;
+      g.globalAlpha = 0.25 + Math.abs(Math.sin(T * 2.2 + i * 1.7)) * 0.6;
+      g.beginPath(); g.arc(x + Math.cos(T * 0.9 + i) * 14 * S, y, 2.6 * S, 0, TAU); g.fill();
+    }
+    g.restore();
+  } else if (t.name === 'пляж') {                          // блики над водой
+    g.save(); g.fillStyle = '#ffffff';
+    for (i = 0; i < 10; i++) {
+      k = (i * 0.618) % 1;
+      x = (((k * W * 1.3 - scroll * 0.18) % (W + 40 * S)) + W + 40 * S) % (W + 40 * S) - 20 * S;
+      y = roadTop() - 70 * S - k * 40 * S;
+      g.globalAlpha = 0.1 + Math.abs(Math.sin(T * 3 + i)) * 0.35;
+      g.beginPath(); g.ellipse(x, y, (10 + k * 14) * S, 1.8 * S, 0, 0, TAU); g.fill();
     }
     g.restore();
   }
@@ -2649,6 +2783,8 @@ function drawHills() {
 }
 /* Высоты сведены к одной шкале: дом = 132. Раньше курица была ростом в половину коровы,
    ромашки — почти с курицу, а забор выше коровьей спины. */
+/* Кто может ехать по дороге навстречу обгону, а кто только стоит на обочине. */
+var TRAFFIC_KIND = { bus:1, ambulance:1, tractor:1, garbage:1, tow:1, excavator:1 };
 var PROP_H = { cow:84, horse:92, chicken:34, fence:46, haystack:70, windmill:210, daisies:26,
                house:132, tree:168, bush:56, loc_tower:230, loc_shop:150, loc_palm:196,
                loc_umbrella:104, loc_jungle:200, loc_monkey:78, loc_rock:86, loc_rocket:170,
@@ -2694,10 +2830,19 @@ function drawRail(o, sx) {
   }
   g.restore();
   spr('crossing', sx + 150 * S, roadTop() + 8 * S, 108 * S);   // знак у обочины, за дорогой
-  if (o.train) {                                              // мигалка, пока состав идёт
+  if (o.train) {
+    /* Настоящий переезд: две лампы, попеременно и плавно. Была одна и рубленым
+       квадратом на 12 рад/с — почти четыре вспышки в секунду. */
+    var ph = Math.sin(T * 4.4), lx = sx + 150 * S, ly = roadTop() - 74 * S;
     g.save();
-    g.fillStyle = Math.sin(T * 12) > 0 ? '#ff4b4b' : '#7a1f1f';
-    g.beginPath(); g.arc(sx + 150 * S, roadTop() - 74 * S, 9 * S, 0, TAU); g.fill();
+    for (var lb = 0; lb < 2; lb++) {
+      var k = clamp((lb ? -ph : ph) * 0.5 + 0.5, 0, 1);
+      g.globalAlpha = 0.35 + 0.65 * k;
+      g.fillStyle = '#ff4b4b';
+      g.beginPath(); g.arc(lx + (lb ? 15 : -15) * S, ly, 9 * S, 0, TAU); g.fill();
+      g.globalAlpha = 0.18 * k;
+      g.beginPath(); g.arc(lx + (lb ? 15 : -15) * S, ly, 24 * S, 0, TAU); g.fill();
+    }
     g.restore();
   }
 }
@@ -2727,9 +2872,19 @@ function drawTrain(near) {          // near=false — дальняя полов�
       var pt = railAt(G, p), k = trainScale(p);
       var nm = (j > 0 && ok(IMG.wagon)) ? 'wagon' : 'train';   // отдельный спрайт вагона — когда появится
       spr(nm, pt[0], pt[1] + 26 * S * k, 150 * S * k, { rot: Math.sin(T * 22 + j) * 0.012 });
-      if (j === 0 && p < 0.5) {                        // дымок из трубы локомотива
-        g.save(); g.globalAlpha = 0.5; g.fillStyle = '#e8ecf2';
-        g.beginPath(); g.arc(pt[0] - 30 * S * k, pt[1] - 78 * S * k, 13 * S * k, 0, TAU); g.fill();
+      if (j === 0 && p < 0.5) {
+        /* Дым: три клуба, каждый поднимается, расплывается и тает. Был один
+           неподвижный кружок — паровоз выглядел выключенным. */
+        g.save();
+        for (var pf = 0; pf < 3; pf++) {
+          var t2 = ((T * 0.55 + pf / 3) % 1);
+          g.globalAlpha = 0.5 * (1 - t2);
+          g.fillStyle = '#e8ecf2';
+          g.beginPath();
+          g.arc(pt[0] - 30 * S * k - t2 * 34 * S * k, pt[1] - 78 * S * k - t2 * 70 * S * k,
+                (9 + t2 * 16) * S * k, 0, TAU);
+          g.fill();
+        }
         g.restore();
       }
     }
@@ -2863,14 +3018,14 @@ function fenceRun(x, y, h, n) {
   for (var i = 0; i < n; i++) spr('fence', x + (i - (n - 1) / 2) * w, y, h, { alpha: 0.98 });
 }
 /* Порядок отрисовки по глубине: небо → дальнее → у обочины → на дороге. */
-var Z_OF = { cloudy:0, plane:0, bird:0, butterfly:1, rail:2, rocket:2, prop:3, tlight:4, flower:4, hedgehog:5, sheep:5 };
+var Z_OF = { cloudy:0, plane:0, bird:0, butterfly:1, rail:2, rocket:2, prop:3, traffic:3.5, tlight:4, flower:4, hedgehog:5, sheep:5 };
 function zOf(o) { return Z_OF[o.t] != null ? Z_OF[o.t] : 6; }
 function zOrder(a, b) { return zOf(a) - zOf(b) || a.x - b.x; }
 
 /* Что прячем из кадра во время урока: всё собираемое и всё, что бьётся.
    Иначе рядом со словом «ПРЫЖОК» стоит яркая канистра и ребёнок смотрит на неё. */
 var LESSON_HIDE = { fuel:1, star:1, coin:1, balloon:1, apple:1, bucket:1, chest:1, ball:1,
-                    arch:1, mon:1, cone:1, puddle:1, pit:1, ramp:1, plat:1, rocket:1, tlight:1 };
+                    arch:1, mon:1, cone:1, puddle:1, pit:1, ramp:1, plat:1, rocket:1, tlight:1, traffic:1 };
 function drawObjs() {
   objs.slice().sort(zOrder).forEach(function (o) {
     var sx = (o.x - carX) + CARX;
@@ -3002,6 +3157,11 @@ function drawObjs() {
           withMove(o.kind, o.ph, phh,
                    { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.010 }));   // общий «вдох» плюс своё движение
       tufts(sx, pby, sprW(o.kind, phh) * 0.36, o.ph || 2);
+    } else if (o.t === 'traffic') {
+      var tby = roadTop() + 30 * S, thh = (PROP_H[o.kind] || 118) * S * 0.9;
+      ground(sx, tby - 1 * S, sprW(o.kind, thh) * 0.42);
+      spr(frameOf(o.kind, o.ph), sx, tby + Math.sin(T * 6 + (o.ph || 0)) * 1.6 * S, thh,
+          withMove(o.kind, o.ph, thh, {}));
     } else if (o.t === 'cloudy') {
       spr('cloud', sx, o.y, 110 * S, { mid: true });
     } else if (o.t === 'bucket') {
@@ -3090,7 +3250,7 @@ function drawCar() {
   drawVehicle(car.id, 0, bob, h, {});
 
   if (sirenT > 0 && car.siren) {
-    var on = Math.floor(sirenT * 9) % 2;
+    var on = Math.floor(sirenT * 5) % 2;      // 2,5 смены в секунду: собственное правило проекта — не чаще трёх
     g.globalAlpha = 0.85; g.fillStyle = on ? '#ff2d55' : '#2d7dff';
     g.beginPath(); g.ellipse(-w * 0.1, -h * 1.02, w * 0.3, 16 * S, 0, 0, TAU); g.fill();
     g.globalAlpha = 0.28;
@@ -3187,6 +3347,13 @@ function drawHUD() {
   drawFuelBar();
 
   drawStarCount();
+
+  if (combo >= 2 && comboT > 0) {                  // серия — видно, а не только слышно по высоте чима
+    var ck = clamp(comboT / 1.2, 0, 1);
+    g.save(); g.globalAlpha = ck;
+    outText('×' + combo, W - 30 * S, 168 * S + HUDTOP(), (34 + Math.min(combo, 8) * 3) * S, '#7bd66b', '#1f4d2a', 'right');
+    g.restore();
+  }
 
   /* Ряд «сколько звёзд до уровня». Подложка нужна, чтобы ряд не терялся на светлом небе;
      ширина = 10 шагов по 40*S от левого края 34*S плюс поля — при смене шага пересчитать. */
@@ -3718,7 +3885,7 @@ function applyLesson() {
   /* Обещание игры — «сказал слово, и что-то произошло». У 52 предметных уроков своего
      чуда нет, поэтому отдача общая и на языке, который ребёнок уже понимает: звёзды. */
   if (les.said) {
-    stars += 2; A.coin(6);
+    stars += 2; bumpRow(); A.coin(6);
     popText(L.word + '!', carX + 200 * S, 240 * S, '#ffd93d');
     burst((les.obj && les.obj.x != null) ? les.obj.x : carX, 120 * S, 22, ['#ffd93d', '#fff', '#7bd66b'], 300 * S, 'spark');
   }
@@ -4088,12 +4255,13 @@ function drawOver() {
 
 /* ═══════════════ 17bd. СЦЕНАРИЙ ГОЛОСОВОГО РЕЖИМА ═══════════════ */
 var story = false, voiceCtl = false, stage = 0, stageStart = 0, stageFired = false, learned = {}, pendingNext = false;
+var idleN = 0;                                  // сколько раз за заезд уже подсказывали
 var autoJump = false, stageSub = 0, subT = 0, stopHold = 0, idleT = 0, chaseT = 0, lastWasRamp = false, flipT = 0, runT = 0, skyT = 0, railT = 0, rocketT = 0;
 
 function hurt(why) {                            // получили по кузову
   if (state !== 'play') return;
   damage++;
-  shake = 4.5 * S; flash = 0.12;
+  shake = 2.5 * S; squash = 0.22; flash = 0.10; dmgT = 1.5;   // тряска кадра для 2–4 лет вредна: приседает сам кузов
   A.crunch();
   popText(['ОЙ!', 'АЙ!', 'БАМ!'][Math.min(2, damage - 1)], carX, carY + car.h * S, '#ff8f8f');
   for (var i = 0; i < 16; i++)
@@ -6102,7 +6270,13 @@ function frame(ts) {
     var tz = 0.97 + 0.03 * trK;
     g.translate(W / 2, H / 2); g.scale(tz, tz); g.translate(-W / 2, -H / 2);
   }
-  if (shake > 0) g.translate(rnd(-shake, shake), rnd(-shake, shake));
+  if (shake > 0) {
+    /* Сдвиг сцены открывал по краям подложку — плоскую полосу неба. Масштаб на
+       ту же величину закрывает кромку: 2*shake по каждой оси. */
+    var sk = 1 + 2 * shake / Math.min(W, H);
+    g.translate(W / 2, H / 2); g.scale(sk, sk); g.translate(-W / 2, -H / 2);
+    g.translate(rnd(-shake, shake), rnd(-shake, shake));
+  }
 
   if (state === 'garage') {
     drawGarage(dt);
