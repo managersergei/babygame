@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Сториборды: по кадру 9:16 на каждый шот.
-STORYBOARD_BACKEND=freegen python3 reels/storyboards/gen.py [A01 …] [--dry]   # бесплатный роутер ~/Documents/freegen
+STORYBOARD_BACKEND=freegen python3 reels/storyboards/gen.py [A01 …] [--dry]   # бесплатный роутер ~/Documents/инструменты/freegen
 BABYGAME_FAL_KEY=… python3 reels/storyboards/gen.py [A01 …] [--dry]           # прежний путь через fal (по умолчанию пока)
 Кадры с машинкой идут через /edit с референсом assets/cars/fire.png (Image 1)."""
 import base64, json, os, subprocess, sys, time, urllib.request, concurrent.futures
@@ -15,7 +15,7 @@ BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 OUT = os.path.dirname(os.path.abspath(__file__))
 KEY = os.environ.get('BABYGAME_FAL_KEY', ''); DRY = '--dry' in sys.argv
 BACKEND = os.environ.get('STORYBOARD_BACKEND', 'fal')        # 'fal' — прежнее поведение 1:1; 'freegen' — бесплатный роутер
-FREEGEN_PY = os.path.expanduser(os.environ.get('FREEGEN_PY', '~/Documents/freegen/.venv/bin/python'))
+FREEGEN_PY = os.path.expanduser(os.environ.get('FREEGEN_PY', '~/Documents/инструменты/freegen/.venv/bin/python'))
 WORK = os.path.join(OUT, '.freegen')                         # pending.json / manifest.json (в .gitignore)
 only = [a for a in sys.argv[1:] if a[:1] in 'AB' and a[1:3].isdigit()]
 _REF = None
