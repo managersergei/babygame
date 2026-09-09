@@ -32,8 +32,10 @@ await run("desktop: гараж → родители → режим РУЛЬ → 
   if (!(await shown(page, "parent"))) throw new Error("экран для родителей не показан при первом запуске");
   await page.click("#parentGo"); if (await shown(page, "parent")) throw new Error("экран родителей не закрылся");
   await page.keyboard.press("Space"); await page.waitForFunction(() => window.__bg().state === "gamemode");
-  await page.keyboard.press("ArrowRight"); await page.waitForTimeout(150); await page.keyboard.press("ArrowRight");
-  const gm = (await bg(page)).gmId; if (gm !== "lane") throw new Error("gmId=" + gm + " (ожидали lane = РУЛЬ)");
+  // карусель режимов кольцевая (как в гараже): жмём, пока не встанем на РУЛЬ, а не фиксированное число раз
+  let gm = (await bg(page)).gmId;
+  for (let i = 0; i < 6 && gm !== "lane"; i++) { await page.keyboard.press("ArrowRight"); await page.waitForTimeout(150); gm = (await bg(page)).gmId; }
+  if (gm !== "lane") throw new Error("gmId=" + gm + " (ожидали lane = РУЛЬ)");
   await quiet(page); await page.keyboard.press("Space"); await page.waitForFunction(() => window.__bg().state === "lane");
   if (!(await shown(page, "pult"))) throw new Error("окно пульта не показано");
   await page.click("#pultClose");

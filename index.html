@@ -1430,6 +1430,8 @@ function track(ev, p) {
 }
 var state = 'load';                 // load | garage | mode | play
 var sel = 0, slide = 0, modeSel = 0, modeT = 0, garageT = 0, gmSel = 0, gmT = 0;
+var saySelT = 0, pickT = 0;      // отложенная озвучка имени и «завестись и рвануть» при выборе
+var trState = '', trT = 0;       // мягкий наплыв нового экрана вместо подмены в один кадр
 var car = null, easy = false;
 
 var carX = 0, carY = 0, vy = 0, spd = 0, grounded = true, jumps = 0;
@@ -2759,9 +2761,15 @@ function drawProps() {
   });
 }
 function drawClouds() {
+  /* Собственный ветер: слой облаков раньше двигался только вместе с машинкой,
+     и на всех стартовых экранах мир стоял стоп-кадром. ~11*S px/с — это дрейф,
+     облако пересекает кадр примерно за две минуты. */
+  var save = bgX;
+  bgX = (bgX == null ? carX : bgX) + T * 90 * S;
   layer(0.12, 560 * S, function (x, i) {
     spr('cloud', x + 100 * S, 64 * S + ((i * 137) % 5) * 38 * S, 86 * S, { mid: true, alpha: 0.95 });
   });
+  bgX = save;
 }
 /* Горизонт: верх асфальта. Машинка едет по GY, а полотно начинается заметно выше —
    так дорога выглядит широкой, а дома и деревья честно стоят за ней. */
@@ -3217,8 +3225,18 @@ function drawHUD() {
 function drawGarage(dt) {
   garageT += dt;
   slide += (0 - slide) * Math.min(1, dt * 9);
+  if (saySelT > 0) { saySelT -= dt; if (saySelT <= 0) A.say(CARS[sel].say); }
+  if (pickT > 0)   { pickT -= dt;   if (pickT <= 0) { pickT = 0; toGameMode(); } }
 
   drawSky(); drawClouds(); drawFar();
+  /* Птица летит через небо примерно раз в двадцать секунд — своим ходом, а не от
+     машинки: на стартовых экранах она стоит. Спрайт анимированный, он уже в проекте. */
+  var bt = (garageT % 20) / 20;
+  if (bt < 0.55) {
+    var bx0 = -120 * S + bt / 0.55 * (W + 240 * S);
+    spr(frameOf('bird', garageT * 2), bx0, 120 * S + Math.sin(garageT * 1.3) * 18 * S, 54 * S,
+        withMove('bird', garageT * 2, 54 * S, { mid: true }));
+  }
   layer(0.5, 620 * S, function (x, i) {
     if ((i & 1) === 0) spr('tree', x + 100 * S, GY - 16 * S, 200 * S, withMove('tree', i, 200 * S, {}));
     else spr('house', x + 90 * S, GY - 18 * S, 165 * S);
@@ -3230,8 +3248,10 @@ function drawGarage(dt) {
   g.beginPath(); g.ellipse(W / 2, GY + 12 * S, 280 * S, 40 * S, 0, 0, TAU); g.fill();
   g.restore();
 
-  var step = W * 0.42;
-  for (var d = -2; d <= 2; d++) {
+  /* Показываем столько соседей, сколько их на самом деле: при четырёх машинках
+     d=-2 и d=+2 давали ОДИН И ТОТ ЖЕ индекс — одна машинка рисовалась дважды. */
+  var step = W * 0.42, span = Math.min(2, Math.floor((CARS.length - 1) / 2));
+  for (var d = -span; d <= span; d++) {
     var idx = ((sel + d) % CARS.length + CARS.length) % CARS.length;
     var c = CARS[idx], pos = d + slide;
     var k = clamp(1 - Math.abs(pos) * 0.42, 0.3, 1);
@@ -3243,6 +3263,28 @@ function drawGarage(dt) {
     g.beginPath(); g.ellipse(W / 2 + pos * step, GY + 12 * S, vehW(c.id, hh) * 0.4, 15 * S * k, 0, 0, TAU); g.fill();
     drawVehicle(c.id, W / 2 + pos * step, GY + 6 * S + bob, hh, {});
     g.restore();
+    /* Раз в пару секунд центральная машинка показывает, чем она особенная —
+       иначе четыре карточки отличаются только цветом и выбор ничего не значит. */
+    if (Math.abs(pos) < 0.15 && !pickT && RNG() < dt * 0.55) {
+      var bx = W / 2, q;
+      if (c.id === 'monster') {
+        for (q = 0; q < 10; q++) P({ x: bx + rnd(-70, 70) * S, y: 6 * S, vx: rnd(-90, 90) * S, vy: rnd(40, 120) * S,
+                                     r: rnd(9, 17) * S, c: '#e8dcc0', kind: 'puff', life: 0.7, ay: 60 * S });
+        A.thud();
+      } else if (c.id === 'fire') {
+        for (q = 0; q < 9; q++) P({ x: bx + rnd(-40, 40) * S, y: 120 * S, vx: rnd(-140, 140) * S, vy: rnd(120, 240) * S,
+                                    r: rnd(5, 10) * S, c: '#7fd8ff', kind: 'drop', life: 0.8, ay: 260 * S });
+        A.splash();
+      } else if (c.id === 'police') {
+        for (q = 0; q < 8; q++) P({ x: bx + rnd(-50, 50) * S, y: 150 * S, vx: rnd(-60, 60) * S, vy: rnd(20, 80) * S,
+                                    r: rnd(6, 12) * S, c: q % 2 ? '#ff4d4d' : '#4fc3f7', kind: 'spark', life: 0.6, ay: 40 * S });
+        A.click();
+      } else {
+        for (q = 0; q < 10; q++) P({ x: bx - 40 * S + rnd(-30, 30) * S, y: 30 * S, vx: rnd(-260, -80) * S, vy: rnd(20, 90) * S,
+                                     r: rnd(5, 11) * S, c: '#fff', kind: 'spark', life: 0.5, ay: 30 * S });
+        A.whoosh();
+      }
+    }
   }
 
   if (RNG() < dt * 22) {
@@ -3253,14 +3295,22 @@ function drawGarage(dt) {
   }
   updateParts(dt); drawParts(false);
 
-  outText(CARS[sel].name, W / 2, 78 * S, 54 * S, '#ffd93d', '#7a4b00');
+  /* Шильдик с именем под машинкой: сверху надпись наезжала на ряд кнопок, а здесь
+     она и привязана к машинке, и занимает пустой асфальт в нижней трети кадра. */
+  var ny = Math.min(GY + 52 * S, H - 40 * S), nw = Math.min(W * 0.62, 520 * S), nh = 62 * S;
+  g.save();
+  g.fillStyle = 'rgba(0,0,0,.22)'; roundRect(W / 2 - nw / 2 + 4 * S, ny - nh / 2 + 6 * S, nw, nh, 20 * S); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.94)'; roundRect(W / 2 - nw / 2, ny - nh / 2, nw, nh, 20 * S); g.fill();
+  g.lineWidth = 5 * S; g.strokeStyle = '#ffb703'; roundRect(W / 2 - nw / 2, ny - nh / 2, nw, nh, 20 * S); g.stroke();
+  g.restore();
+  outText(CARS[sel].name, W / 2, ny + 12 * S, 38 * S, '#e0691f', '#fff');
   g.save(); g.globalAlpha = 0.5 + Math.sin(garageT * 4) * 0.5;
-  outText(KEYW('ДАЛЬШЕ ▶'), W / 2, 134 * S, 28 * S, '#fff', '#e0691f');
+  outText(KEYW('ДАЛЬШЕ ▶'), W / 2, 84 * S, 28 * S, '#fff', '#e0691f');
   g.restore();
 
   garageVoice(dt);
   if (Voice.on && Mic.ready() && gv.phase !== 'idle' && gv.phase !== 'quiet')
-    drawMicBubble(W / 2, 252 * S,
+    drawMicBubble(W / 2, Math.min(252 * S, H * 0.34),   // абсолютный y на телефоне уводил пузырь в пустое небо
       gv.phase === 'go' ? '🎤 СКАЖИ ТОЖЕ!' : gv.phase === 'listen' ? '🎤 ГОВОРИ!'
         : gv.phase === 'good' ? 'ОТЛИЧНО!' : 'СКАЖИ:',
       gv.phase === 'go' ? 'ПОЕХАЛИ!'
@@ -3482,17 +3532,21 @@ function drawName() {
   drawVehicle(car.id, W * 0.5, GY + 6 * S + bob, car.h * S * 1.15, {});
 
   outText('ДАВАЙ ЗНАКОМИТЬСЯ!', W / 2, 62 * S, 46 * S, '#fff', '#2b6cb0');
-  drawMicBubble(W / 2, 168 * S,
+  drawMicBubble(W / 2, Math.min(168 * S, H * 0.24),
     nm.phase === 'listen' ? '🎤 ГОВОРИ!' : nm.phase === 'good' ? 'ПРИЯТНО!' : 'ВОПРОС:',
     nm.phase === 'good' && nm.got >= 3 ? 'ПОЕХАЛИ!' : 'КАК ТЕБЯ ЗОВУТ?',
     nm.phase === 'listen');
 
-  for (var i = 0; i < 3; i++) {                            // три кружка-ответа
-    var x = W / 2 + (i - 1) * 62 * S, y = 250 * S;
-    g.save();
-    g.fillStyle = i < nm.got ? '#4ade80' : 'rgba(255,255,255,.5)';
-    g.beginPath(); g.arc(x, y, 20 * S, 0, TAU); g.fill();
-    g.lineWidth = 4 * S; g.strokeStyle = '#fff'; g.stroke();
+  /* Прогресс — звёздочками игры, а не безымянными белыми кружками: звезда для
+     ребёнка уже что-то значит, кружок не значит ничего. */
+  for (var i = 0; i < 3; i++) {
+    var x = W / 2 + (i - 1) * 62 * S, y = Math.min(250 * S, H * 0.42);
+    g.save(); g.globalAlpha = i < nm.got ? 1 : 0.3;
+    if (!spr('star', x, y + 22 * S, 46 * S)) {
+      g.fillStyle = i < nm.got ? '#4ade80' : 'rgba(255,255,255,.5)';
+      g.beginPath(); g.arc(x, y, 20 * S, 0, TAU); g.fill();
+      g.lineWidth = 4 * S; g.strokeStyle = '#fff'; g.stroke();
+    }
     g.restore();
   }
   drawParts(false);
@@ -4270,7 +4324,7 @@ function updateStage(dt) {
 /* ═══════════════ 17bx. ВОПРОС «ДА / НЕТ» ═══════════════
    Первый ответ становится образцом слова «да». Всё, что потом не похоже
    на «да», запоминается как «нет» — так обе кнопки диалога калибруются сами. */
-var ask = { q: '', say: '', bg: 'play', t: 0, phase: '', yes: null, no: null, silent: 'yes', answer: null };
+var ask = { q: '', say: '', bg: 'play', t: 0, phase: '', yes: null, no: null, silent: 'yes', answer: null, sel: 0 };   // sel — что выбрано стрелками: 0 «да», 1 «нет»
 
 function toAsk(o) {
   state = 'ask';
@@ -4278,7 +4332,7 @@ function toAsk(o) {
   camTo(f[0], f[1], o.zoom || 1.5);
   ask.q = o.q; ask.say = o.say || o.q; ask.bg = o.bg || 'play';
   ask.yes = o.yes || null; ask.no = o.no || null; ask.silent = o.silent || 'yes';
-  ask.t = 0; ask.phase = 'say'; ask.answer = null;
+  ask.t = 0; ask.phase = 'say'; ask.answer = null; ask.sel = 0;
   Mic.disarm(); Mic.cancel();
   A.engine(0, 1, false);
   A.say(ask.say);
@@ -4347,11 +4401,11 @@ function drawAsk() {
   var chips = [['ДА', '#4ade80'], ['НЕТ', '#ff8f8f']];
   chips.forEach(function (c, i) {
     var x = W / 2 + (i ? 1 : -1) * 115 * S, y = H * 0.68, w = 150 * S, h = 66 * S;
-    var lit = ask.phase === 'done' && ask.answer === (i === 0);
+    var lit = ask.phase === 'done' ? ask.answer === (i === 0) : ask.sel === i;
     g.save();
     g.fillStyle = lit ? c[1] : 'rgba(255,255,255,.55)';
     roundRect(x - w / 2, y - h / 2, w, h, 22 * S); g.fill();
-    g.lineWidth = 4 * S; g.strokeStyle = '#fff'; g.stroke();
+    g.lineWidth = lit ? 7 * S : 4 * S; g.strokeStyle = lit ? '#ffb703' : '#fff'; g.stroke();
     outText(c[0], x, y, 34 * S, '#2b2140', 'rgba(255,255,255,.85)');
     g.restore();
   });
@@ -4372,10 +4426,25 @@ function drawPaintScene() {
   g.save(); g.globalAlpha = 0.35; g.fillStyle = '#1d2b1a';
   g.beginPath(); g.ellipse(cx, GY + 10 * S, vehW(car.id, hh) * 0.42, 14 * S, 0, 0, TAU); g.fill();
   g.restore();
-  drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {});
+  /* Раньше цвет подменялся одним кадром: самого действия «красим» видно не было.
+     Скин выбирается глобальной carPaint, поэтому непокрашенный кузов и покрашенный
+     рисуются одним и тем же вызовом, а граница — обычным clip-прямоугольником. */
+  var kp = pnt.phase === 'painting' ? clamp(pnt.t / 0.8, 0, 1) : 1;
+  if (kp < 1 && carPaint) {
+    var keep = carPaint;
+    carPaint = null; drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {}); carPaint = keep;
+    g.save();
+    g.beginPath(); g.rect(0, GY + 6 * S + bob - hh, W, hh * kp); g.clip();
+    drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {});
+    g.restore();
+    if (kp > 0.02 && kp < 0.98)                      // капли по кромке заливки
+      P({ x: cx + rnd(-vehW(car.id, hh) * 0.4, vehW(car.id, hh) * 0.4), y: GY - (GY + 6 * S + bob - hh + hh * kp) + 6 * S,
+          vx: rnd(-30, 30) * S, vy: rnd(-10, 30) * S, r: rnd(4, 8) * S, c: paintColor(),
+          kind: 'drop', life: 0.5, ay: 300 * S });
+  } else drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {});
 
   // мастер с ведром краски
-  var mx = W * 0.68, mh = 300 * S;
+  var mx = W * 0.68, mh = 176 * S;   // был 300*S: мастер выходил вдвое выше машинки и выше дома
   g.save(); g.globalAlpha = 0.3; g.fillStyle = '#1d2b1a';
   g.beginPath(); g.ellipse(mx, GY + 10 * S, 60 * S, 12 * S, 0, 0, TAU); g.fill();
   g.restore();
@@ -4416,7 +4485,14 @@ function doPaint() {
   var st = curStage();
   state = 'paint'; pnt.phase = 'painting'; pnt.t = 0;
   carPaint = st.skin || 'black'; damage = 0;
-  flash = 0.3;
+  /* Полноэкранная белая вспышка для 2–4 лет запрещена. Событие остаётся ярким,
+     но локальным: кольцо разлетается от самой машинки и в цвете новой краски. */
+  for (var rq = 0; rq < 26; rq++) {
+    var ra = rq / 26 * TAU;
+    P({ x: W * 0.42 + Math.cos(ra) * 40 * S, y: 120 * S + Math.sin(ra) * 40 * S,
+        vx: Math.cos(ra) * 260 * S, vy: Math.sin(ra) * 260 * S, r: rnd(7, 13) * S,
+        c: paintColor(), kind: 'spark', life: 0.7, ay: 120 * S });
+  }
   A.fanfare(); A.say('Ух ты! Какая красивая машинка!');
   for (var i = 0; i < 60; i++)
     P({ x: W * 0.42 + rnd(-160, 160) * S, y: rnd(40, 300) * S, vx: rnd(-180, 180) * S, vy: rnd(40, 300) * S,
@@ -4701,7 +4777,13 @@ function drawGameMode(dt) {
     g.lineWidth = isSel ? 8 * S : 3 * S;
     g.strokeStyle = isSel ? '#ffb703' : 'rgba(43,33,64,.35)';
     roundRect(0, 0, cw, chh, 28 * S); g.stroke();
-    outText(m.icon, cw / 2, 62 * S, 52 * S, isSel ? '#e0691f' : '#8a94a6', '#fff');
+    /* Значки «∞» и «🛞» для 2–4 лет — пустое место. Показываем то единственное,
+       чем режимы отличаются: как видно машинку — сбоку или сзади. И именно ту,
+       которую ребёнок только что выбрал. */
+    g.save(); g.globalAlpha = isSel ? 1 : 0.55;
+    if (m.id === 'lane') drawRearCar(cw / 2, 96 * S, 104 * S, 56 * S, 0, false);
+    else spr(car.id, cw / 2, 96 * S, 58 * S, {});
+    g.restore();
     outText(m.title, cw / 2, 128 * S, 34 * S, isSel ? '#e0691f' : '#5a6472', '#fff');
     outText(m.sub, cw / 2, 172 * S, Math.max(14, 20 * S), '#5a6472', 'rgba(255,255,255,.9)');
     g.restore();
@@ -5600,7 +5682,7 @@ function setPad() {
                   : state === 'gamemode' ? (MODES.length < 2 ? '✓ ПОЕХАЛИ' : '✓ ДАЛЬШЕ')
                   : state === 'mode'   ? '✓ ПОЕХАЛИ'
                   : state === 'name'   ? '▶ ДАЛЬШЕ'
-                  : state === 'ask'    ? '✓ ДА'
+                  : state === 'ask'    ? (ask.sel === 1 ? '✗ НЕТ' : '✓ ДА')
                   : state === 'paint'  ? '▶ ДАЛЬШЕ'
                   : state === 'result' ? '▶ ДАЛЬШЕ'
                   : state === 'lane'   ? '⬆ ПРЫЖОК'
@@ -5620,6 +5702,7 @@ function toGarage() {
   state = 'garage'; A.engine(0, 1, false); Mic.disarm(); story = false; voiceCtl = false;
   parts.length = 0; texts.length = 0;
   gvReset();
+  A.say([CARS[sel].say, 'Выбирай машинку!']);   // раньше на входе в гараж никто не объяснял, что делать
   setPad();
 }
 function toMode() {
@@ -5655,9 +5738,18 @@ function moveSel(dir) {
   A.init();
   if (state === 'garage') {
     sel = ((sel + dir) % CARS.length + CARS.length) % CARS.length;
-    slide = dir; A.whoosh(); A.say(CARS[sel].say); gvReset();
+    /* Имя произносим не сразу, а когда карусель доехала: при удержании стрелки
+       диктор начинал четыре реплики подряд и заикался. */
+    slide = dir; A.whoosh(); gvReset(); saySelT = 0.32;
+  } else if (state === 'ask') {
+    /* «НЕТ» была нарисована кнопкой, но нажать её было физически нечем: на пульте
+       одна большая кнопка, и она всегда означала «да». Стрелки выбирают, как везде. */
+    var ns = ask.sel ? 0 : 1;
+    if (ask.phase !== 'done') { ask.sel = ns; A.whoosh(); }
   } else if (state === 'gamemode') {
-    var ng = clamp(gmSel + dir, 0, GAMEMODES.length - 1);
+    /* Кольцуем, как в гараже: раньше стрелка в крайнем положении не делала ничего —
+       ни звука, ни движения, и ребёнок решал, что кнопка сломалась. */
+    var ng = ((gmSel + dir) % GAMEMODES.length + GAMEMODES.length) % GAMEMODES.length;
     if (ng !== gmSel) {
       gmSel = ng; A.whoosh(); A.say(GAMEMODES[gmSel].say);
       if (GAMEMODES[gmSel].id === 'endless') modeSel = ixById(MODES, 'full', 0);    // по умолчанию: стрелки (голос — упражнения внутри)
@@ -5678,11 +5770,20 @@ function keyDown(k) {
   if (Voice.on) { Mic.request(true); Mic.resume(); }
   if (k === 'space') {
     if (state !== 'play' && state !== 'garage' && state !== 'lane' && A.talking()) return;   // не перебиваем диктора
-    if (state === 'garage') toGameMode();
+    if (state === 'garage') {
+      /* Мгновенный срез кадра ощущался как «ничего не произошло». Даём машинке
+         0,35 с завестись: рёв, дым из-под колёс, рывок — и только потом уходим. */
+      if (!pickT) {
+        pickT = 0.35; A.rev();
+        for (var pq = 0; pq < 14; pq++)
+          P({ x: W / 2 - 60 * S + rnd(-30, 30) * S, y: 10 * S, vx: rnd(-200, -40) * S, vy: rnd(30, 140) * S,
+              r: rnd(8, 18) * S, c: '#e8dcc0', kind: 'puff', life: rnd(0.4, 0.8), ay: 40 * S });
+      }
+    }
     else if (state === 'gamemode') { if (GAMEMODES[gmSel].id === 'lane') Lane.start(); else if (MODES.length < 2) startGame(); else toMode(); }
     else if (state === 'repair') repairSpace();
     else if (state === 'name')   { if (nm.phase !== 'good') { Mic.cancel(); nameStep(false); } }
-    else if (state === 'ask')    { askAnswer(true); }
+    else if (state === 'ask')    { askAnswer(ask.sel === 0); }
     else if (state === 'result')  { nextStage(); }
     else if (state === 'intro')   { beginStage(); }
     else if (state === 'over')    {
@@ -5968,7 +6069,7 @@ function frame(ts) {
   if (sp !== A.sayDuck) A.duck(sp, 'say');
   if (AUTO) autoStep(dt);
 
-  if (state !== 'play' && state !== 'lane' && state !== 'lesson' && state !== 'ask' && (K.left || K.right)) {
+  if (state !== 'play' && state !== 'lane' && state !== 'lesson' && (K.left || K.right)) {
     repeatT -= dt;
     if (repeatT <= 0) { moveSel(K.left ? -1 : 1); repeatT = 0.28; }
   }
@@ -5987,7 +6088,20 @@ function frame(ts) {
   g.fillStyle = TH().sky[1];                                 // фон-подложка: без неё видны хвосты кадра
   g.fillRect(0, 0, W, H);
 
+  /* Переход между экранами. Раньше гараж, выбор режима и игра просто подменялись
+     в один кадр — ребёнок не успевал понять, что произошло. Полноэкранная вспышка
+     возрасту запрещена, поэтому новый экран мягко наплывает: 0,26 с от 0,97 до 1
+     по масштабу и от 0,35 до 1 по прозрачности. */
+  if (state !== trState) { trState = state; trT = 0.26; }
+  if (trT > 0) trT = Math.max(0, trT - dt);
+  var trK = trT > 0 ? 1 - trT / 0.26 : 1;
+
   g.save();
+  if (trK < 1) {
+    g.globalAlpha = 0.35 + 0.65 * trK;
+    var tz = 0.97 + 0.03 * trK;
+    g.translate(W / 2, H / 2); g.scale(tz, tz); g.translate(-W / 2, -H / 2);
+  }
   if (shake > 0) g.translate(rnd(-shake, shake), rnd(-shake, shake));
 
   if (state === 'garage') {
