@@ -2089,7 +2089,9 @@ function updatePlay(dt) {
     fuel -= (spd * dt) / FUELDIST + dt * 0.005;
     if (fuel < 0.25) {
       beepT -= dt;
-      if (beepT <= 0) { var kb = 1 - clamp(fuel / 0.25, 0, 1); A.beep(kb); beepT = 0.9 - kb * 0.55; }   // к нулю интервал сжимается до 0,35 с
+      /* Писк не лезет поверх речи: диктор говорит — тревога ждёт. К нулю интервал
+         сжимается до 0,35 с, это ускорение, а не мигание. */
+      if (beepT <= 0 && !A.talking()) { var kb = 1 - clamp(fuel / 0.25, 0, 1); A.beep(kb); beepT = 0.9 - kb * 0.55; }
       /* Один раз на бак сказать словами — писк сам по себе ребёнку ничего не объясняет.
          Не перебиваем ни урок, ни другую реплику. */
       if (!lowT && state === 'play' && !A.talking()) { lowT = 1; A.say('Мало бензина!'); }
@@ -2199,10 +2201,12 @@ function updatePlay(dt) {
 
   /* --- сценарий голосового режима --- */
   updateStage(dt);
-  if (night > 0 && night < 1) {
-    night = Math.min(1, night + dt * 0.75);
-    if (night >= 0.9 && story && !learned.light && curStage().lesson === 'light') { toLesson('light'); return; }
-  }
+  /* Ночь ведём к цели в обе стороны: наплыв был плавным, а рассвет — рубленым
+     кадром (night = 0 в один присест). Теперь светает за те же ~1,3 секунды. */
+  if (Math.abs(night - nightTo) > 0.002) {
+    night += (nightTo - night) * Math.min(1, dt * 1.6);
+    if (nightTo > 0 && night >= 0.9 && story && !learned.light && curStage().lesson === 'light') { toLesson('light'); return; }
+  } else night = nightTo;
 
   if (!story) {                                        // ритм бесконечного режима: слово важнее робота
     if (wordDue <= 0 || robotDue <= 0) resetRhythm();  // старт мимо beginStage (?s=play)
@@ -2457,7 +2461,7 @@ function updatePlay(dt) {
         /* Радуга-ворота посреди заезда — это смена места, а не конец уровня:
            ни очков за уровень, ни мастерской, ни реплики «Уровень пройден». */
         if (o.gate) {
-          themeIx++; stars += 2; A.fanfare(stars); A.cheer(); A.say('Молодец! Поехали!');
+          setTheme(themeIx + 1); stars += 2; A.fanfare(stars); A.cheer(); A.say('Молодец! Поехали!');
           popText('НОВОЕ МЕСТО!', carX, carY + ch, '#ffd93d');
           for (var cg = 0; cg < 40; cg++)
             P({ x: o.x + rnd(-120, 120) * S, y: rnd(40, 300) * S, vx: rnd(-160, 160) * S, vy: rnd(60, 260) * S,
@@ -2468,7 +2472,7 @@ function updatePlay(dt) {
         stars += 5;
         level++;
         if (story) { finishing = true; A.say('Финиш!'); }
-        else { pendingRepair = true; themeIx++; }
+        else { pendingRepair = true; setTheme(themeIx + 1); }
         A.fanfare(level); A.cheer(); A.say('Уровень пройден! Ты молодец!');
         popText('УРА!', carX, carY + ch, '#fff');
         for (var c2 = 0; c2 < 90; c2++)
@@ -2568,9 +2572,38 @@ var THEMES = [
   { name:'пустыня', far:'dunes', sky:['#5fbfe0','#ffe0a3','#ffefcf'], h1:'#e8c98a', h2:'#d4ac63',
     road:['#6b6357','#443f38'], grass:'#dfc07f', sun:1, props:['loc_rock','house'], extra:['excavator','tow'] }
 ];
-var themeIx = 0;
+var themeIx = 0, themeFrom = 0, themeK = 1;   // K: 0 — ещё прежняя палитра, 1 — новая
+var thCache = null, thKey = '';               // готовый смешанный набор: mix() разбирал hex 58 раз за кадр
+
+/* Смена локации происходила за один кадр: с оранжевого заката экран мгновенно
+   проваливался в почти чёрный космос. Ведём палитру к новой за ~0,8 с. */
+function setTheme(ix) {
+  if ((ix % THEMES.length) === (themeIx % THEMES.length)) return;
+  themeFrom = themeIx; themeIx = ((ix % THEMES.length) + THEMES.length) % THEMES.length; themeK = 0;
+}
+function themeStep(dt) { if (themeK < 1) themeK = Math.min(1, themeK + dt * 1.25); }
 var thForce = null;                       // dev: ?th=N — посмотреть конкретную локацию
-function TH() { return THEMES[(thForce === null ? themeIx : thForce) % THEMES.length]; }
+function TH() {
+  if (thForce !== null) return THEMES[thForce % THEMES.length];
+  var b = THEMES[themeIx % THEMES.length];
+  if (themeK >= 1) return b;
+  var a = THEMES[themeFrom % THEMES.length];
+  /* Ключ округляем до 1/24: за всю смену набор пересобирается двадцать четыре раза,
+     а не каждый кадр. mix() дорогой — он парсит hex-строки. */
+  var key = themeFrom + '>' + themeIx + '@' + Math.round(themeK * 24);
+  if (thKey === key) return thCache;
+  var late = themeK > 0.5 ? b : a;                 // некрашеное (реквизит, дальний план) переключаем разом
+  thCache = {
+    name: late.name, far: late.far, props: late.props, extra: late.extra,
+    sun: late.sun, snow: late.snow,
+    sky: [mix(a.sky[0], b.sky[0], themeK), mix(a.sky[1], b.sky[1], themeK), mix(a.sky[2], b.sky[2], themeK)],
+    h1: mix(a.h1, b.h1, themeK), h2: mix(a.h2, b.h2, themeK),
+    road: [mix(a.road[0], b.road[0], themeK), mix(a.road[1], b.road[1], themeK)],
+    grass: mix(a.grass, b.grass, themeK)
+  };
+  thKey = key;
+  return thCache;
+}
 
 function drawSky() {
   var t = TH();
@@ -4396,7 +4429,7 @@ function drawRobot() {
   spr('robot', sx, GY + 6 * S + Math.abs(Math.sin(T * 8)) * 6 * S, 205 * S,
       { rot: Math.sin(T * 6) * 0.035 });
 }
-var night = 0, lights = false;
+var night = 0, nightTo = 0, lights = false;   // nightTo — куда ведём: 1 темнеет, 0 светает
 
 function curStage() { return CAMPAIGN[stage % CAMPAIGN.length]; }
 
@@ -4470,7 +4503,7 @@ function beginStage() {
   }
   var st = curStage();
   stageSub = 0; subT = 0; levelStars = stars; lastWord = ''; row = 0;
-  themeIx = stage % THEMES.length;
+  setTheme(stage % THEMES.length);
   finishing = false;
   if (st.t === 'repair') { toRepair(); return; }
   if (st.t === 'paint') { toPaintStage(); return; }
@@ -4479,7 +4512,7 @@ function beginStage() {
   state = 'play';
   stageStart = carX; stageFired = false;
   outOfFuel = false; emptyShown = false; fuel = 1;
-  night = 0; lights = false;      // резкий сброс: рассвет отдельно, см. dayBack()
+  nightTo = 0; lights = false;    // светает плавно, а не в один кадр
   A.say('Поехали!');
   armCommands();
   setPad();
@@ -4543,7 +4576,7 @@ function updateStage(dt) {
   if (st.lesson === 'jump')       objs.push({ t:'pit',    x: carX + 620 * S, w: 185 * S, lesson:true, lessonKey:'jump' });
   else if (st.lesson === 'stop')  objs.push({ t:'tlight', x: carX + 700 * S, lesson:true, lessonKey:'stop', green:false, ph:0 });
   else if (st.lesson === 'beep')  objs.push({ t:'sheep',  x: carX + 700 * S, lesson:true, lessonKey:'beep', run:0, ph:0 });
-  else if (st.lesson === 'light') { night = 0.001; }
+  else if (st.lesson === 'light') { nightTo = 1; night = Math.max(night, 0.001); }
 }
 
 /* ═══════════════ 17bx. ВОПРОС «ДА / НЕТ» ═══════════════
@@ -5217,7 +5250,7 @@ var Lane = {
     ln.objs = []; ln.spawnZ = 0.5; ln.decorZ = 0.3; ln.skyZ = 1.5;
     ln.t = 0; ln.hitT = 0; ln.jumps = 0; ln.autoT = 0; ln.hits = 0; ln.overs = 0; ln.takes = 0;
     parts.length = 0; texts.length = 0; objs.length = 0;
-    stars = 0; row = 0; celebrate = 0; shake = 0; flash = 0; themeIx = 0;
+    stars = 0; row = 0; celebrate = 0; shake = 0; flash = 0; themeIx = 0; themeFrom = 0; themeK = 1;
     learned = {}; metEl = {}; resetRhythm(); seedKnown();     // уроки слов — общие с бесконечным режимом
     ln.best = 0; try { ln.best = +(localStorage.getItem('babygame.best') || 0) || 0; } catch (e) {}
     state = 'lane'; setPad();
@@ -5423,7 +5456,7 @@ var Lane = {
         /* Раньше «руль» был заперт в одной деревне на всю сессию. Без вспышки:
            смена места — конфетти и реплика, полноэкранный белый для 2–4 лет запрещён. */
         if (stars % TUNE.themeEvery === 0) {
-          themeIx++; A.cheer(); A.say('Молодец! Поехали!');
+          setTheme(themeIx + 1); A.cheer(); A.say('Молодец! Поехали!');
           popText('НОВОЕ МЕСТО!', W / 2, H * 0.28, '#ffd93d');
           burst(W / 2, GY - H * 0.5, 26, ['#ff4d6d', '#ffd93d', '#4fc3f7', '#7bd66b'], 320 * S, 'conf');
         }
@@ -5996,9 +6029,9 @@ function startGame() {
   track('start', { game: GAMEMODES[gmSel].id, ctl: m });
   tune(); resetWorld();
   learned = {}; metEl = {}; resetRhythm(); if (!story) seedKnown();   // бесконечный: известное — мимо очереди
-  stage = 0; night = 0; lights = false; stageFired = false; damage = 0;
+  stage = 0; night = 0; nightTo = 0; lights = false; stageFired = false; damage = 0;
   carPaint = null; damage = 0; carDirty = false; robot.on = false; stopHold = 0; finishing = false;
-  themeIx = 0;
+  themeIx = 0; themeFrom = 0; themeK = 1;
   if (story || voiceCtl) { if (Voice.on) Mic.request(false); toName(); return; }
   state = 'play';
   A.rev(); A.fanfare(stars);
@@ -6335,6 +6368,7 @@ function frame(ts) {
     if (flash > 0) flash = Math.max(0, flash - dt * 1.6);
     if (celebrate > 0) celebrate = Math.max(0, celebrate - dt);
   }
+  themeStep(dt);                                   // палитра доезжает до новой локации
   Mic.poll(dt);
   var sp = A.talking();                              // уступаем диктору место в миксе
   if (sp !== A.sayDuck) A.duck(sp, 'say');
@@ -6556,6 +6590,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
     /* Тест: режим «руль» изнутри. quiet() глушит очередь слов — иначе урок,
        начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
+    window.__th = function () { return { ix: themeIx, from: themeFrom, k: +themeK.toFixed(3), sky: TH().sky.slice(), grass: TH().grass, set: setTheme }; };   // тест: смена палитры
     window.__lane = function () {
       return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS,
                quiet: function () { wantEl = null; wordArmed = false; wordT = -1e9; } };
