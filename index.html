@@ -412,6 +412,7 @@ function ih(im) { return im.naturalHeight || im.height; }
 /* Скины машинки — настоящие картинки: цвет и три степени повреждений. */
 var PAINTED = {}, carPaint = null, damage = 0, noWheels = false, missWheels = 1;
 var dmgT = 0;                                  // сколько ещё показывать вмятины поверх покраски
+var paintRevT = 0;                             // сколько ещё заливать новую краску сверху вниз
 
 function lazyImg(name) {                       // варианты подгружаем по требованию
   if (!IMG[name]) { var im = new Image(); im.src = assetPath(name); IMG[name] = im; }
@@ -1487,6 +1488,10 @@ function popText(txt, x, y, col) { texts.push({ t: txt, x: x, y: y, c: col || '#
 /* Ряд наград до похвалы. Считать его в одном месте обязательно: проверка вехи
    стояла у двух предметов из восьми, и перепрыгнутый поезд «не считался». */
 function bumpRow() { row++; if (!story && row >= TUNE.praiseEvery) { row = 0; milestone(); } }
+
+/* Слово → иконка. Экраны итогов и панель родителя показывают слово картинкой:
+   читать ребёнок не умеет, а картинку узнаёт. */
+var WORD_ICON = (function () { var m = {}; for (var k in LESSONS) if (LESSONS[k].word) m[LESSONS[k].word] = LESSONS[k].icon || ''; return m; })();
 function burst(x, y, n, col, spdv, kind) {
   for (var i = 0; i < n; i++) {
     var a = rnd(0, TAU), v = rnd(0.35, 1) * spdv;
@@ -2102,7 +2107,7 @@ function updatePlay(dt) {
     vy -= GRAV * dt;
     carY += vy * dt;
     if (carY <= gh) {
-      var hard = vy < -640 * S;
+      var hard = vy < -1150 * S;   // одиночный прыжок даёт ~-830*S: при пороге 640 тряслось после каждого
       carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.26;
       A.land();
       if (hard) A.thud();                    // тяжёлая посадка должна и звучать тяжело
@@ -2344,7 +2349,7 @@ function updatePlay(dt) {
       }
     }
     if (o.t === 'bucket' && bx1 > o.x - 46 * S && bx0 < o.x + 46 * S && by0 < 120 * S) {
-      carPaint = o.col.skin; damage = 0;
+      carPaint = o.col.skin; damage = 0; paintRevT = 0.8;
       A.fanfare(stars); A.splash(); flash = 0.12;   // мягкий отблеск вместо вспышки на весь экран
       A.say('Ух ты! Какая красивая машинка!');
       popText(o.col.name + '!', o.x, 150 * S, o.col.c === '#16161d' ? '#fff' : o.col.c);
@@ -2479,6 +2484,7 @@ function updatePlay(dt) {
   if (comboT > 0) { comboT -= dt; if (comboT <= 0) combo = 0; }
   if (sirenT > 0) sirenT -= dt;
   if (dmgT > 0) dmgT = Math.max(0, dmgT - dt);
+  if (paintRevT > 0) paintRevT = Math.max(0, paintRevT - dt);
   if (fxT > 0) fxT -= dt;
   if (celebrate > 0) celebrate -= dt;
   if (flash > 0) flash -= dt;
@@ -2963,8 +2969,11 @@ function drawNearSide(t) {
   g.fillStyle = t.grass; g.globalAlpha = 0.9;
   g.fillRect(0, H - 16 * S, W, 16 * S);
   g.globalAlpha = 1;
-  layer(1.55, 120 * S, function (x, i) {                  // отражатели на кромке
-    g.fillStyle = i % 2 ? '#ffd93d' : '#f2f6ff';
+  /* Отражатели. Слой шёл со скоростью 1,55 — быстрее самой дороги, а чередование
+     двух контрастных цветов давало в фиксированной точке экрана до дюжины смен в
+     секунду. Теперь скорость дороги и одна краска с мягкой разницей в яркости. */
+  layer(1.0, 120 * S, function (x, i) {
+    g.fillStyle = i % 2 ? 'rgba(255,217,61,.95)' : 'rgba(255,217,61,.6)';
     g.fillRect(x, y + 14 * S, 16 * S, 7 * S);
   });
   g.restore();
@@ -3193,7 +3202,7 @@ function drawObjs() {
       var mh2 = 96 * S, hop2 = Math.abs(Math.sin((o.ph || 0) * 5)) * 10 * S;
       g.save(); g.globalAlpha = 0.3; g.fillStyle = '#1d2b1a';
       g.beginPath(); g.ellipse(sx, GY + 8 * S, 34 * S, 8 * S, 0, 0, TAU); g.fill(); g.restore();
-      var msk = (o.skin || 'monster_a') + (Math.floor(T * 7) % 2 ? '_run' : '');
+      var msk = (o.skin || 'monster_a') + (Math.floor(T * 3.6 + (o.ph || 0)) % 2 ? '_run' : '');   // 1,8 шага в секунду, и соседи не в такт
       if (!ok(IMG[msk])) msk = o.skin || 'monster_a';
       spr(msk, sx, GY + 6 * S - hop2, mh2, { rot: Math.sin(o.ph * 5) * 0.08 });
     } else if (o.t === 'tlight') {
@@ -3247,7 +3256,14 @@ function drawCar() {
   g.rotate(tilt - (1 - flipT) * 0 - flipT * TAU * (car.id === 'race' ? 1 : 0.6));
   g.scale(1 + squash * 0.5, 1 - squash * 0.5);
   var bob = grounded ? Math.sin(wobble * 2) * clamp(spd / VMAX, 0, 1) * 3.5 * S : 0;
-  drawVehicle(car.id, 0, bob, h, {});
+  if (paintRevT > 0 && carPaint) {                 // краска наплывает сверху вниз за 0,8 с
+    var kr = clamp(1 - paintRevT / 0.8, 0, 1), keep2 = carPaint;
+    carPaint = null; drawVehicle(car.id, 0, bob, h, {}); carPaint = keep2;
+    g.save();
+    g.beginPath(); g.rect(-w, bob - h, w * 2, h * kr); g.clip();
+    drawVehicle(car.id, 0, bob, h, {});
+    g.restore();
+  } else drawVehicle(car.id, 0, bob, h, {});
 
   if (sirenT > 0 && car.siren) {
     var on = Math.floor(sirenT * 5) % 2;      // 2,5 смены в секунду: собственное правило проекта — не чаще трёх
@@ -4109,16 +4125,27 @@ function drawResult() {
   var k = 1 + Math.max(0, 0.5 - res.t) * 0.3;
   outText('УРОВЕНЬ ' + res.lvl + ' ПРОЙДЕН!', W / 2, py + 52 * S, 42 * S * k, '#e0691f', '#fff');
 
-  var rows = [['star', res.stars * 10]];
-  if (res.word) rows.push(['coin', 50]);
-  rows.push(['arch', 100]);
-  rows.forEach(function (r, i) {
-    var y = py + 118 * S + i * 46 * S;
-    spr(r[0], px + 62 * S, y + 22 * S, 44 * S);
-    outText('+' + r[1], px + pw - 50 * S, y, 30 * S, '#2f9e50', '#fff', 'right');
-  });
-  spr('chest', px + 62 * S, py + ph - 28 * S, 50 * S);
-  outText(String(score), px + pw - 50 * S, py + ph - 46 * S, 34 * S, '#2b6cb0', '#fff', 'right');
+  /* Была бухгалтерская ведомость: «+10 / +50 / +100» и общий счёт — ни одной цифры
+     из этого ребёнок не читает. Показываем то, что он сделал: собранные звёзды
+     рядом, выученное слово своей картинкой, и всё. Счёт — мелко, для взрослого. */
+  var shown = Math.min(res.stars, 8), stw = 46 * S;
+  var sx0 = W / 2 - (shown - 1) * stw * 0.5;
+  for (var si = 0; si < shown; si++) {
+    var pop2 = 1 + Math.max(0, 0.45 - Math.abs(res.t - 0.25 - si * 0.09)) * 1.2;
+    spr('star', sx0 + si * stw, py + 132 * S, 42 * S * pop2);
+  }
+  if (res.stars > shown)
+    outText('×' + res.stars, W / 2, py + 168 * S, 30 * S, '#e0691f', '#fff');
+  if (res.word) {
+    var wi2 = WORD_ICON[res.word] || '';
+    outText((wi2 ? wi2 + '  ' : '') + res.word, W / 2, py + 214 * S, 40 * S, '#2b6cb0', '#fff');
+    outText('новое слово', W / 2, py + 252 * S, 22 * S, '#8a94a6', '#fff');
+  } else {
+    spr('arch', W / 2, py + 232 * S, 96 * S);
+  }
+  g.save(); g.globalAlpha = 0.5;
+  outText('всего ' + score, px + pw - 26 * S, py + ph - 20 * S, 20 * S, '#5a6472', '#fff', 'right');
+  g.restore();
 
   g.save(); g.globalAlpha = 0.5 + Math.sin(T * 4.5) * 0.5;
   outText(KEYW('ДАЛЬШЕ'), W / 2, py + ph + 60 * S, 34 * S, '#fff', '#e0691f');
@@ -4135,7 +4162,7 @@ function toBreakdown(why) {
   damage = 3; spd = 0; crash.off = 0;
   crash.wx = carX + 30 * S; crash.wy = 50 * S;
   crash.vx = rnd(220, 380) * S; crash.vy = rnd(360, 520) * S; crash.rot = 0;
-  shake = 6 * S;
+  shake = 2.5 * S;                                // тряска кадра для 2–4 лет вредна: событие отыгрывает крен кузова
   Mic.disarm(); A.engine(0, 1, false);
   A.sputter(); A.clatter();
   fromCrash = true;                               // фразу скажем один раз — здесь
@@ -4178,7 +4205,7 @@ function drawCrash() {
 }
 
 /* ═══════════════ 17bw. ПРОИГРЫШ В БЕСКОНЕЧНОМ ═══════════════ */
-var over = { t: 0, reason: '', said: false, mon: '', sel: 0 };   // sel: 0 — ещё раз, 1 — сменить машинку
+var over = { t: 0, reason: '', said: false, mon: '', sel: 0, call: 0 };   // sel: 0 — ещё раз, 1 — сменить машинку; call — сколько раз позвали играть снова
 
 function gameOver(reason) {
   track('over', { reason: reason });
@@ -4207,6 +4234,13 @@ function updateOver(dt) {
     A.say([n2 > 100 ? 'Ты собрал больше ста звёздочек!' : 'Ты собрал ' + n2 + ' ' + word + '!',
            n2 >= 30 ? 'Вот это рекорд!' : n2 >= 15 ? 'Здорово!' : n2 >= 5 ? 'Хорошо!'
                                                                 : 'В следующий раз получится больше!']);
+    over.call = 0;
+  }
+  /* Дальше экран был тупиком тишины: ребёнок сидит, диктор молчит, и никто не
+     зовёт играть снова. Приглашаем каждые ~9 секунд, тремя разами и хватит. */
+  if (over.said && !A.talking() && (over.call || 0) < 3 && over.t > 4 + (over.call || 0) * 9) {
+    over.call = (over.call || 0) + 1;
+    A.say('Ещё раз!');
   }
 }
 
@@ -4271,18 +4305,18 @@ function hurt(why) {                            // получили по куз�
   if (damage >= TUNE.hits) toBreakdown();
 }
 var robot = { on: false, x: 0, flee: false };
-var wsh = { phase: '', t: 0 }, carDirty = false;
+var wsh = { phase: '', t: 0 }, carDirty = false, dirtA = 0;   // dirtA — остаток грязи, пока её смывают
 
 /* ── мойка ── */
 function toWashStage() {
-  state = 'wash'; wsh.phase = 'intro'; wsh.t = 0; carDirty = true;
+  state = 'wash'; wsh.phase = 'intro'; wsh.t = 0; carDirty = true; dirtA = 1;
   parts.length = 0; Mic.disarm(); A.engine(0, 1, false);
   A.say('Ой, посмотри, машинка вся грязная! Мы приехали на мойку.');
   setPad();
 }
 function doWash() {
-  state = 'wash'; wsh.phase = 'wash'; wsh.t = 0; carDirty = false;
-  A.splash(); A.fanfare();
+  state = 'wash'; wsh.phase = 'wash'; wsh.t = 0; carDirty = false; dirtA = 1;
+  A.splash(); A.fanfare(stars);
   A.say('Вода! Ура, машинка чистая и блестит!');
   for (var i = 0; i < 60; i++)
     P({ x: W * 0.62 + rnd(-40, 40) * S, y: rnd(60, 260) * S, vx: rnd(-520, -120) * S, vy: rnd(-60, 220) * S,
@@ -4293,15 +4327,20 @@ function updateWash(dt) {
   wsh.t += dt;
   if (wsh.phase === 'intro') { if (wsh.t > 2.6 && !A.talking()) toLesson('water'); }
   else if (wsh.phase === 'wash') {
+    dirtA = Math.max(0, dirtA - dt * 0.55);            // смывается за ~1,8 с, а не исчезает кадром
     if (RNG() < dt * 50)
-      P({ x: W * 0.60 + rnd(-30, 30) * S, y: rnd(80, 240) * S, vx: rnd(-460, -120) * S, vy: rnd(-40, 180) * S,
+      P({ x: (wsh.nx || W * 0.60) + rnd(-6, 6) * S, y: GY - (wsh.ny || GY - 160 * S) + rnd(-8, 8) * S,
+          vx: rnd(-520, -260) * S, vy: rnd(-30, 90) * S,
           r: rnd(4, 11) * S, c: pick(['#4fc3f7', '#81d4fa', '#fff']), kind: 'drop', life: rnd(0.5, 1.0) });
     if (wsh.t > 4.0 && !A.talking()) nextStage();
   }
 }
 function drawDirt(cx, base, w, h) {
-  if (!carDirty) return;
-  g.save(); g.fillStyle = 'rgba(92,64,34,.5)';
+  /* dirtA — грязь уходит не мгновенно, а смывается за время мойки. И base сюда
+     передаётся ВМЕСТЕ с покачиванием кузова, иначе пятна ползают по машинке. */
+  var da = carDirty ? 1 : dirtA;
+  if (da <= 0.01) return;
+  g.save(); g.fillStyle = 'rgba(92,64,34,' + (0.5 * da).toFixed(3) + ')';
   for (var i = 0; i < 10; i++) {
     var a = ((i * 97) % 100) / 100, b = ((i * 53) % 100) / 100;
     g.beginPath();
@@ -4317,9 +4356,27 @@ function drawWashScene() {
   g.save(); g.globalAlpha = 0.35; g.fillStyle = '#1d2b1a';
   g.beginPath(); g.ellipse(cx, GY + 10 * S, vehW(car.id, hh) * 0.42, 14 * S, 0, 0, TAU); g.fill();
   g.restore();
-  drawVehicle(car.id, cx, GY + 6 * S + Math.sin(T * 2) * 5 * S, hh, {});
-  drawDirt(cx, GY + 6 * S, vehW(car.id, hh), hh);
-  spr('fire', W * 0.74, GY + 6 * S, car.h * S * 1.05);          // моет пожарная машина
+  var wbob = Math.sin(T * 2) * 5 * S;
+  drawVehicle(car.id, cx, GY + 6 * S + wbob, hh, {});
+  drawDirt(cx, GY + 6 * S + wbob, vehW(car.id, hh), hh);        // грязь качается вместе с кузовом
+
+  /* Мойщик. Раньше это была ВТОРАЯ такая же машинка (когда игрок сам за пожарную),
+     без тени и с размером, привязанным к росту игрока. Теперь размер свой, тень есть,
+     а если игрок и есть пожарная — моет мастер из шланга. */
+  var wx = W * 0.74, wsz = 150 * S, who = car.id === 'fire' ? 'master' : 'fire';
+  ground(wx, GY + 4 * S, (who === 'fire' ? 60 : 34) * S);
+  spr(who, wx, GY + 6 * S, who === 'fire' ? wsz : 170 * S, { rot: Math.sin(T * 1.6) * 0.02 });
+
+  /* Шланг: вода должна выходить из сопла, а не из воздуха. */
+  var nz = wx - (who === 'fire' ? wsz * 0.55 : 46 * S), ny = GY - (who === 'fire' ? 66 * S : 96 * S);
+  g.save();
+  g.strokeStyle = '#2f6f4f'; g.lineWidth = 7 * S; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(wx, GY - 24 * S);
+  g.quadraticCurveTo(nz + 34 * S, GY - 12 * S, nz, ny); g.stroke();
+  g.fillStyle = '#b0b8c4';
+  roundRect(nz - 16 * S, ny - 7 * S, 22 * S, 14 * S, 6 * S); g.fill();
+  g.restore();
+  wsh.nx = nz - 14 * S; wsh.ny = ny;
 }
 function drawWash() {
   drawWashScene();
@@ -4422,7 +4479,7 @@ function beginStage() {
   state = 'play';
   stageStart = carX; stageFired = false;
   outOfFuel = false; emptyShown = false; fuel = 1;
-  night = 0; lights = false;
+  night = 0; lights = false;      // резкий сброс: рассвет отдельно, см. dayBack()
   A.say('Поехали!');
   armCommands();
   setPad();
@@ -4712,7 +4769,9 @@ function toRepair() {
                       rot: rnd(-1, 1), fly: 0, gone: false });
   parts.length = 0; texts.length = 0;
   A.engine(0, 1, false); A.clunk(); Mic.disarm();
-  if (!fromCrash) A.say('Ой-ой! Машинка сломалась! Смотри, колёса упали!');
+  /* В сюжете этап уже сказал «заезжаем в мастерскую, колёса отвалились» — вторая
+     реплика про то же самое давала ~7 секунд монолога без единого действия. */
+  if (!fromCrash && !rep.lesson) A.say('Ой-ой! Машинка сломалась! Смотри, колёса упали!');
   fromCrash = false;
   if (Voice.on) Mic.request(false);
   setPad();
@@ -4753,7 +4812,13 @@ function repairSpace() {
   rep.echoWord = numWord(rep.fixed); rep.echoNum = rep.fixed; rep.echoPhase = 'say'; rep.echoT = 0;
   if (rep.fixed >= rep.n) {
     rep.phase = 'done'; rep.t = 0; stars += 5;
-    setTimeout(function () { if (state === 'repair') { A.fanfare(); A.cheer(); A.say('Ура! Починили! Поехали дальше!'); } }, 700);
+    /* «Починили!» было только текстом. Салют вокруг машинки — на том же языке,
+       на котором игра награждает везде. */
+    for (var dq = 0; dq < 46; dq++)
+      P({ x: W * 0.30 + rnd(-150, 150) * S, y: rnd(30, 300) * S, vx: rnd(-240, 240) * S, vy: rnd(60, 320) * S,
+          r: rnd(6, 15) * S, c: pick(['#ffd93d', '#7bd66b', '#fff', '#4fc3f7']), kind: 'conf',
+          life: rnd(0.9, 1.8), vr: rnd(-9, 9) });
+    setTimeout(function () { if (state === 'repair') { A.fanfare(stars); A.cheer(); A.say('Ура! Починили! Поехали дальше!'); } }, 700);
     setPad();
   }
 }
@@ -4840,10 +4905,46 @@ function updateRepair(dt) {
   }
 }
 
+/* Навес мастерской. Своего спрайта нет и он не нужен: три заливки, столбы и
+   вывеска с гаечным ключом читаются как «мастерская» с первого взгляда. */
+function repairShed(x, base, w, h) {
+  g.save();
+  g.fillStyle = 'rgba(0,0,0,.16)';
+  g.beginPath(); g.ellipse(x, base + 8 * S, w * 0.55, 14 * S, 0, 0, TAU); g.fill();
+  g.fillStyle = '#e6d9c0';                                   // задняя стенка
+  roundRect(x - w * 0.5, base - h, w, h, 10 * S); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.10)';                           // пол в тени навеса
+  g.fillRect(x - w * 0.5, base - h * 0.22, w, h * 0.22);
+  g.fillStyle = '#c0553f';                                   // крыша
+  g.beginPath();
+  g.moveTo(x - w * 0.58, base - h);
+  g.lineTo(x + w * 0.58, base - h);
+  g.lineTo(x + w * 0.5, base - h - 26 * S);
+  g.lineTo(x - w * 0.5, base - h - 26 * S);
+  g.closePath(); g.fill();
+  g.fillStyle = '#8a6b4f';                                   // столбы
+  g.fillRect(x - w * 0.5 - 6 * S, base - h, 9 * S, h);
+  g.fillRect(x + w * 0.5 - 3 * S, base - h, 9 * S, h);
+  g.fillStyle = '#f7f2ea';                                   // вывеска
+  roundRect(x - 34 * S, base - h - 18 * S, 68 * S, 30 * S, 8 * S); g.fill();
+  g.lineWidth = 3 * S; g.strokeStyle = '#2b2140'; g.stroke();
+  g.restore();
+  outText('🔧', x, base - h + 6 * S, 24 * S, '#2b2140', '#fff');
+}
+
 function drawRepair() {
   drawSky(); drawClouds(); drawFar(); drawRoad();
 
   var cx = W * 0.30, hh = car.h * S * 1.25, broken = rep.fixed < rep.n;
+
+  /* Обстановка: навес, мастер и кусты. Раньше «мастерская» была участком пустой
+     обочины — ребёнок не понимал, куда приехал. */
+  var shx = W * 0.74, shb = roadTop() + 4 * S;
+  repairShed(shx, shb, 210 * S, 150 * S);
+  spr('bush', shx - 190 * S, shb + 2 * S, 66 * S, withMove('bush', 3, 66 * S, {}));
+  spr('bush', shx + 165 * S, shb + 2 * S, 58 * S, withMove('bush', 7, 58 * S, {}));
+  ground(shx + 96 * S, GY + 2 * S, 34 * S);
+  spr('master', shx + 96 * S, GY + 4 * S, 168 * S, { rot: Math.sin(T * 1.5) * 0.025 });
 
   g.save();
   g.globalAlpha = 0.4; g.fillStyle = '#1d2b1a';
@@ -4885,7 +4986,10 @@ function drawRepair() {
   } else if (rep.phase === 'ask') {
     outText('СКОЛЬКО КОЛЁС НАДО ПОЧИНИТЬ?', W / 2, 80 * S, 42 * S, '#fff', '#2b6cb0');
     if (Voice.on && Mic.ready())
-      drawMicBubble(W / 2, 190 * S, rep.listening ? '🎤 ГОВОРИ!' : 'СЕЙЧАС СПРОШУ…',
+      /* Колёса лежат справа (W*0.70 ± 262*S) — пузырь по центру ложился прямо на них,
+         и ребёнок считал сквозь него. Уводим влево, но не за кромку экрана. */
+      drawMicBubble(Math.max(Math.min(W * 0.8, 360 * S) / 2 + 12 * S, W * 0.26), 190 * S,
+                    rep.listening ? '🎤 ГОВОРИ!' : 'СЕЙЧАС СПРОШУ…',
                     'СКОЛЬКО?', rep.listening);
     else
       outText(KEYW('ОТВЕТИТЬ'), W / 2, 160 * S, 30 * S, '#fff', '#e0691f');
@@ -6050,8 +6154,7 @@ setMicIcon();
 
 (function () {                                   // страница выученных слов
   var box = document.getElementById('stats'), body = document.getElementById('statsBody');
-  var WICON = {};
-  for (var lk in LESSONS) if (LESSONS[lk].word) WICON[LESSONS[lk].word] = LESSONS[lk].icon || '';
+  var WICON = WORD_ICON;                          // общая карта «слово → иконка»
   function render() {
     var l = Stats.list();
     if (!l.length) {
