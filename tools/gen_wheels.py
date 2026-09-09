@@ -76,6 +76,53 @@ def wheel_band(im: Image.Image) -> tuple[int, int, int, int]:
 
 
 # ─────────────────────────────────────────────── сеть
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) babygame/1.0"
+
+
+def ask_horde(image: Image.Image, mask: Image.Image, prompt: str, timeout_s: int = 900) -> bytes:
+    """AI Horde: бесплатно, без ключа, все воркеры умеют inpainting. Минус — очередь
+       у анонимных запросов (на пробе было 226 мест, около девяти минут).
+
+       Обязателен нормальный User-Agent: с «Python-urllib» и Horde, и Cloudflare
+       отдают 403 (защита от ботов, error code 1010).
+    """
+    bi, bm = io.BytesIO(), io.BytesIO()
+    image.save(bi, "JPEG", quality=95)
+    mask.save(bm, "PNG")
+
+    def call(path, body=None, method="GET", t=90):
+        r = urllib.request.Request("https://aihorde.net/api/v2/" + path,
+                                   data=json.dumps(body).encode() if body else None, method=method,
+                                   headers={"Content-Type": "application/json", "apikey": "0000000000",
+                                            "Client-Agent": "babygame:1.0:owner", "User-Agent": UA,
+                                            "Accept": "application/json"})
+        return json.load(urllib.request.urlopen(r, timeout=t))
+
+    job = call("generate/async", {
+        "prompt": prompt,
+        "params": {"sampler_name": "k_euler_a", "cfg_scale": 7, "denoising_strength": 0.75,
+                   "steps": 25, "n": 1, "width": CANVAS, "height": CANVAS, "karras": True},
+        "nsfw": False, "censor_nsfw": True, "r2": True,
+        "source_image": base64.b64encode(bi.getvalue()).decode(),
+        "source_mask": base64.b64encode(bm.getvalue()).decode(),
+        "source_processing": "inpainting"}, "POST")
+    jid = job["id"]
+    waited = 0
+    while waited < timeout_s:
+        time.sleep(6); waited += 6
+        try:
+            st = call("generate/check/" + jid, t=60)
+        except Exception:                                   # noqa: BLE001 — сеть моргнула, ждём дальше
+            continue
+        if st.get("done"):
+            break
+    res = call("generate/status/" + jid, t=120)
+    gens = res.get("generations") or []
+    if not gens:
+        raise RuntimeError("Horde не отдал результат")
+    return urllib.request.urlopen(urllib.request.Request(gens[0]["img"], headers={"User-Agent": UA}), timeout=120).read()
+
+
 def ask(image: Image.Image, mask: Image.Image, steps: int = 18) -> bytes:
     bi, bm = io.BytesIO(), io.BytesIO()
     image.save(bi, "JPEG", quality=95)
@@ -249,7 +296,7 @@ def iou_top(a: Image.Image, b: Image.Image) -> float:
 
 
 # ─────────────────────────────────────────────── главное
-def run(cars: list[str], dry: bool) -> int:
+def run(cars: list[str], dry: bool, horde: bool = False) -> int:
     amap = paths_map()
     bad = 0
     for car in cars:
@@ -264,7 +311,21 @@ def run(cars: list[str], dry: bool) -> int:
             continue
         canvas, box, place, _ = to_canvas(base)
         base_dark = dark_bottom(base)
-        frames = [strip_wheels(base, band, 0.50), strip_wheels(base, band, 0.0)]
+        if horde:
+            # перерисовка нейросетью: арка получается нарисованной, а не вырезанной
+            canvas, box, place, _ = to_canvas(base)
+            m = band_mask(place, box, band, 0.0)
+            prompt = ("cartoon vehicle with EMPTY wheel arches, no wheels, bare metal axle stubs, "
+                      "flat vector, white background ### wheel, tire, photo")
+            raw = ask_horde(canvas, m, prompt)
+            got = Image.open(io.BytesIO(raw)).convert("RGB")
+            if got.size != (CANVAS, CANVAS):
+                got = got.resize((CANVAS, CANVAS), Image.LANCZOS)
+            full = compose(base, box, place, blend(canvas, got, m), m)
+            half = half_off(base, full, band)
+            frames = [half, full]
+        else:
+            frames = [strip_wheels(base, band, 0.50), strip_wheels(base, band, 0.0)]
         flat = frames[1]
         print(f"  _w1: тёмных {dark_bottom(frames[0])} (задние сняты), кузов сверху {iou_top(base, frames[0]):.3f}")
         print(f"  _w2: тёмных {dark_bottom(frames[1])} (все сняты), кузов сверху {iou_top(base, frames[1]):.3f}")
@@ -292,4 +353,4 @@ def run(cars: list[str], dry: bool) -> int:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    sys.exit(run(args or CARS, "--dry" in sys.argv))
+    sys.exit(run(args or CARS, "--dry" in sys.argv, "--horde" in sys.argv))
