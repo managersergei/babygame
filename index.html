@@ -4654,7 +4654,8 @@ var TG = {
   init: function () {
     var tq = /[?&]test=1/.test(location.search) && (location.search.match(/[?&]tg=([^&]+)/) || [])[1];
     if (tq) { TG_API = decodeURIComponent(tq); TG_BOT = TG_BOT || 'test_bot'; }   // автопроверка: реле-заглушка
-    if (!TG_BOT || !TG_API || REC) return;
+    var local = location.protocol === 'file:' || /^(localhost|127\.|0\.0\.0\.0|\[?::1\]?$)/.test(location.hostname);
+    if (!TG_BOT || !TG_API || REC || (local && !tq)) return;       // реле пускает только боевой адрес игры — с локального не зовём
     try {
       this.code = localStorage.getItem('babygame.tg') || '';
       if (!/^[A-Z2-9]{10}$/.test(this.code)) { this.code = this.mkCode(); localStorage.setItem('babygame.tg', this.code); }

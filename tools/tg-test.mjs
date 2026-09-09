@@ -46,6 +46,14 @@ else {
   ok(/привязан/.test(await page.evaluate(() => document.getElementById("tgState").textContent)), "игра сама увидела привязку (опрос раз в 5 с)");
   const ev = await (await fetch(api + "/ev", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ c: code, sum: { words: { "ПРЫЖОК": 2 }, stars: 7, car: "ГОНЩИК" } }) })).json();
   ok(ev.linked === true, "событие игры доехало до привязанного кода (sent=" + ev.sent + ", чат тестовый)");
+  // тот же POST, но из самой страницы: так шлёт игра (без заголовка content-type, значит без предзапроса CORS)
+  const fromPage = await page.evaluate(async ([u, c]) => {
+    try { const r = await fetch(u + "/ev", { method: "POST", body: JSON.stringify({ c: c, sum: { words: { "ПРЫЖОК": 2 }, stars: 7, car: "ГОНЩИК" } }), keepalive: true }); return await r.json(); }
+    catch (e) { return { err: String(e) }; }
+  }, [api, code]);
+  ok(fromPage.linked === true, "браузер игры не упёрся в CORS: " + JSON.stringify(fromPage));
+  const foreign = await (await fetch(api + "/ev", { method: "POST", headers: { origin: "https://evil.example" }, body: JSON.stringify({ c: code }) })).status;
+  ok(foreign === 403, "чужой источник отклоняется (" + foreign + ")");
   await upd("/stop", 102);
   ok((await (await fetch(api + "/status?c=" + code)).json()).linked === false, "после /stop привязка стёрта");
 }
