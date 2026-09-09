@@ -5703,7 +5703,7 @@ setMicIcon();
       l.map(function (r) {
         var full = Math.min(r.n, Stats.need);
         var dots = new Array(full + 1).join('●') + new Array(Stats.need - full + 1).join('○');
-        return '<div class="w' + (r.n >= Stats.need ? ' fin' : '') + '"><span>' +
+        return '<div class="w' + (r.n >= Stats.need ? ' fin' : '') + '" data-w="' + r.w + '"><span>' +
                (WICON[r.w] ? WICON[r.w] + ' ' : '') + r.w + '</span><span class="dots">' + dots + '</span>' +
                '<span class="' + (r.n >= Stats.need ? 'done' : '') + '">' +
                (r.n >= Stats.need ? 'выучено' : r.n + '&nbsp;раз') + '</span></div>';
@@ -5720,7 +5720,8 @@ setMicIcon();
       var by = {}; rs.forEach(function (r) { (by[r.word] || (by[r.word] = [])).push(r); });
       var rows = body.querySelectorAll('.w');
       for (var i = 0; i < rows.length; i++) {
-        var list = (by[rows[i].firstChild.textContent] || []).slice(0, 3), html = '';
+        /* Слово берём из data-атрибута, а не из текста: в подписи рядом с ним стоит иконка. */
+        var list = (by[rows[i].getAttribute('data-w')] || []).slice(0, 3), html = '';
         for (var j = 0; j < list.length; j++) {
           var r = list[j], d = new Date(r.t);
           html += '<div class="r"><button data-play="' + r.id + '" title="Послушать">▶ послушать</button><span>' +
