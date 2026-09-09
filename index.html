@@ -21,7 +21,7 @@
   html,body { width:100%; height:100%; overflow:hidden; background:#8fd3f4;
     font-family:"Arial Rounded MT Bold","Trebuchet MS",system-ui,-apple-system,sans-serif;
     user-select:none; -webkit-user-select:none; touch-action:none; }
-  canvas { display:block; position:fixed; inset:0; }
+  #cv { display:block; position:fixed; inset:0; }   /* только игровой холст: правило для всех canvas выносило QR-коды из карточек */
 
   #pad { position:fixed; left:0; right:0; bottom:max(12px,env(safe-area-inset-bottom));
     display:flex; gap:14px; justify-content:center; align-items:flex-end; z-index:5; pointer-events:none; }
@@ -61,6 +61,9 @@
   #stats .dots { letter-spacing:2px; color:#ffb703; }
   #stats .done { color:#2f9e50; font-size:13px; }
   #stats .empty { font-weight:700; color:#8a94a6; font-size:14px; }
+  #stats .tip { font-weight:700; color:#8a94a6; font-size:12.5px; line-height:1.35; margin:0 0 8px; }
+  #stats .row.top { margin:0 0 10px; padding-bottom:10px; border-bottom:1px solid #ece7dc; }
+  #stats .r button[data-play] { font-size:12px; padding:4px 8px; }
   #stats .danger { background:#ffd6d6; color:#8b1a1a; }
   #stats .row { display:flex; align-items:center; gap:8px; margin:10px 0 0; font-size:13px; }
   #stats .r { display:flex; align-items:center; gap:6px; margin:2px 0 6px 14px; font-size:13px; font-weight:700; color:#5b6472; }
@@ -87,20 +90,38 @@
   #loader.hide { opacity:0; pointer-events:none; transition:opacity .5s; }
 
   /* Оверлеи для взрослого: родителям, телефон-руль, «поверни телефон» */
-  #parent, #pult, #turn { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+  #parent, #pult, #bot, #turn { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
     background:rgba(43,33,64,.55); }
-  #parent .card, #pult .card { width:min(92vw,560px); max-height:92vh; overflow:auto; background:#fffdf8; border-radius:24px;
+  #bot { z-index:21; }
+  #parent .card, #pult .card, #bot .card { width:min(92vw,560px); max-height:92vh; overflow:auto; background:#fffdf8; border-radius:24px;
     padding:22px 26px; color:#2b2140; box-shadow:0 20px 50px rgba(0,0,0,.35); text-align:center; }
-  #parent h2, #pult h2 { font-size:22px; margin:0 0 10px; color:#e0691f; }
-  #parent p, #pult p { font-size:16px; line-height:1.35; margin:0 0 10px; font-weight:700; }
-  #parent .note, #pult .note { font-size:13px; color:#68645c; }
-  #parent button, #pult button { border:none; border-radius:16px; padding:12px 28px; font:inherit; font-weight:900; font-size:18px;
+  #parent h2, #pult h2, #bot h2 { font-size:22px; margin:0 0 10px; color:#e0691f; }
+  #parent p, #pult p, #bot p { font-size:16px; line-height:1.35; margin:0 0 10px; font-weight:700; }
+  #parent .note, #pult .note, #bot .note { font-size:13px; color:#68645c; font-weight:700; }
+  #parent button, #pult button, #bot button { border:none; border-radius:16px; padding:12px 28px; font:inherit; font-weight:900; font-size:18px;
     background:#ffcf3d; color:#2b2140; cursor:pointer; box-shadow:0 6px 0 #d9a52a; }
   #pult .code { font-size:48px; letter-spacing:.3em; font-weight:900; color:#2b6cb0; margin:6px 0; }
   #pult canvas { display:none; margin:6px auto 10px; image-rendering:pixelated; }
-  #parent .tg { display:flex; align-items:center; justify-content:center; gap:14px; text-align:left; }
-  #parent .tg canvas { display:none; flex:none; image-rendering:pixelated; }
-  #parent a { color:#2b6cb0; word-break:break-all; }
+  #parent a, #bot a { color:#2b6cb0; word-break:break-all; }
+
+  /* экран «Родителям»: три шага вместо двух абзацев */
+  #parent .lead { font-size:18px; margin:0 0 14px; }
+  #parent .steps { list-style:none; margin:0 0 14px; padding:0; display:flex; gap:10px; text-align:center; }
+  #parent .steps li { flex:1; background:#fff7e6; border-radius:14px; padding:12px 8px; font-size:13.5px;
+    line-height:1.3; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:6px; }
+  #parent .steps b { font-size:26px; font-weight:400; line-height:1; }
+  #parent details { text-align:left; background:#f4f1e8; border-radius:12px; padding:9px 12px; margin:0 0 16px; }
+  #parent summary { cursor:pointer; font-size:13.5px; font-weight:700; color:#68645c; }
+  #parent details p { font-size:13px; font-weight:400; color:#68645c; margin:8px 0 0; }
+  #parent .hint { font-size:13px; color:#8a94a6; margin:8px 0 0; }
+  #parent .tgopen { margin:16px 0 0; font-size:15px; color:#2b6cb0; cursor:pointer; text-decoration:underline; }
+  @media (max-width:520px) { #parent .steps { flex-direction:column; } #parent .steps li { flex-direction:row; text-align:left; } }
+
+  /* окно QR телеграм-бота */
+  #bot canvas { display:none; margin:10px auto; image-rendering:pixelated; border:8px solid #fff; border-radius:10px; }
+  #bot .lnk { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin:10px 0; }
+  #bot .lnk a { font-size:14px; font-weight:700; }
+  #bot button.mini { padding:6px 14px; font-size:14px; box-shadow:0 3px 0 #d9a52a; }
   #turn { flex-direction:column; font-size:28px; font-weight:900; color:#fff; text-align:center; z-index:30;
     pointer-events:none; background:rgba(43,33,64,.85); }
 </style>
@@ -132,18 +153,31 @@
 <div id="parent" style="display:none">
   <div class="card">
     <h2>Родителям — на 20 секунд</h2>
-    <p>Это игра для ребёнка 2–4 лет. Машинка слушается голоса: ребёнок говорит слово — машинка едет, прыгает, заправляется.</p>
-    <p>Сядьте рядом, разрешите микрофон и скажите первое слово вместе. Всё можно пройти и кнопками.</p>
-    <p class="note">🔒 Звук не уходит с устройства: игра запоминает, как слово звучит у вашего ребёнка, и хранит короткую запись второй попытки каждого слова — только на этом устройстве. Послушать, скачать или удалить — кнопка 📊.</p>
+    <p class="lead">Игра для ребёнка 2–4 лет. Он говорит слово — машинка едет, прыгает, заправляется.</p>
+    <ul class="steps">
+      <li><b>🎤</b><span>Разрешите микрофон</span></li>
+      <li><b>👨‍👩‍👦</b><span>Сядьте рядом и скажите первое слово вместе</span></li>
+      <li><b>⌨️</b><span>Всё можно пройти и кнопками</span></li>
+    </ul>
+    <details>
+      <summary>🔒 Звук остаётся на устройстве</summary>
+      <p>Игра запоминает, как слово звучит у вашего ребёнка, и хранит короткую запись второй попытки каждого слова — только на этом устройстве, никуда не отправляя. Послушать, скачать или удалить — кнопка 📊.</p>
+    </details>
     <button id="parentGo">ИГРАТЬ</button>
-    <div id="tgBox" style="display:none">
-      <p style="margin:18px 0 8px">📲 Отчёты о прогрессе — в Telegram</p>
-      <div class="tg">
-        <canvas id="tgQr" width="0" height="0"></canvas>
-        <p class="note">Наведите камеру телефона на код или откройте<br><a id="tgLink" href="#" target="_blank" rel="noopener">…</a><br>и нажмите Start — бот будет присылать, какие слова ребёнок сказал и сколько звёзд собрал.</p>
-      </div>
-      <p class="note" id="tgState">…</p>
-    </div>
+    <p class="hint">или нажмите ПРОБЕЛ</p>
+    <p class="tgopen" id="tgOpen" style="display:none">📲 Отчёты о прогрессе в Telegram</p>
+  </div>
+</div>
+<div id="bot" style="display:none">
+  <div class="card">
+    <h2>📲 Отчёты о прогрессе</h2>
+    <p>Бот присылает, какие слова ребёнок сказал и сколько звёзд собрал.</p>
+    <canvas id="tgQr" width="0" height="0"></canvas>
+    <p class="note">Наведите камеру телефона на код — или откройте ссылку:</p>
+    <div class="lnk"><a id="tgLink" href="#" target="_blank" rel="noopener">…</a><button id="tgCopy" class="mini">копировать</button></div>
+    <p class="note">В открывшемся чате нажмите Start.</p>
+    <p class="note" id="tgState">…</p>
+    <button id="botClose">ЗАКРЫТЬ</button>
   </div>
 </div>
 <div id="pult" style="display:none">
@@ -160,8 +194,9 @@
 
 <div id="stats" style="display:none">
   <h3>ВЫУЧЕННЫЕ СЛОВА</h3>
+  <div class="tip" id="recTip"></div>
+  <label class="row top"><input type="checkbox" id="recOn"> 🎙 записывать голос ребёнка</label>
   <div id="statsBody"></div>
-  <label class="row"><input type="checkbox" id="recOn"> записывать вторую попытку</label>
   <button id="recClear" class="danger">УДАЛИТЬ ЗАПИСИ</button>
   <button id="statsReset" class="danger">СБРОСИТЬ ПРОГРЕСС</button>
   <button id="statsClose">ЗАКРЫТЬ</button>
@@ -226,7 +261,11 @@ function fit() {
 window.addEventListener('resize', fit);
 function checkTurn() {                            // портрет на телефоне: просим повернуть
   var el = document.getElementById('turn');
-  if (el) el.style.display = (!REC && window.innerWidth < window.innerHeight && window.innerWidth < 700) ? 'flex' : 'none';
+  if (!el) return;
+  var busy = ['parent', 'bot', 'pult'].some(function (id) {          // окно взрослого важнее подсказки о повороте
+    var o = document.getElementById(id); return o && o.style.display !== 'none';
+  });
+  el.style.display = (!REC && !busy && window.innerWidth < window.innerHeight && window.innerWidth < 700) ? 'flex' : 'none';
 }
 window.addEventListener('resize', checkTurn);
 
@@ -1529,7 +1568,7 @@ function forceSpawn(k) {
   else if (k === 'hedgehog') o = { t:'hedgehog', x:x, ph: rnd(0, TAU) };
   else if (PROP_KIND[k])     o = { t:'prop', x:x, kind: k, ph: rnd(0, TAU) };
   else if (k === 'fuel')     o = { t:'fuel', x:x };
-  else if (k === 'bucket')   o = { t:'bucket', x:x, ph: rnd(0, TAU) };
+  else if (k === 'bucket')   o = { t:'bucket', x:x, ph: rnd(0, TAU), col: pick(BUCKETS) };   // без col падала и отрисовка, и сбор
   if (!o) { wantEl = null; return; }
   if (/^(cone|puddle|ball|pit|mon)$/.test(o.t)) obsMark(x);
   objs.push(o);
@@ -3088,7 +3127,7 @@ function gvGo(sample) {
           vy: rnd(60, 240) * S, r: rnd(6, 13) * S, c: pick(['#ffd93d', '#fff']),
           kind: 'spark', life: rnd(0.5, 1.0), ay: 300 * S, vr: rnd(-8, 8) });
   }
-  toMode();
+  toGameMode(true);
 }
 
 function garageVoice(dt) {
@@ -3102,10 +3141,10 @@ function garageVoice(dt) {
     if (gv.t > 1.6 && !A.talking()) {
       if (gv.tries < 2) { gvAsk(); return; }
       gv.phase = 'go'; gv.t = 0;                       // «поехали» — тоже слово, ловим его
-      if (Mic.ready()) Mic.listen(3.5, gvGo); else toMode();
+      if (Mic.ready()) Mic.listen(3.5, gvGo); else toGameMode(true);
     }
   }
-  else if (gv.phase === 'go') { if (gv.t > 4.2) toMode(); }
+  else if (gv.phase === 'go') { if (gv.t > 4.2) toGameMode(true); }
 }
 
 function drawMicBubble(cx, cy, title, word, listening) {
@@ -4360,10 +4399,10 @@ function drawGameMode(dt) {
   g.restore();
 }
 
-function toGameMode() {
+function toGameMode(quiet) {                       // quiet — пришли голосом, машинку только что назвали вслух
   A.init(); car = CARS[sel]; state = 'gamemode'; gmT = 0;
   parts.length = 0; texts.length = 0;
-  A.whoosh(); A.say(car.say);
+  A.whoosh(); if (!quiet) A.say(car.say);
   setPad();
 }
 
@@ -4593,13 +4632,33 @@ var Pult = {
 };
 document.getElementById('bPult').addEventListener('click', function () { Pult.toggle(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('pultClose').addEventListener(ev, function () { Pult.hideBox(); }); });
-document.getElementById('bInfo').addEventListener('click', function () { document.getElementById('parent').style.display = 'flex'; TG.render(); });
+document.getElementById('bInfo').addEventListener('click', function () { showParent(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('parentGo').addEventListener(ev, parentOk); });
+function showParent() { document.getElementById('parent').style.display = 'flex'; TG.hint(); checkTurn(); }
 function parentOk() {
   document.getElementById('parent').style.display = 'none';
   try { localStorage.setItem('babygame.parent', '1'); } catch (e) {}
-  A.init(); track('parent_ok');
+  A.init(); track('parent_ok'); checkTurn();
 }
+/* Окно с QR телеграм-бота — отдельное, чтобы не путалось с QR телефона-руля. */
+function showBot() { document.getElementById('bot').style.display = 'flex'; TG.render(); checkTurn(); }
+function hideBot() { document.getElementById('bot').style.display = 'none'; TG.pollId++; checkTurn(); }
+document.getElementById('tgOpen').addEventListener('click', showBot);
+['click', 'pointerup'].forEach(function (ev) { document.getElementById('botClose').addEventListener(ev, hideBot); });
+document.getElementById('tgCopy').addEventListener('click', function () {
+  var b = this, link = TG.link(), done = function () { b.textContent = 'скопировано ✓'; setTimeout(function () { b.textContent = 'копировать'; }, 1600); };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(link).then(done, fallback); return; }
+  } catch (e) {}
+  fallback();
+  function fallback() {                                  // Safari по http и старые браузеры
+    var t = document.createElement('textarea');
+    t.value = link; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(t);
+  }
+});
 
 /* ═══════════════ 17e. ОТЧЁТЫ РОДИТЕЛЮ В TELEGRAM ═══════════════
    Токена бота в игре нет. События копятся тут и уходят POST'ом на реле (tg/worker.js,
@@ -4658,7 +4717,7 @@ var TG = {
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') self.flush(true); });
     window.addEventListener('pagehide', function () { self.flush(true); });
     if (this.on) this.status();                                    // вдруг родитель нажал /stop
-    if (document.getElementById('parent').style.display !== 'none') this.render();
+    this.hint();
   },
   mkCode: function () {
     var alph = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789', s = '', a = new Uint8Array(10), i;
@@ -4723,22 +4782,23 @@ var TG = {
     } catch (e) { if (cb) cb(); }
   },
   render: function () {                                             // экран «Родителям»
-    var box = document.getElementById('tgBox');
-    if (!box) return;
-    if (!this.code) { box.style.display = 'none'; return; }
-    box.style.display = '';
+    if (!this.code) return;
     var a = document.getElementById('tgLink'), link = this.link();
     a.href = link; a.textContent = link.replace(/^https:\/\//, '');
     this.setOn(this.on);
-    qrInto(document.getElementById('tgQr'), link, 3);
+    qrInto(document.getElementById('tgQr'), link, 6);
     this.polls = 0; this.poll(++this.pollId);
+  },
+  hint: function () {                                               // строка «Отчёты в Telegram» на экране «Родителям»
+    var el = document.getElementById('tgOpen');
+    if (el) el.style.display = this.code ? '' : 'none';
   },
   poll: function (id) {                                             // пока экран открыт и не привязано — спрашиваем реле раз в 5 с, до 2 минут
     var self = this;
     this.status(function () {
       if (id !== self.pollId || self.on || self.polls++ >= 24) return;
       setTimeout(function () {
-        if (id === self.pollId && document.getElementById('parent').style.display !== 'none') self.poll(id);
+        if (id === self.pollId && document.getElementById('bot').style.display !== 'none') self.poll(id);
       }, 5000);
     });
   },
@@ -4753,7 +4813,7 @@ function setPad() {
   document.getElementById('kL').classList.toggle('hidden', !arrows);
   document.getElementById('kR').classList.toggle('hidden', !arrows);
   big.textContent = state === 'garage' ? '✓ ДАЛЬШЕ'
-                  : state === 'gamemode' ? '✓ ДАЛЬШЕ'
+                  : state === 'gamemode' ? (MODES.length < 2 ? '✓ ПОЕХАЛИ' : '✓ ДАЛЬШЕ')
                   : state === 'mode'   ? '✓ ПОЕХАЛИ'
                   : state === 'name'   ? '▶ ДАЛЬШЕ'
                   : state === 'ask'    ? '✓ ДА'
@@ -4834,7 +4894,7 @@ function keyDown(k) {
   if (k === 'space') {
     if (state !== 'play' && state !== 'garage' && A.talking()) return;   // не перебиваем диктора
     if (state === 'garage') toGameMode();
-    else if (state === 'gamemode') { if (GAMEMODES[gmSel].id === 'lane') Lane.start(); else toMode(); }
+    else if (state === 'gamemode') { if (GAMEMODES[gmSel].id === 'lane') Lane.start(); else if (MODES.length < 2) startGame(); else toMode(); }
     else if (state === 'repair') repairSpace();
     else if (state === 'name')   { if (nm.phase !== 'good') { Mic.cancel(); nameStep(false); } }
     else if (state === 'ask')    { askAnswer(true); }
@@ -4860,7 +4920,28 @@ function keyDown(k) {
 }
 function keyUp(k) { if (k !== 'space') K[k] = false; }
 
+/* Пока открыто окно взрослого, клавиши в игру не проходят: пробел закрывает окно,
+   Escape тоже. Иначе пробел за спиной родителя уводит игру на следующий экран. */
+var OVERLAYS = [
+  { id: 'bot',      ok: function () { hideBot(); } },
+  { id: 'pult',     ok: function () { Pult.hideBox(); } },
+  { id: 'parent',   ok: function () { parentOk(); } },
+  { id: 'stats',    ok: function () { document.getElementById('statsClose').click(); } },
+  { id: 'settings', ok: function () { document.getElementById('setClose').click(); } }
+];
+function topOverlay() {
+  for (var i = 0; i < OVERLAYS.length; i++) {
+    var el = document.getElementById(OVERLAYS[i].id);
+    if (el && el.style.display !== 'none') return OVERLAYS[i];
+  }
+  return null;
+}
 window.addEventListener('keydown', function (e) {
+  var ov = topOverlay();
+  if (ov) {
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') { e.preventDefault(); ov.ok(); }
+    return;
+  }
   if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) keyDown('space'); }
   else if (e.code === 'ArrowLeft')  { e.preventDefault(); if (!e.repeat) keyDown('left');  }
   else if (e.code === 'ArrowRight') { e.preventDefault(); if (!e.repeat) keyDown('right'); }
@@ -4915,6 +4996,7 @@ setMicIcon();
     var l = Stats.list();
     if (!l.length) {
       body.innerHTML = '<div class="empty">Пока ничего не проговаривали.<br>Слова появятся после первых уроков.</div>';
+      renderRecs();
       return;
     }
     body.innerHTML = l.map(function (r) {
@@ -4939,12 +5021,18 @@ setMicIcon();
         var list = (by[rows[i].firstChild.textContent] || []).slice(0, 3), html = '';
         for (var j = 0; j < list.length; j++) {
           var r = list[j], d = new Date(r.t);
-          html += '<div class="r"><button data-play="' + r.id + '">▶</button><span>' + two(d.getDate()) + '.' + two(d.getMonth() + 1) + ' ' +
-                  two(d.getHours()) + ':' + two(d.getMinutes()) + ' · ' + r.dur.toFixed(1) + ' с</span>' +
-                  '<button data-dl="' + r.id + '">⬇</button><button data-del="' + r.id + '">✕</button></div>';
+          html += '<div class="r"><button data-play="' + r.id + '" title="Послушать">▶ послушать</button><span>' +
+                  two(d.getDate()) + '.' + two(d.getMonth() + 1) + ' ' +
+                  two(d.getHours()) + ':' + two(d.getMinutes()) + '</span>' +
+                  '<button data-dl="' + r.id + '" title="Скачать">⬇</button><button data-del="' + r.id + '" title="Удалить">✕</button></div>';
         }
         if (html) rows[i].insertAdjacentHTML('afterend', html);
       }
+      var tip = document.getElementById('recTip');
+      if (tip) tip.textContent = rs.length
+        ? '▶ послушать — как ребёнок произнёс слово. Записи хранятся только на этом устройстве.'
+        : (Rec.on ? 'Записи появятся после уроков: игра сохраняет вторую попытку каждого слова.'
+                  : 'Записи выключены — включите галку ниже, и игра сохранит вторую попытку каждого слова.');
     });
   }
   function byId(id) { for (var i = 0; i < cache.length; i++) if (cache[i].id === id) return cache[i]; return null; }

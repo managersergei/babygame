@@ -52,12 +52,12 @@ await run("mobile: портрет → подсказка «поверни», т�
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" });
   const page = await ctx.newPage(); const errs = []; page.on("pageerror", e => errs.push(e.message));
   await page.goto(BASE + "?test=1"); await page.waitForFunction(() => window.__bg && window.__bg().state === "garage", null, { timeout: 20000 });
-  if (!(await shown(page, "turn"))) throw new Error("нет подсказки повернуть телефон в портрете");
+  if (await shown(page, "turn")) throw new Error("подсказка о повороте закрывает окно «Родителям»");
   await page.click("#parentGo");
+  if (!(await shown(page, "turn"))) throw new Error("нет подсказки повернуть телефон в портрете");
   // page.tap виснет на fixed-кнопках с touch-action:none в эмуляции — тапаем по координатам
   const tapKS = async () => { const b = await page.evaluate(() => { const r = document.getElementById("kS").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }); await page.touchscreen.tap(b[0], b[1]); };
   await tapKS(); await page.waitForFunction(() => window.__bg().state === "gamemode");
-  await quiet(page); await tapKS(); await page.waitForFunction(() => window.__bg().state === "mode");
   await quiet(page); await tapKS(); await page.waitForTimeout(1500);
   const st = (await bg(page)).state; if (!["play", "name", "intro"].includes(st)) throw new Error("после старта состояние " + st);
   await tapKS(); await page.waitForTimeout(800);

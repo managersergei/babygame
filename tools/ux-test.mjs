@@ -9,22 +9,37 @@ async function fresh(url, storage) {
   const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   p.on("pageerror", e => { console.log("  PAGEERROR", e.message); fail++; });
   await p.goto(B);
-  if (storage) await p.evaluate(s => { for (const k in s) localStorage.setItem(k, s[k]); }, storage);
+  // окно «Родителям» перехватывает клавиши, поэтому в тестах игры его считаем уже прочитанным
+  const st = Object.assign({ "babygame.parent": "1" }, storage || {});
+  await p.evaluate(s => { for (const k in s) localStorage.setItem(k, s[k]); }, st);
   await p.goto(B + url);
   await p.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
   return p;
 }
 const bg = p => p.evaluate(() => window.__bg());
 
-console.log("1) режим управления один (пункт 1)");
-let p = await fresh("?test=1");
-await p.click("#parentGo"); await p.keyboard.press("Space");
+console.log("1) экран управления пропускается, режим один (пункты 1, 17)");
+let p = await fresh("?test=1", { "babygame.parent": "" });
+await p.evaluate(() => { try { localStorage.removeItem("babygame.parent"); } catch (e) {} });
+await p.reload(); await p.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
+ck("пробел не проваливается сквозь окно «Родителям»", (await bg(p)).state === "garage", (await bg(p)).state);
+await p.keyboard.press("Space");                     // пробел закрывает окно, а не уводит на следующий экран
+await p.waitForTimeout(400);
+ck("пробел закрыл окно «Родителям»", !(await p.evaluate(() => document.getElementById("parent").style.display !== "none")), "закрыто");
+await p.keyboard.press("Space");
 await p.waitForFunction(() => window.__bg().state === "gamemode");
 await p.waitForFunction(() => !window.__bg().talking, null, { timeout: 15000 });
-await p.keyboard.press("Space"); await p.waitForFunction(() => window.__bg().state === "mode");
-ck("режим по умолчанию", (await bg(p)).ctl === "full", (await bg(p)).ctl);
-await p.keyboard.press("ArrowLeft"); await p.waitForTimeout(200);
-ck("влево не уводит на скрытый «только пробел»", (await bg(p)).ctl === "full", (await bg(p)).ctl);
+await p.keyboard.press("Space");
+await p.waitForFunction(() => ["play", "name", "intro", "lesson"].includes(window.__bg().state), null, { timeout: 20000 });
+ck("экран выбора управления пропущен", (await bg(p)).state !== "mode", (await bg(p)).state);
+ck("режим по умолчанию: full", (await bg(p)).ctl === "full", (await bg(p)).ctl);
+await p.close();
+p = await fresh("?test=1&all=1");
+await p.keyboard.press("Space");
+await p.waitForFunction(() => window.__bg().state === "gamemode");
+await p.waitForFunction(() => !window.__bg().talking, null, { timeout: 15000 });
+await p.keyboard.press("Space"); await p.waitForFunction(() => window.__bg().state === "mode", null, { timeout: 15000 });
+ck("при ?all=1 экран управления возвращается", (await bg(p)).state === "mode", (await bg(p)).state);
 await p.close();
 
 console.log("2) рекорд и единый счёт (пункты 6, 7)");

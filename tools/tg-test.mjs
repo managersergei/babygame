@@ -18,8 +18,9 @@ const errs = []; page.on("pageerror", e => errs.push(e.message));
 
 await page.goto(BASE + "?test=1");
 await page.waitForFunction(() => window.__bg && window.__bg().state === "garage", null, { timeout: 30000 });
-await page.click("#parentGo");
-await page.waitForFunction(() => document.getElementById("tgBox") && document.getElementById("tgBox").style.display !== "none", null, { timeout: 15000 });
+await page.waitForFunction(() => { const e = document.getElementById("tgOpen"); return e && e.style.display !== "none"; }, null, { timeout: 15000 });
+await page.click("#tgOpen");
+await page.waitForFunction(() => document.getElementById("bot").style.display !== "none", null, { timeout: 15000 });
 
 const link = await page.evaluate(() => document.getElementById("tgLink").href);
 const html = await (await fetch(BASE + "index.html")).text();

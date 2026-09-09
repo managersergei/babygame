@@ -180,7 +180,7 @@ await run("панель родителя: babygame/rec пишется, стро�
   let rows = await page.evaluate(() => document.querySelectorAll("#statsBody .r").length);
   if (rows !== 1) throw new Error("строк записи в панели: " + rows + " (ожидали 1)");
   const btns = await page.evaluate(() => [].map.call(document.querySelectorAll("#statsBody .r button"), b => b.textContent).join(""));
-  if (btns !== "▶⬇✕") throw new Error("кнопки строки: " + btns);
+  if (btns !== "▶ послушать⬇✕") throw new Error("кнопки строки: " + btns);
   console.log("     WAV " + wrote + " Б в babygame/rec, строка в панели: " + btns);
 
   await page.click("#statsBody .r button[data-play]"); await page.waitForTimeout(900);   // ▶ — воспроизведение
