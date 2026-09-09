@@ -514,7 +514,7 @@ var A = (function () {
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ac = new AC();
-    master = ac.createGain(); master.gain.value = 0.55; master.connect(ac.destination);
+    master = ac.createGain(); master.gain.value = A.vol.sfx; master.connect(ac.destination);   // сохранённая громкость, а не жёсткие 0,55
 
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     var d = noiseBuf.getChannelData(0);
@@ -676,14 +676,18 @@ var A = (function () {
       var m = document.getElementById('bgm');
       if (m) m.volume = muted ? 0 : this.vol.mus;
     },
-    ducked: false,
-    duck: function (on) {                            // ребёнок говорит — глушим всё, что мешает
-      this.ducked = on;
+    ducked: false, sayDuck: false,
+    /* Два источника приглушения. Жёсткое (0,06) — когда слушаем ребёнка: там важна тишина.
+       Мягкое (0,25) — пока говорит диктор: речь это главный канал игры, ребёнок текст не
+       читает, и она не должна конкурировать с музыкой, мотором и эффектами. */
+    duck: function (on, src) {
+      if (src === 'say') this.sayDuck = on; else this.ducked = on;
+      var d = this.ducked || this.sayDuck, k = this.ducked ? 0.06 : 0.25;
       var m = document.getElementById('bgm');
-      if (m) m.volume = muted ? 0 : this.vol.mus * (on ? 0.06 : 1);
-      if (master) master.gain.setTargetAtTime(muted ? 0 : this.vol.sfx * (on ? 0.06 : 1),
-                                              ac ? ac.currentTime : 0, 0.05);
-      if (engGain && ac) engGain.gain.setTargetAtTime(on ? 0 : 0.05, ac.currentTime, 0.05);
+      if (m) m.volume = muted ? 0 : this.vol.mus * (d ? k : 1);
+      if (master) master.gain.setTargetAtTime(muted ? 0 : this.vol.sfx * (d ? k : 1),
+                                              ac ? ac.currentTime : 0, 0.08);
+      if (engGain && ac) engGain.gain.setTargetAtTime(d ? (this.ducked ? 0 : 0.012) : 0.05, ac.currentTime, 0.08);
     },
     tracks: ['loop.mp3', 'loop2.mp3', 'loop3.mp3', 'loop4.mp3', 'loop5.mp3'],
     music: function () {
@@ -925,7 +929,7 @@ var Mic = (function () {
       try { attach(stream, 'phone'); denied = false; return true; } catch (e) { return false; }
     },
     backToLocal: function () { if (src === 'phone') { src = 'local'; rdy = false; request(false); } },
-    cancel: function () { listening = false; speaking = false; cb = null; cont = null; recDone(false); },
+    cancel: function () { listening = false; speaking = false; cb = null; cont = null; recDone(false); A.duck(false); },
     arm: function (fn) { if (!rdy) return; cont = fn; listening = true; speaking = false; frames = []; quiet = 0; tout = 1e9; },
     disarm: function () { cont = null; listening = false; speaking = false; },
     armed: function () { return !!cont; },
@@ -1364,7 +1368,7 @@ var nextX = 0, lastFuelX = 0, archPending = false;
 var fuel = 1, outOfFuel = false, emptyShown = false, beepT = 0, lowT = 0, refuels = 0;
 /* Каждый десятый собранный бензин чуть увеличивает бак: видно по шкале, сбрасывается после проигрыша. */
 var fuelPicks = 0, tankMul = 1;
-var celebrate = 0, flash = 0, shake = 0, sirenT = 0, fxT = 0, T = 0;
+var celebrate = 0, flash = 0, flashX = null, flashY = null, shake = 0, sirenT = 0, fxT = 0, T = 0;
 
 var CARX = 0;
 var CRUISE, VMAX, ACC, BRK, GRAV, JUMP1, JUMP2, FUELDIST, EASYSPD;
@@ -1977,7 +1981,7 @@ function updatePlay(dt) {
       var hard = vy < -640 * S;
       carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.26;
       A.land();
-      if (hard) shake = 11 * S;
+      if (hard) shake = 5 * S;
       for (var i = 0; i < (hard ? 20 : 9); i++)
         P({ x: carX + rnd(-cw*0.4, cw*0.4), y: gh + 4*S, vx: rnd(-300,300)*S, vy: rnd(60,260)*S,
             r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff',
@@ -3754,7 +3758,7 @@ function toBreakdown(why) {
   damage = 3; spd = 0; crash.off = 0;
   crash.wx = carX + 30 * S; crash.wy = 50 * S;
   crash.vx = rnd(220, 380) * S; crash.vy = rnd(360, 520) * S; crash.rot = 0;
-  shake = 13 * S;
+  shake = 6 * S;
   Mic.disarm(); A.engine(0, 1, false);
   A.sputter(); A.clatter();
   fromCrash = true;                               // фразу скажем один раз — здесь
@@ -3879,7 +3883,7 @@ var autoJump = false, stageSub = 0, subT = 0, stopHold = 0, idleT = 0, chaseT = 
 function hurt(why) {                            // получили по кузову
   if (state !== 'play') return;
   damage++;
-  shake = 9 * S; flash = 0.12;
+  shake = 4.5 * S; flash = 0.12;
   A.crunch();
   popText(['ОЙ!', 'АЙ!', 'БАМ!'][Math.min(2, damage - 1)], carX, carY + car.h * S, '#ff8f8f');
   for (var i = 0; i < 16; i++)
@@ -4631,7 +4635,11 @@ function drawRearCar(x, y, w, h, tilt, blink) {
   g.lineTo(w * 0.22, -h * 1.52); g.lineTo(-w * 0.22, -h * 1.52); g.closePath(); g.fill();
   g.fillStyle = 'rgba(255,255,255,.55)';
   roundRect(-w * 0.22, -h * 1.55, w * 0.44, 3 * S, 1.5 * S); g.fill();   // светлая кромка переднего края
-  if (car.id === 'police') { g.fillStyle = Math.floor(T * 6) % 2 ? '#2b6cb0' : '#ff3b3b'; roundRect(-w * 0.12, -h * 1.15, w * 0.24, h * 0.1, 5 * S); g.fill(); }
+  if (car.id === 'police') {                       // плавное перетекание вместо мигания 3 раза в секунду
+    var pk = 0.5 + Math.sin(T * 3.4) * 0.5;
+    g.fillStyle = mix('#ff3b3b', '#2b6cb0', pk);
+    roundRect(-w * 0.12, -h * 1.15, w * 0.24, h * 0.1, 5 * S); g.fill();
+  }
   if (car.id === 'fire') { g.fillStyle = '#c0c0c0'; roundRect(-w * 0.05, -h * 1.62, w * 0.1, h * 0.28, 4 * S); g.fill(); }
   g.restore();
 }
@@ -4938,7 +4946,7 @@ var Lane = {
     drawRearShadow(cx, H * LN.carY, LN.carW * S, ln.y);
     var squat = ln.gas ? 0.96 : 1;                            // лёгкое приседание на газу
     drawRearCar(cx, H * LN.carY - ln.y, LN.carW * S, LN.carH * S * squat,
-                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 14) % 2 === 0);
+                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0);   // 2,5 вспышки в секунду — в пределах правила о трёх
     drawParts(false);
   },
   draw: function (dt) {
@@ -5654,6 +5662,8 @@ function frame(ts) {
     if (celebrate > 0) celebrate = Math.max(0, celebrate - dt);
   }
   Mic.poll(dt);
+  var sp = A.talking();                              // уступаем диктору место в миксе
+  if (sp !== A.sayDuck) A.duck(sp, 'say');
   if (AUTO) autoStep(dt);
 
   if (state !== 'play' && state !== 'lane' && state !== 'lesson' && state !== 'ask' && (K.left || K.right)) {
@@ -5735,9 +5745,16 @@ function frame(ts) {
   }
   g.restore();
 
+  /* Полноэкранная белая заливка до 0,75 — прямой запрет для 2–4 лет: вестибулярно и
+     зрительно это удар. Заменено мягким тёплым свечением от центра события, вдвое слабее. */
   if (flash > 0) {
-    g.save(); g.globalAlpha = clamp(flash * 1.4, 0, 0.75);
-    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.restore();
+    var fa = clamp(flash * 0.8, 0, 0.34);
+    var fx0 = flashX != null ? flashX : W / 2, fy0 = flashY != null ? flashY : GY - 60 * S;
+    var gr = g.createRadialGradient(fx0, fy0, 0, fx0, fy0, Math.max(W, H) * 0.55);
+    gr.addColorStop(0, 'rgba(255,250,224,' + fa.toFixed(3) + ')');
+    gr.addColorStop(0.55, 'rgba(255,246,200,' + (fa * 0.45).toFixed(3) + ')');
+    gr.addColorStop(1, 'rgba(255,240,180,0)');
+    g.save(); g.fillStyle = gr; g.fillRect(0, 0, W, H); g.restore();
   }
 }
 
