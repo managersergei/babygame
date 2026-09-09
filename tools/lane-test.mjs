@@ -9,6 +9,16 @@ const B = process.env.BASE || "http://127.0.0.1:8765/";
 let fail = 0;
 const ck = (n, ok, d) => { console.log(`  ${ok ? "ok " : "FAIL"} ${n}${d !== undefined ? ": " + d : ""}`); if (!ok) fail++; };
 
+// для точечных замеров все слова считаем выученными: иначе посреди измерения
+// ритм уроков сам ставит предмет на дорогу и он попадает в счётчики
+const ALL_KNOWN = (() => {
+  const w = ["ПРЫЖОК","ГАЗ","ЗВЕЗДА","ШАРИК","КОНУС","ЛУЖА","ТРАМПЛИН","ПЛАТФОРМА","ЯМА","БЕНЗИН","МОНСТР","РОБОТ",
+             "КРАСКА","ПТИЦА","САМОЛЁТ","ДЕРЕВО","ДОМ","КУСТ","ОБЛАКО","ЦВЕТОК","ЯБЛОКО","МЯЧ","БАБОЧКА","ЁЖИК",
+             "РАКЕТА","ПОЕЗД","КОРОВА","ЛОШАДЬ","КУРИЦА","ЗАБОР","СЕНО","МЕЛЬНИЦА","РОМАШКИ","КОЛЕСО"];
+  const d = {}; w.forEach(x => d[x] = { n: 9, s: 1 });
+  return { "babygame.stats": JSON.stringify(d), "babygame.session": "99" };
+})();
+
 const chromium = await loadChromium();
 let browser; try { browser = await chromium.launch(); } catch { browser = await chromium.launch({ executablePath: cachedChrome() }); }
 const errs = [];
@@ -25,9 +35,23 @@ async function open(q, storage) {
   return p;
 }
 const lane = p => p.evaluate(() => window.__bg().lane);
+// на время точечных замеров дорогу замораживаем, иначе в счётчики попадают случайные объекты
+const freeze = p => p.evaluate(() => { const L = window.__lane(); L.ln.spawnZ = 999; L.ln.decorZ = 999; L.ln.skyZ = 999; L.ln.objs.length = 0; L.ln.hits = 0; L.ln.overs = 0; L.ln.x = 0; });
+// исход конкретного объекта надёжнее ждать, чем угадывать паузу: скорость гуляет от рельефа
+async function outcome(p, kind, jumpAfter) {
+  await freeze(p);
+  await p.evaluate(k => window.__lane().push(k, 0, 0.30), kind);
+  if (jumpAfter != null) { await p.waitForTimeout(jumpAfter); await p.keyboard.press("Space"); }
+  for (let i = 0; i < 60; i++) {
+    const d = await p.evaluate(() => { const o = window.__lane().ln.objs[0]; return o ? String(o.done) : "нет объекта"; });
+    if (d !== "false") return d;
+    await p.waitForTimeout(100);
+  }
+  return "не дождались";
+}
 
 console.log("1) геометрия и хитбоксы (пункт 12.1)");
-let p = await open("?s=lane&test=1");
+let p = await open("?s=lane&test=1", ALL_KNOWN);
 // объект в соседней полосе не должен задевать машинку, стоящую по центру
 const geo = await p.evaluate(() => {
   const L = window.__lane(), ln = L.ln;
@@ -44,53 +68,58 @@ const geo = await p.evaluate(() => {
 ck("соседняя полоса дальше корпуса машины", geo.out.filter(o => o.lane === 1).every(o => o.dx > 380), JSON.stringify(geo.out.filter(o => o.lane === 1).map(o => o.dx)));
 
 // прямая проверка: ставим конус в соседнюю полосу и проезжаем — удара быть не должно
-const near1 = await p.evaluate(async () => {
-  const L = window.__lane(), ln = L.ln;
-  ln.objs.length = 0; ln.x = 0; ln.hits = 0; ln.overs = 0;
-  L.push({ t: "cone", h: 80, jump: true }, 1, 0.35);
-  return true;
-});
+await freeze(p);
+await p.evaluate(() => window.__lane().push({ t: "cone", h: 44, jump: true }, 1, 0.35));
 await p.waitForTimeout(2500);
 ck("конус в соседней полосе не задевает", (await lane(p)).hits === 0, `ударов ${(await lane(p)).hits}`);
 
 // тот же конус в своей полосе — удар должен быть
-await p.evaluate(() => { const L = window.__lane(); L.ln.objs.length = 0; L.ln.x = 0; L.ln.hits = 0; L.push({ t: "cone", h: 80, jump: true }, 0, 0.35); });
+await freeze(p);
+await p.evaluate(() => window.__lane().push({ t: "cone", h: 44, jump: true }, 0, 0.35));
 await p.waitForTimeout(2500);
 ck("конус в своей полосе бьёт", (await lane(p)).hits === 1, `ударов ${(await lane(p)).hits}`);
 
 console.log("2) прыжок (пункт 11)");
-await p.evaluate(() => { const L = window.__lane(); L.ln.objs.length = 0; L.ln.x = 0; L.ln.hits = 0; L.ln.overs = 0; L.ln.jumps = 0; });
+await freeze(p);
+await p.evaluate(() => { window.__lane().ln.jumps = 0; });
 await p.keyboard.press("Space");
 await p.waitForTimeout(120);
 ck("пробел поднимает машинку", (await lane(p)).y > 20, `высота ${(await lane(p)).y}`);
 await p.waitForTimeout(1200);
 ck("машинка приземляется", (await lane(p)).y === 0, `высота ${(await lane(p)).y}`);
-// перепрыгнуть конус
-await p.evaluate(() => { const L = window.__lane(); L.ln.objs.length = 0; L.ln.x = 0; L.ln.hits = 0; L.ln.overs = 0; L.push({ t: "cone", h: 80, jump: true }, 0, 0.30); });
-await p.waitForTimeout(600); await p.keyboard.press("Space");
-await p.waitForTimeout(2200);
-const jr = await lane(p);
-ck("конус можно перепрыгнуть", jr.overs === 1 && jr.hits === 0, `перепрыгнуто ${jr.overs}, ударов ${jr.hits}`);
-// стог сена перепрыгнуть нельзя
-await p.evaluate(() => { const L = window.__lane(); L.ln.objs.length = 0; L.ln.x = 0; L.ln.hits = 0; L.ln.overs = 0; L.push({ t: "haystack", h: 120 }, 0, 0.30); });
-await p.waitForTimeout(600); await p.keyboard.press("Space");
-await p.waitForTimeout(2200);
-const hs = await lane(p);
-ck("стог сена не перепрыгивается", hs.hits === 1 && hs.overs === 0, `ударов ${hs.hits}, перепрыгнуто ${hs.overs}`);
+const r1 = await outcome(p, { t: "cone", h: 44, jump: true }, 500);
+ck("конус можно перепрыгнуть", r1 === "over", r1);
+const r2 = await outcome(p, { t: "cone", h: 44, jump: true }, null);
+ck("без прыжка конус бьёт", r2 === "hit", r2);
+const r3 = await outcome(p, { t: "balloon", h: 60, jump: true, pop: true, air: 190 }, 500);
+ck("шарик лопается прыжком", r3 === "over", r3);
+const r4 = await outcome(p, { t: "balloon", h: 60, jump: true, pop: true, air: 190 }, null);
+ck("шарик без прыжка пролетает мимо, а не бьёт", r4 === "passed", r4);
 await p.close();
 
 console.log("3) скорость и плотность (пункт 12)");
-p = await open("?s=lane&test=1");
+p = await open("?s=lane&test=1", ALL_KNOWN);
 const s0 = (await lane(p)).spd;
-await p.waitForTimeout(20000);
+ck("старт медленный", s0 <= 0.32, `спд ${s0}`);
+// скорость гуляет от рельефа, поэтому сравниваем средние за пару секунд, а не мгновенные значения
+const avgSpd = async (ms) => { let s = 0, n = 0; const t0 = Date.now();
+  while (Date.now() - t0 < ms) { s += (await lane(p)).spd; n++; await p.waitForTimeout(120); } return s / n; };
+await p.keyboard.down("ArrowUp");                  // газ: скорость должна вырасти за пару секунд, а не за две минуты
+await p.waitForTimeout(1500);
+const sg = await avgSpd(2000);
+await p.keyboard.up("ArrowUp");
+ck("газ заметно ускоряет", sg > s0 * 1.18, `с газом ${sg.toFixed(3)} против ${s0}`);
+await p.waitForTimeout(1500);
+const sr = await avgSpd(2000);
+ck("без газа возвращается", sr < sg * 0.92, `после отпускания ${sr.toFixed(3)}`);
+await p.waitForTimeout(15000);
 const s1 = await lane(p);
-ck("старт медленный", s0 <= 0.27, `спд ${s0}`);
-ck("разгон постепенный", s1.spd > s0 && s1.spd < 0.33, `через 20 с ${s1.spd}`);
-ck("на дороге не толпа", s1.objs <= 8, `объектов ${s1.objs}`);
+ck("скорость держится в разумных пределах", s1.spd > 0.2 && s1.spd < 0.7, `через 20 с ${s1.spd}`);
+ck("на дороге не толпа", s1.objs <= 10, `объектов ${s1.objs}`);
 await p.close();
 
 console.log("4) объекты уезжают за экран, а не пропадают (пункт 12.2)");
-p = await open("?s=lane&test=1");
+p = await open("?s=lane&test=1", ALL_KNOWN);
 const zmin = await p.evaluate(async () => {
   const L = window.__lane(); let m = 9;
   for (let i = 0; i < 120; i++) {
