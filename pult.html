@@ -55,6 +55,17 @@
   #wheel svg { width:100%; height:100%; display:block; filter:drop-shadow(0 10px 18px rgba(0,0,0,.28)); }
   #wrap.tilt #L, #wrap.tilt #R, #wrap.tilt #S { display:none; }
   #wrap.tilt #pad { display:block; }
+
+  /* Газ под левым большим пальцем, прыжок под правым: при рулении наклоном
+     руки лежат по краям, и обычные кнопки туда не дотягиваются. */
+  #thumbs { position:fixed; inset:auto 0 0 0; z-index:5; display:none;
+    justify-content:space-between; pointer-events:none;
+    padding:0 max(16px,env(safe-area-inset-left)) max(18px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-right)); }
+  #thumbs.on { display:flex; }
+  #thumbs .round { pointer-events:auto; width:min(30vh,150px); height:min(30vh,150px); border-radius:50%;
+    font-size:min(5.5vh,30px); display:flex; align-items:center; justify-content:center; }
+  #G { background:linear-gradient(#c8f5b8,#7bd66b); box-shadow:0 8px 0 #4f9f40, 0 14px 24px rgba(0,0,0,.25); }
+  #J { background:linear-gradient(#fff2a8,#ffcf3d); box-shadow:0 8px 0 #d9a52a, 0 14px 24px rgba(0,0,0,.25); }
 </style>
 </head>
 <body>
@@ -70,6 +81,10 @@
     <button class="btn" id="R">▶</button>
     <button class="btn" id="S">⬆ ПРЫЖОК</button>
   </div>
+</div>
+<div id="thumbs">
+  <button class="btn round" id="G">ГАЗ</button>
+  <button class="btn round" id="J">⬆</button>
 </div>
 <div id="turnHint">🔄 Поверни телефон — рулить удобнее</div>
 <div id="wheel" aria-hidden="true">
@@ -90,7 +105,7 @@
 'use strict';
 var st = document.getElementById('st'), codeEl = document.getElementById('code');
 var wrapEl = document.getElementById('wrap'), wheelEl = document.getElementById('wheel');
-var conn = null, peer = null, tiltOn = false, bound = false, wake = null;
+var conn = null, peer = null, tiltOn = false, bound = false, wake = null, gen = 0, tmo = 0;
 var lastSteer = 0, lastSend = 0, smooth = 0, roll0 = null, flatT = 0;
 var DEAD = 4, MAXA = 30;                    // мёртвая зона и предел поворота, градусы
 function status(s) { st.textContent = s; }
@@ -106,37 +121,114 @@ function loadScript(urls, cb) {
   })();
 }
 
+/* Повторное подключение после сна компьютера. Прежняя версия ломалась трижды:
+   старое соединение при destroy() перебивало статус фразой «Связь прервалась»,
+   у попытки не было таймаута (зависала на «Соединяемся…»), и библиотека PeerJS
+   скачивалась заново на каждое нажатие. */
 function connect() {
   var code = (codeEl.value || '').trim().toUpperCase();
   if (code.length !== 4) { status('Нужен код из 4 знаков'); return; }
   try { localStorage.setItem('pult.code', code); } catch (e) {}
   status('Соединяемся…');
-  loadScript(['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js', 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'], function (ok) {
-    if (!ok || !window.Peer) { status('Нет интернета — не могу подключиться'); return; }
-    if (peer) { try { peer.destroy(); } catch (e) {} }
+  var my = ++gen;                                    // хендлеры прошлых попыток молчат
+  if (tmo) { clearTimeout(tmo); tmo = 0; }
+  if (conn) { try { conn.close(); } catch (e) {} conn = null; }
+  if (peer) { try { peer.destroy(); } catch (e) {} peer = null; }
+  tmo = setTimeout(function () {
+    if (my !== gen) return;
+    if (!(conn && conn.open)) status('Не отвечает. Обнови экран игры или сосканируй QR заново');
+  }, 9000);
+  function go() {
+    if (my !== gen) return;
+    if (!window.Peer) { status('Нет интернета — не могу подключиться'); return; }
     peer = new Peer(undefined, { debug: 0 });
     peer.on('open', function () {
+      if (my !== gen) return;
       conn = peer.connect('bgame-' + code, { reliable: false });
       conn.on('open', function () {
-        status('Подключено ✓ Рули!');
-        if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (w) { wake = w; }).catch(function () {});
+        if (my !== gen) return;
+        if (tmo) { clearTimeout(tmo); tmo = 0; }
+        status('Подключено ✓ Рули!'); keepAwake();
       });
-      conn.on('close', function () { status('Связь прервалась. Нажми «Подключить»'); });
-      conn.on('error', function () { status('Ошибка связи'); });
+      conn.on('close', function () { if (my === gen) status('Связь прервалась. Нажми «Подключить»'); });
+      conn.on('error', function () { if (my === gen) status('Ошибка связи'); });
     });
-    peer.on('error', function (e) { status(e.type === 'peer-unavailable' ? 'Такого кода нет. Проверь экран игры' : 'Ошибка: ' + (e.type || '')); });
+    peer.on('error', function (e) {
+      if (my !== gen) return;
+      var t = (e && e.type) || '';
+      if (t === 'peer-unavailable') {                 // игра как раз переподключается — повторим сами
+        if (my === gen) setTimeout(function () { if (my === gen && !(conn && conn.open)) connect(); }, 2500);
+        status('Игра не отвечает, пробую ещё раз…');
+        return;
+      }
+      status('Ошибка: ' + t);
+    });
+  }
+  if (window.Peer) { go(); return; }                  // библиотека уже в памяти — не качаем заново
+  loadScript(['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js', 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'], function (ok) {
+    if (!ok) { status('Нет интернета — не могу подключиться'); return; }
+    go();
   });
 }
+/* Блокировку экрана браузер снимает при уходе вкладки в фон и обратно не возвращает. */
+function keepAwake() {
+  if (!navigator.wakeLock) return;
+  navigator.wakeLock.request('screen').then(function (w) { wake = w; }).catch(function () {});
+}
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState !== 'visible') return;
+  keepAwake();
+  if (!(conn && conn.open) && (codeEl.value || '').length === 4) connect();   // вернулись из фона — поднимаем связь
+});
 
-function bind(el, k) {
-  var on = function (e) { e.preventDefault(); el.classList.add('down'); send({ t: 'key', k: k, d: 1 }); if (navigator.vibrate) navigator.vibrate(12); };
-  var off = function (e) { if (e) e.preventDefault(); el.classList.remove('down'); send({ t: 'key', k: k, d: 0 }); };
-  el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off);
-  el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
+/* Защита от случайных касаний. Три реальных дефекта прежней версии: не учитывался
+   pointerId (второй палец ломал удержание), pointerleave на телефоне приходит только
+   при отпускании, и не было ни одного пути разрядки при уходе в фон — палец «залипал».
+   Ладонь отсекаем по площади касания там, где браузер её сообщает. */
+var held = {};                       // pointerId → { el, key, t }
+var MAXHOLD = 8000;                  // дольше — это не нажатие, а лежащая рука
+function press(el, key, down) {
+  el.classList.toggle('down', down);
+  send({ t: key === 'gas' ? 'gas' : 'key', k: key, d: down ? 1 : 0 });
+  if (down && navigator.vibrate) navigator.vibrate(12);
+}
+function releaseAll() {
+  for (var id in held) if (held.hasOwnProperty(id)) { press(held[id].el, held[id].key, false); delete held[id]; }
+}
+function bind(el, key) {
+  el.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    if (e.width && e.height && e.width * e.height > 5200) return;       // ладонь, а не палец
+    if (held[e.pointerId]) return;
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    held[e.pointerId] = { el: el, key: key, t: Date.now() };
+    press(el, key, true);
+  });
+  function up(e) {
+    if (!held[e.pointerId]) return;
+    delete held[e.pointerId];
+    var still = false;
+    for (var id in held) if (held.hasOwnProperty(id) && held[id].el === el) still = true;
+    if (!still) press(el, key, false);
+  }
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
 }
 bind(document.getElementById('L'), 'left');
 bind(document.getElementById('R'), 'right');
 bind(document.getElementById('S'), 'space');
+bind(document.getElementById('G'), 'gas');
+bind(document.getElementById('J'), 'space');
+setInterval(function () {                                              // страховка от долгого удержания
+  var now = Date.now();
+  for (var id in held) if (held.hasOwnProperty(id) && now - held[id].t > MAXHOLD) {
+    press(held[id].el, held[id].key, false); delete held[id];
+  }
+}, 500);
+['visibilitychange', 'blur', 'pagehide'].forEach(function (ev) {
+  (ev === 'visibilitychange' ? document : window).addEventListener(ev, releaseAll);
+});
 
 /* ── Наклон телефона = руль ──────────────────────────────────────────────────
    Крен считаем из вектора силы тяжести, а не из «сырого» gamma: в позе «держу
@@ -178,6 +270,8 @@ function setTilt(on) {
   document.getElementById('tilt').classList.toggle('on', on);
   wheelEl.classList.toggle('on', on);
   wrapEl.classList.toggle('tilt', on);
+  document.getElementById('thumbs').classList.toggle('on', on);   // газ и прыжок под большие пальцы
+  releaseAll();
   if (on) { roll0 = null; smooth = 0; }
   else {
     wheelEl.style.transform = 'rotate(0deg)';

@@ -60,12 +60,28 @@ async function tiltTo(beta, gamma) {
 }
 await tiltTo(0, -80);                       // ноль калибровки: телефон «как руль», экран к лицу
 await pult.waitForTimeout(150);
-for (let i = 0; i < 14; i++) { await tiltTo(-26, -76); await pult.waitForTimeout(60); }
-await game.waitForTimeout(500);
+await game.evaluate(() => { window.__lane().ln.x = 0; });   // кнопка ◀ до этого увела машинку в упор
+for (let i = 0; i < 26; i++) { await tiltTo(-30, -74); await pult.waitForTimeout(60); }   // шлём непрерывно: свежесть данных руля 1,5 с
 const steer = await game.evaluate(() => window.__bg().pult || null);
 const rot = await pult.evaluate(() => document.getElementById("wheel").style.transform);
 const x2 = (await game.evaluate(() => window.__bg())).lane.x;
-console.log("наклон рулит: x " + x1 + " → " + x2.toFixed(2) + " " + (Math.abs(x2 - x1) > 0.15 ? "OK" : "FAIL") + " | руль повёрнут: " + rot);
+console.log("наклон рулит: x 0 → " + x2.toFixed(2) + " " + (Math.abs(x2) > 0.2 ? "OK" : "FAIL") + " | руль повёрнут: " + rot);
+
+// ── газ под левым большим пальцем (пункт 4)
+const thumbsOn = await pult.evaluate(() => document.getElementById("thumbs").classList.contains("on"));
+const g0 = (await game.evaluate(() => window.__bg())).lane.spd;
+await pult.evaluate(() => { const b = document.getElementById("G"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 7 })); });
+await game.waitForTimeout(2200);
+const g1 = (await game.evaluate(() => window.__bg())).lane.spd;
+await pult.evaluate(() => { const b = document.getElementById("G"); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 7 })); });
+console.log("газ с телефона: кнопки видны " + (thumbsOn ? "OK" : "FAIL") + ", скорость " + g0.toFixed(3) + " → " + g1.toFixed(3) + " " + (g1 > g0 * 1.12 ? "OK" : "FAIL"));
+
+// ── защита от залипания: уход вкладки в фон разряжает все кнопки
+await pult.evaluate(() => { const b = document.getElementById("J"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 9 })); });
+await pult.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+await game.waitForTimeout(300);
+const stuck = await pult.evaluate(() => document.getElementById("J").classList.contains("down"));
+console.log("кнопка не залипает при уходе в фон: " + (stuck ? "FAIL" : "OK"));
 
 // ── выключили наклон: управление сразу возвращается кнопкам (баг «1,5 секунды прямо»)
 await pult.evaluate(() => document.getElementById("tilt").click());

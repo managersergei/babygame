@@ -4985,27 +4985,78 @@ function loadScript(urls, cb) {
   })();
 }
 var Pult = {
-  on: false, everOn: false, steer: 0, gas: false, lastT: -9, code: '', peer: null, conn: null, loading: false,
+  on: false, everOn: false, steer: 0, gas: false, lastT: -9, code: '', token: '', peer: null, conn: null,
+  loading: false, tries: 0, reT: 0,
   fresh: function () { return T - this.lastT < 1.5; },
-  ensure: function () { if (!this.peer && !this.loading && !REC) this.open(); this.showBox(); },
+  /* Раньше проверялось только «объект peer существует». После сна компьютера объект
+     оставался, поэтому связь не переоткрывалась НИКОГДА, а телефон получал «такого кода нет». */
+  dead: function () { return !this.peer || this.peer.destroyed || this.peer.disconnected; },
+  ensure: function () {
+    if (!REC && !this.loading && this.dead()) { this.drop(); this.open(); }
+    this.showBox();
+  },
+  drop: function () {
+    if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+    this.peer = null; this.conn = null; this.on = false; this.steer = 0; this.gas = false; this.lastT = -9;
+  },
+  /* Код и токен постоянные: сервер отдаёт занятый id обратно, если токен совпал,
+     поэтому у родителя на телефоне остаётся тот же код и тот же QR. */
+  ident: function () {
+    var alph = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789', i;
+    try {
+      var sv = JSON.parse(localStorage.getItem('babygame.pult') || 'null');
+      if (sv && /^[A-Z2-9]{4}$/.test(sv.c) && sv.t) { this.code = sv.c; this.token = sv.t; return; }
+    } catch (e) {}
+    var code = '', tok = '', a = new Uint8Array(20);
+    try { crypto.getRandomValues(a); } catch (e) { for (i = 0; i < 20; i++) a[i] = Math.floor(Math.random() * 256); }
+    for (i = 0; i < 4; i++) code += alph[a[i] % alph.length];
+    for (i = 4; i < 20; i++) tok += (a[i] % 36).toString(36);
+    this.code = code; this.token = tok;
+    try { localStorage.setItem('babygame.pult', JSON.stringify({ c: code, t: tok })); } catch (e) {}
+  },
+  newCode: function () { try { localStorage.removeItem('babygame.pult'); } catch (e) {} this.ident(); },
   open: function () {
-    var self = this, alph = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789', code = '';
-    for (var i = 0; i < 4; i++) code += alph[Math.floor(RNG() * alph.length)];
-    self.code = code; self.loading = true;
+    var self = this;
+    self.ident(); self.loading = true;
     loadScript(['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js', 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'], function (okk) {
       self.loading = false;
       if (!okk || !window.Peer) { self.status('Нет интернета — телефон-руль пока недоступен'); return; }
-      var peer = new window.Peer('bgame-' + code, { debug: 0 });
+      var peer = new window.Peer('bgame-' + self.code, { debug: 0, token: self.token });
       self.peer = peer;
-      peer.on('open', function () { self.status('Ждём телефон…'); self.render(); });
+      peer.on('open', function () { self.tries = 0; self.status('Ждём телефон…'); self.render(); });
       peer.on('connection', function (conn) {
+        if (self.conn) { try { self.conn.close(); } catch (e) {} }     // старое соединение не должно перебивать статус
         self.conn = conn;
         conn.on('open', function () { self.on = true; self.everOn = true; self.status('Телефон подключён ✓'); A.coin(3); track('pult_on'); setTimeout(function () { self.hideBox(); }, 1200); });
         conn.on('data', function (m) { self.onData(m); });
-        conn.on('close', function () { self.on = false; self.status('Телефон отключился'); });
+        conn.on('close', function () { self.on = false; self.steer = 0; self.gas = false; self.status('Телефон отключился'); });
       });
-      peer.on('error', function (e) { self.status('Ошибка связи: ' + (e && e.type || '')); });
+      peer.on('disconnected', function () { self.status('Восстанавливаю связь…'); self.retry(); });
+      peer.on('close', function () { self.peer = null; self.on = false; });
+      peer.on('error', function (e) {
+        var t = (e && e.type) || '';
+        if (t === 'unavailable-id') { self.drop(); self.newCode(); self.open(); return; }   // код занял кто-то другой
+        if (t === 'network' || t === 'socket-error' || t === 'socket-closed') { self.retry(); return; }
+        self.status('Ошибка связи: ' + t);
+      });
     });
+  },
+  /* Лестница попыток: 0,5 → 2 → 5 секунд. Без неё при пропавшем интернете получается
+     бесконечный цикл reconnect → error → reconnect. */
+  retry: function () {
+    var self = this;
+    if (self.reT || self.tries > 6) return;
+    var wait = [500, 500, 2000, 2000, 5000, 5000, 5000][self.tries++] || 5000;
+    self.reT = setTimeout(function () {
+      self.reT = 0;
+      if (!self.peer || self.peer.destroyed) { self.drop(); self.open(); return; }
+      if (self.peer.disconnected) { try { self.peer.reconnect(); } catch (e) { self.drop(); self.open(); } }
+    }, wait);
+  },
+  wake: function () {                       // компьютер проснулся или вкладка вернулась
+    if (REC || !this.peer) return;
+    if (this.peer.destroyed) { this.drop(); this.open(); }
+    else if (this.peer.disconnected) { this.tries = 0; this.retry(); }
   },
   onData: function (m) {
     if (!m) return;
@@ -5041,6 +5092,9 @@ var Pult = {
   toggle: function () { var b = document.getElementById('pult'); if (b.style.display === 'none') this.ensure(); else this.hideBox(); }
 };
 document.getElementById('bPult').addEventListener('click', function () { Pult.toggle(); });
+document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') Pult.wake(); });
+window.addEventListener('online', function () { Pult.wake(); });
+window.addEventListener('pageshow', function () { Pult.wake(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('pultClose').addEventListener(ev, function () { Pult.hideBox(); }); });
 document.getElementById('bInfo').addEventListener('click', function () { showParent(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('parentGo').addEventListener(ev, parentOk); });
