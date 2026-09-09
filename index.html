@@ -277,7 +277,7 @@ window.addEventListener('resize', checkTurn);
    ОСТОРОЖНО с новыми именами: monster_b и monster_c в assets/world/ — это отдельные
    монстрики фона, а не кадры. Имя, у которого <имя>_b уже занято, в таблицу не добавлять. */
 var ANIM = {
-  cow:        { seq: 'abac', fps: 2 },
+  cow:        { seq: 'bbbbbbbbabbbbbbbbac', fps: 1.6 },   // подолгу пасётся, изредка поднимает голову и мычит
   horse:      { seq: 'abac', fps: 2 },
   chicken:    { seq: 'abcb', fps: 3 },
   sheep:      { seq: 'abac', fps: 2 },
@@ -293,7 +293,7 @@ var ANIM = {
    Якорь спрайта — низ-центр, поэтому rot/sy не отрывают ноги от земли.
    d — доля высоты спрайта для подъёма; всё считается от общего времени T и фазы объекта.  */
 var MOVE = {
-  cow:        { rot: 0.020, sy: 0.030, sp: 1.1 },                 // жуёт: голова-корпус чуть качается
+  cow:        { rot: 0.020, sy: 0.030, sp: 1.1, bias: 0.65 },     // качка вниз-и-обратно, как при щипании травы
   horse:      { rot: 0.026, sy: 0.026, sp: 1.0 },
   sheep:      { rot: 0.018, sy: 0.034, sp: 1.3 },
   chicken:    { rot: 0.075, sy: 0.020, sp: 2.4, bias: 0.6 },      // клюёт: наклон вперёд и назад
@@ -2417,7 +2417,7 @@ function h1r(i) { var x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floo
 
 var CITY_COL = ['#7f9dc4', '#d99a86', '#8fbfa4', '#b79ccc', '#e0be7e', '#7fb3cc', '#cf8fa8'];
 function cityBand(rate, period, alpha, col, maxH, win) {
-  var hb = roadTop() + 4 * S;
+  var hb = grassTop() + 6 * S;
   g.save(); g.globalAlpha = alpha;
   layer(rate, period, function (x, i) {
     for (var k = 0; k < 3; k++) {
@@ -2443,17 +2443,33 @@ function cityBand(rate, period, alpha, col, maxH, win) {
   g.restore();
 }
 function treeBand() {                                   // плотная опушка на горизонте
-  var hb = roadTop() + 5 * S, t = TH();
+  var hb = grassTop() + 6 * S, t = TH();
   layer(0.44, 190 * S, function (x, i) {
     var r = h1r(i * 5.3), h = (74 + r * 62) * S, w = (34 + r * 22) * S;
-    g.fillStyle = t.far === 'jungle' ? '#2c6e45' : '#5aa257';
-    g.beginPath(); g.ellipse(x + 40 * S, hb - h + w * 0.5, w, w * 0.92, 0, 0, TAU); g.fill();
-    g.fillStyle = '#6b4f34';
-    g.fillRect(x + 34 * S, hb - h + w, 12 * S, h - w);
+    var base = t.far === 'jungle' ? '#2c6e45' : '#5aa257';
+    var cx = x + 40 * S, cy = hb - h + w * 0.5;
+    g.fillStyle = '#6b4f34';                                    // ствол трапецией, а не прямоугольником
+    g.beginPath();
+    g.moveTo(cx - 7 * S, hb); g.lineTo(cx + 7 * S, hb);
+    g.lineTo(cx + 4 * S, cy + w * 0.4); g.lineTo(cx - 4 * S, cy + w * 0.4); g.closePath(); g.fill();
+    g.fillStyle = haze(mix(base, '#000000', 0.12), 0.22);       // тёмный слой кроны позади
+    g.beginPath();
+    for (var q = 0; q < 4; q++) {
+      var a = h1r(i * 5.3 + q), ax = cx + (a - 0.5) * w * 1.1, ay = cy + (h1r(i + q * 2.1) - 0.5) * w * 0.5;
+      g.moveTo(ax + w * 0.62, ay); g.arc(ax, ay, w * 0.62, 0, TAU);
+    }
+    g.fill();
+    g.fillStyle = haze(base, 0.16);                             // светлый слой сверху
+    g.beginPath();
+    for (var q2 = 0; q2 < 3; q2++) {
+      var b = h1r(i * 9.7 + q2), bx = cx + (b - 0.5) * w * 0.9, by = cy - w * 0.22 + (h1r(i + q2 * 3.3) - 0.5) * w * 0.4;
+      g.moveTo(bx + w * 0.56, by); g.arc(bx, by, w * 0.56, 0, TAU);
+    }
+    g.fill();
   });
 }
 function peaks() {                                      // горы за холмами
-  var hb = roadTop() + 4 * S, t = TH();
+  var hb = grassTop() + 6 * S, t = TH();
   layer(0.10, 420 * S, function (x, i) {
     var r = h1r(i * 3.7), h = (190 + r * 130) * S, w = 250 * S;
     g.fillStyle = t.h1;
@@ -2467,7 +2483,7 @@ function peaks() {                                      // горы за хол�
   });
 }
 function dunes() {                                      // барханы: широкие и высокие
-  var hb = roadTop() + 4 * S;
+  var hb = grassTop() + 6 * S;
   g.fillStyle = TH().h1;
   layer(0.12, 620 * S, function (x) {
     g.beginPath(); g.moveTo(x - 80 * S, hb);
@@ -2476,7 +2492,7 @@ function dunes() {                                      // барханы: ши�
   });
 }
 function seaBand() {                                    // море у горизонта
-  var hb = roadTop() + 4 * S, hh = 120 * S;
+  var hb = grassTop() + 6 * S, hh = 120 * S;
   var gr = g.createLinearGradient(0, hb - hh, 0, hb);
   gr.addColorStop(0, '#3fb8d8'); gr.addColorStop(1, '#9fe4ee');
   g.fillStyle = gr; g.fillRect(0, hb - hh, W, hh);
@@ -2501,24 +2517,33 @@ function drawFar() {
   if (kind === 'forest' || kind === 'jungle') treeBand();
 }
 
-function drawHills() {
-  var hb = roadTop() + 4 * S;                       // холмы стоят на горизонте, а не на дороге
-  g.fillStyle = TH().h1;
-  layer(0.22, 520 * S, function (x) {
+/* Холмы: раньше колбэк игнорировал индекс, и через каждые 520*S шла одна и та же дуга —
+   идеальная периодичность и читалась как «геометрично». Теперь форма и высота гуляют,
+   а дальние слои выцветают в небо. */
+function hill(rate, period, base, amp, col, k) {
+  var hb = grassTop() + 6 * S;
+  g.fillStyle = haze(col, k);
+  layer(rate, period, function (x, i) {
+    var r = h1r(i * 3.7), r2 = h1r(i * 8.1);
+    var w = (base + r * base * 0.45) * S, h = (amp * (0.62 + r2 * 0.62)) * S;
     g.beginPath(); g.moveTo(x - 60 * S, hb);
-    g.quadraticCurveTo(x + 160 * S, hb - 210 * S, x + 380 * S, hb); g.fill();
-  });
-  g.fillStyle = TH().h2;
-  layer(0.34, 430 * S, function (x) {
-    g.beginPath(); g.moveTo(x - 40 * S, hb);
-    g.quadraticCurveTo(x + 130 * S, hb - 130 * S, x + 300 * S, hb); g.fill();
+    g.quadraticCurveTo(x + w * 0.42 + (r - 0.5) * 120 * S, hb - h, x + w, hb);
+    g.lineTo(x + w, hb + 8 * S); g.lineTo(x - 60 * S, hb + 8 * S); g.closePath(); g.fill();
   });
 }
-var PROP_H = { cow:96, horse:104, chicken:56, fence:78, haystack:88, windmill:170, daisies:64,
-               house:132, tree:158, bush:60, loc_tower:210, loc_shop:150, loc_palm:190,
-               loc_umbrella:120, loc_jungle:200, loc_monkey:90, loc_rock:110, loc_rocket:170,
-               loc_fir:175, loc_snowman:120,
-               chest:82, sheep:96, bus:118, ambulance:112, excavator:122, tractor:118,
+function drawHills() {
+  var t = TH();
+  hill(0.14, 640 * S, 470, 250, t.h1, 0.55);        // самый дальний — почти цвета неба
+  hill(0.22, 520 * S, 380, 210, t.h1, 0.28);
+  hill(0.34, 430 * S, 300, 150, t.h2, 0.10);
+}
+/* Высоты сведены к одной шкале: дом = 132. Раньше курица была ростом в половину коровы,
+   ромашки — почти с курицу, а забор выше коровьей спины. */
+var PROP_H = { cow:84, horse:92, chicken:34, fence:46, haystack:70, windmill:210, daisies:26,
+               house:132, tree:168, bush:56, loc_tower:230, loc_shop:150, loc_palm:196,
+               loc_umbrella:104, loc_jungle:200, loc_monkey:78, loc_rock:86, loc_rocket:170,
+               loc_fir:180, loc_snowman:96,
+               chest:64, sheep:78, bus:118, ambulance:112, excavator:122, tractor:118,
                garbage:116, tow:114, master:150 };
 /* Переезд. Рельсы уходят от горизонта на зрителя и пересекают дорогу целиком,
    поезд идёт по ним наискось — сверху вниз, а не вдоль дороги. */
@@ -2602,16 +2627,28 @@ function drawTrain(near) {          // near=false — дальняя полов�
 }
 
 function drawProps() {
-  var pr = TH().props || ['house', 'tree'], pb = roadTop() - 22 * S;   // второй ряд: дальше дороги, за обочиной
+  var pr = TH().props || ['house', 'tree'], pb = grassTop() + 46 * S;   // дальний ряд — по верхней трети травы
   var still = (state !== 'play');            // на экранах без движения дом не заслоняет машинку
   layer(0.55, 430 * S, function (x, i) {
     var nm = pr[(i % pr.length + pr.length) % pr.length];
-    if (still && Math.abs(x + 90 * S - CARX) < 150 * S) return;
-    shadow(x + 90 * S, pb - 2 * S, (PROP_H[nm] || 150) * 0.26 * S, 0.14);
-    spr(frameOf(nm, i), x + 90 * S, pb, (PROP_H[nm] || 150) * 0.86 * S,           // дальний ряд мельче ближнего
-        withMove(nm, i, (PROP_H[nm] || 150) * 0.86 * S, { alpha: 0.92 }));
+    var cx = x + 90 * S;
+    if (still && Math.abs(cx - CARX) < 150 * S) return;
+    var hh = (PROP_H[nm] || 150) * 0.86 * S, ww = sprW(nm, hh) * 0.5;
+    if (nm === 'fence') return;                                   // забор ставим только у дома, ниже
+    ground(cx, pb - 1 * S, ww * 0.9);
+    spr(frameOf(nm, i), cx, pb, hh, withMove(nm, i, hh, { alpha: 0.94 }));
+    if (nm === 'house') fenceRun(cx, pb + 14 * S, 52 * S, 6);      // у дома — палисадник перед ним
+    tufts(cx, pb, ww * 0.8, i);
   });
-  layer(0.8, 260 * S, function (x, i) { if (i % 2 === 0) spr('bush', x + 40 * S, roadTop() + 14 * S, 66 * S, withMove('bush', i, 66 * S, {})); });
+  // ближний ряд кустов: на траве, а не на асфальте (раньше стоял на roadTop + 14*S, то есть внутри дороги)
+  var bb = roadTop() - 14 * S;
+  layer(0.8, 260 * S, function (x, i) {
+    if (i % 2) return;
+    var cx = x + 40 * S;
+    ground(cx, bb - 1 * S, 22 * S);
+    spr('bush', cx, bb, 66 * S, withMove('bush', i, 66 * S, {}));
+    tufts(cx, bb, 20 * S, i * 1.7);
+  });
 }
 function drawClouds() {
   layer(0.12, 560 * S, function (x, i) {
@@ -2622,10 +2659,19 @@ function drawClouds() {
    так дорога выглядит широкой, а дома и деревья честно стоят за ней. */
 function roadTop() { return GY - 52 * S; }
 
+/* Высота полосы земли между холмами и асфальтом. Была 28*S — дом высотой 113*S стоял
+   на 24*S травы и читался как наклейка на стыке двух заливок. */
+var GRASS_H = 104;
+function grassTop() { return roadTop() - (GRASS_H - 2) * S; }
+
 function drawRoad() {
-  var top = roadTop(), t = TH();
-  g.fillStyle = t.grass; g.fillRect(0, top - 26 * S, W, 28 * S);            // обочина / тротуар
-  g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, top - 26 * S, W, 4 * S);   // кромка
+  var top = roadTop(), t = TH(), gt = grassTop();
+  var gg = g.createLinearGradient(0, gt, 0, top + 2 * S);                  // трава светлее у горизонта
+  gg.addColorStop(0, mix(t.grass, t.sky[2], 0.30)); gg.addColorStop(1, t.grass);
+  g.fillStyle = gg; g.fillRect(0, gt, W, top - gt + 2 * S);               // обочина
+  var hz = g.createLinearGradient(0, gt - 10 * S, 0, gt + 26 * S);        // мягкая дымка вместо белой линейки
+  hz.addColorStop(0, 'rgba(255,255,255,.30)'); hz.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = hz; g.fillRect(0, gt - 10 * S, W, 36 * S);
   var road = g.createLinearGradient(0, top, 0, H);
   road.addColorStop(0, t.road[0]); road.addColorStop(1, t.road[1]);
   g.fillStyle = road; g.fillRect(0, top, W, H - top);
@@ -2658,9 +2704,47 @@ function ballH(o) { return Math.abs(Math.sin((o.ph || 0) * 3 + T * 3)) * 70 * S;
 
 /* ═══════════════ 13. ОБЪЕКТЫ ═══════════════ */
 /* Контактная тень: объект «стоит» на земле, а не наклеен поверх фона. w — полуширина эллипса. */
+/* Воздушная перспектива: чем дальше слой, тем сильнее он выцветает в цвет неба.
+   Это самый дешёвый способ убрать ощущение «наклеенных фигурок». */
+function mix(c1, c2, k) {
+  function hx(c) { return [parseInt(c.substr(1, 2), 16), parseInt(c.substr(3, 2), 16), parseInt(c.substr(5, 2), 16)]; }
+  var a = hx(c1), b = hx(c2), o = '#';
+  for (var i = 0; i < 3; i++) o += ('0' + Math.round(a[i] + (b[i] - a[i]) * k).toString(16)).slice(-2);
+  return o;
+}
+function haze(col, k) { return mix(col, TH().sky[2], k); }
+
 function shadow(x, y, w, a) {
   g.save(); g.globalAlpha = a || 0.22; g.fillStyle = '#1d2b1a';
   g.beginPath(); g.ellipse(x, y, w, Math.max(4 * S, w * 0.22), 0, 0, TAU); g.fill(); g.restore();
+}
+/* «Приземление» объекта: пятно вытоптанной земли, мягкая тень и узкая контактная тень
+   под самым основанием. Без неё дом и стог читаются как наклейки на стыке заливок. */
+function ground(x, y, w) {
+  g.save();
+  g.globalAlpha = 0.16; g.fillStyle = mix(TH().grass, '#4a3a22', 0.5);
+  g.beginPath(); g.ellipse(x, y, w * 1.05, Math.max(4 * S, w * 0.26), 0, 0, TAU); g.fill();
+  g.globalAlpha = 0.22; g.fillStyle = '#1d2b1a';
+  g.beginPath(); g.ellipse(x, y, w * 0.78, Math.max(3 * S, w * 0.19), 0, 0, TAU); g.fill();
+  g.globalAlpha = 0.30;
+  g.beginPath(); g.ellipse(x, y + 1 * S, w * 0.42, Math.max(2 * S, w * 0.07), 0, 0, TAU); g.fill();
+  g.restore();
+}
+/* Пучки травы поверх основания — перекрытие убеждает сильнее любой тени. */
+function tufts(x, y, w, seed) {
+  g.save(); g.strokeStyle = mix(TH().grass, '#000000', 0.28); g.lineWidth = 2.2 * S; g.lineCap = 'round';
+  for (var i = 0; i < 5; i++) {
+    var r = h1r(seed * 3.1 + i), tx = x + (r - 0.5) * w * 1.7, hh = (5 + r * 7) * S;
+    g.beginPath(); g.moveTo(tx, y + 1 * S);
+    g.quadraticCurveTo(tx + (r - 0.5) * 5 * S, y - hh * 0.6, tx + (r - 0.5) * 9 * S, y - hh);
+    g.stroke();
+  }
+  g.restore();
+}
+/* Забор пролётом, а не одной секцией: одиночная доска у дороги выглядела случайной. */
+function fenceRun(x, y, h, n) {
+  var w = sprW('fence', h) * 0.94;
+  for (var i = 0; i < n; i++) spr('fence', x + (i - (n - 1) / 2) * w, y, h, { alpha: 0.98 });
 }
 /* Порядок отрисовки по глубине: небо → дальнее → у обочины → на дороге. */
 var Z_OF = { cloudy:0, plane:0, bird:0, butterfly:1, rail:2, rocket:2, prop:3, tlight:4, flower:4, hedgehog:5, sheep:5 };
@@ -2761,7 +2845,7 @@ function drawObjs() {
     } else if (o.t === 'plane') {
       spr('plane', sx, o.y + Math.sin((o.ph || 0) * 1.6) * 7 * S, 96 * S, { mid: true, sx: -1 });
     } else if (o.t === 'flower') {
-      spr(frameOf('flower', o.ph), sx, roadTop() + 8 * S, 60 * S, withMove('flower', o.ph, 60 * S, {}));
+      spr(frameOf('flower', o.ph), sx, roadTop() - 8 * S, 60 * S, withMove('flower', o.ph, 60 * S, {}));
     } else if (o.t === 'apple') {
       var ab = Math.sin((o.ph || 0) * 2.4 + T * 2) * 8 * S;
       spr('apple', sx, GY - o.y + 30 * S - ab, 58 * S);
@@ -2773,7 +2857,7 @@ function drawObjs() {
     } else if (o.t === 'ball') {
       spr('ball', sx, GY + 4 * S - ballH(o), 62 * S, { rot: T * 3 });
     } else if (o.t === 'hedgehog') {
-      spr(frameOf('hedgehog', o.ph), sx, roadTop() + 8 * S, 58 * S, withMove('hedgehog', o.ph, 58 * S, {}));
+      spr(frameOf('hedgehog', o.ph), sx, roadTop() - 6 * S, 58 * S, withMove('hedgehog', o.ph, 58 * S, {}));
     } else if (o.t === 'butterfly') {
       spr(frameOf('butterfly', o.ph), sx, o.y + Math.sin(T * 5) * 12 * S, 56 * S, withMove('butterfly', o.ph, 56 * S, { mid: true }));
     } else if (o.t === 'rocket') {
@@ -2794,11 +2878,14 @@ function drawObjs() {
     } else if (o.t === 'rail') {
       drawRail(o, sx);
     } else if (o.t === 'prop') {
-      var pby = roadTop() - 2 * S;                             // на обочине, а не поверх кромки дороги
-      shadow(sx, pby - 2 * S, (PROP_H[o.kind] || 130) * 0.30 * S);
-      spr(frameOf(o.kind, o.ph), sx, pby, (PROP_H[o.kind] || 130) * S,
-          withMove(o.kind, o.ph, (PROP_H[o.kind] || 130) * S,
+      var pby = roadTop() - 10 * S;                            // на траве, а не на кромке асфальта
+      var phh = (PROP_H[o.kind] || 130) * S;
+      ground(sx, pby - 1 * S, sprW(o.kind, phh) * 0.42);        // тень по реальной ширине: у стога она была втрое уже
+      if (o.kind === 'fence') { fenceRun(sx, pby, phh, 4); tufts(sx, pby, phh * 0.6, o.ph || 1); return; }
+      spr(frameOf(o.kind, o.ph), sx, pby, phh,
+          withMove(o.kind, o.ph, phh,
                    { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.010 }));   // общий «вдох» плюс своё движение
+      tufts(sx, pby, sprW(o.kind, phh) * 0.36, o.ph || 2);
     } else if (o.t === 'cloudy') {
       spr('cloud', sx, o.y, 110 * S, { mid: true });
     } else if (o.t === 'bucket') {
