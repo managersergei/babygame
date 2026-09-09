@@ -25,13 +25,15 @@
   #S { grid-column:1/3; height:min(26vh,150px); font-size:min(9vw,44px); background:linear-gradient(#fff2a8,#ffcf3d); box-shadow:0 8px 0 #d9a52a, 0 14px 24px rgba(0,0,0,.25); }
   #tilt { padding:10px 16px; font-size:16px; }
   #tilt.on { background:linear-gradient(#c8f5b8,#7bd66b); box-shadow:0 6px 0 #4f9f40; }
+  #mic { padding:10px 16px; font-size:16px; }
+  #mic.on { background:linear-gradient(#ffd6e8,#ff8fb8); box-shadow:0 6px 0 #c9628a; }
 
   /* Ландшафт: кнопки по краям под большие пальцы, «прыжок» посередине. */
   @media (orientation: landscape) {
     #wrap { gap:6px; padding-top:max(6px,env(safe-area-inset-top)); }
     #top input { width:104px; font-size:20px; padding:4px; }
     #connect { padding:7px 13px; font-size:15px; }
-    #tilt { padding:7px 12px; font-size:14px; }
+    #tilt, #mic { padding:7px 12px; font-size:14px; }
     #st { font-size:13px; min-height:16px; }
     #pad { grid-template-columns:1fr 1.15fr 1fr; grid-template-rows:1fr; }
     #L { grid-column:1; grid-row:1; }
@@ -74,6 +76,7 @@
     <input id="code" maxlength="4" placeholder="КОД" autocapitalize="characters" autocomplete="off">
     <button class="btn" id="connect">ПОДКЛЮЧИТЬ</button>
     <button class="btn" id="tilt">📐 НАКЛОН — РУЛЬ</button>
+    <button class="btn" id="mic">🎤 МИКРОФОН</button>
   </div>
   <div id="st">Введи код с экрана игры</div>
   <div id="pad">
@@ -106,6 +109,7 @@
 var st = document.getElementById('st'), codeEl = document.getElementById('code');
 var wrapEl = document.getElementById('wrap'), wheelEl = document.getElementById('wheel');
 var conn = null, peer = null, tiltOn = false, bound = false, wake = null, gen = 0, tmo = 0;
+var micStream = null, micCall = null;
 var lastSteer = 0, lastSend = 0, smooth = 0, roll0 = null, flatT = 0;
 var DEAD = 4, MAXA = 30;                    // мёртвая зона и предел поворота, градусы
 function status(s) { st.textContent = s; }
@@ -302,6 +306,31 @@ document.getElementById('tilt').addEventListener('click', function () {
       else status('Нет доступа к движению. Настройки → Safari → «Движение и ориентация»');
     })['catch'](function () { status('Наклон доступен только по HTTPS'); });
   } else arm();
+});
+
+/* Микрофон телефона в игру. Ребёнок держит телефон в руках, и его голос слышно
+   заметно лучше, чем через микрофон компьютера на другом конце комнаты.
+   Разрешение спрашивается по нажатию — иначе iOS откажет молча. */
+document.getElementById('mic').addEventListener('click', function () {
+  var b = this;
+  if (micStream) {
+    if (micCall) { try { micCall.close(); } catch (e) {} micCall = null; }
+    micStream.getTracks().forEach(function (t) { t.stop(); });
+    micStream = null; b.classList.remove('on'); status('Микрофон выключен');
+    return;
+  }
+  if (!peer || !(conn && conn.open)) { status('Сначала подключись к игре'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status('Микрофон недоступен'); return; }
+  status('Разреши микрофон…');
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+    .then(function (stream) {
+      micStream = stream;
+      var code = (codeEl.value || '').trim().toUpperCase();
+      micCall = peer.call('bgame-' + code, stream);
+      b.classList.add('on');
+      status('Микрофон включён 🎤 Говори в телефон');
+    })
+    .catch(function () { status('Нет доступа к микрофону. Настройки → Safari → Микрофон'); });
 });
 
 document.getElementById('connect').addEventListener('click', connect);

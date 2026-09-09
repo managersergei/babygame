@@ -4,7 +4,8 @@ import { createRequire } from "node:module"; import { pathToFileURL } from "node
 async function loadChromium() { for (const b of [import.meta.url, pathToFileURL(process.cwd() + "/").href, pathToFileURL(process.env.HOME + "/Documents/pf/").href]) for (const n of ["playwright", "@playwright/test"]) { try { const r = createRequire(b); const m = await import(pathToFileURL(r.resolve(n)).href); const c = m.chromium ?? m.default?.chromium; if (c) return c; } catch {} } throw new Error("playwright не найден"); }
 function cachedChrome() { const cache = `${process.env.HOME}/Library/Caches/ms-playwright`; if (!existsSync(cache)) return null; const dirs = readdirSync(cache).filter(d => /^chromium(_headless_shell)?-\d+$/.test(d)).sort((a, b) => +b.match(/\d+$/)[0] - +a.match(/\d+$/)[0]); for (const d of dirs) for (const l of ["chrome-headless-shell-mac-arm64/chrome-headless-shell", "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"]) { const p = `${cache}/${d}/${l}`; if (existsSync(p)) return p; } return null; }
 const chromium = await loadChromium();
-let browser; try { browser = await chromium.launch(); } catch { browser = await chromium.launch({ executablePath: cachedChrome() }); }
+const ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
+let browser; try { browser = await chromium.launch({ args: ARGS }); } catch { browser = await chromium.launch({ args: ARGS, executablePath: cachedChrome() }); }
 const BASE = process.env.BASE || "https://managersergei.github.io/babygame/";
 const game = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errs = []; game.on("pageerror", e => errs.push("game: " + e.message));
@@ -82,6 +83,14 @@ await pult.evaluate(() => document.dispatchEvent(new Event("visibilitychange")))
 await game.waitForTimeout(300);
 const stuck = await pult.evaluate(() => document.getElementById("J").classList.contains("down"));
 console.log("кнопка не залипает при уходе в фон: " + (stuck ? "FAIL" : "OK"));
+
+// ── микрофон с телефона (пункт 3)
+const src0 = (await game.evaluate(() => window.__bg())).micSrc;
+await pult.evaluate(() => document.getElementById("mic").click());
+await game.waitForTimeout(3000);
+const src1 = (await game.evaluate(() => window.__bg())).micSrc;
+const ready = (await game.evaluate(() => window.__bg())).micReady;
+console.log("микрофон телефона: источник " + src0 + " → " + src1 + " " + (src1 === "phone" && ready ? "OK" : "FAIL"));
 
 // ── выключили наклон: управление сразу возвращается кнопкам (баг «1,5 секунды прямо»)
 await pult.evaluate(() => document.getElementById("tilt").click());

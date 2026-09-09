@@ -727,6 +727,7 @@ if ('speechSynthesis' in window) {
 var Mic = (function () {
   var ac = null, an = null, bins = null, rdy = false, denied = false, asked = false;
   var listening = false, frames = [], speaking = false, quiet = 0, tout = 0, floorE = 10, lvl = 0, cb = null, cont = null;
+  var node = null, sink = null, src = 'local';   // src: откуда слушаем — 'local' или 'phone'
   var spokeT = 0, talkT = 0;          // сколько длится фраза и сколько ещё не слушаем после своей же речи
 
   var lastAsk = -99, err = '', tries = 0, perm = '?';
@@ -817,27 +818,43 @@ var Mic = (function () {
     var want = devId ? { deviceId: { exact: devId }, echoCancellation: true,
                          noiseSuppression: true, autoGainControl: true } : base;
     navigator.mediaDevices.getUserMedia({ audio: want })
-      .then(function (stream) {
-        var tr = stream.getAudioTracks()[0];
-        if (tr) {
-          devName = tr.label || '';
-          tr.onended = function () { drop('устройство отключилось'); };   // вход пропал — начнём заново
-          tr.onmute = function () { drop('микрофон замолчал'); };
-        }
-        var AC = window.AudioContext || window.webkitAudioContext;
-        ac = new AC();
-        if (ac.state === 'suspended') ac.resume();  // иначе анализатор отдаёт тишину
-        an = ac.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0.25;
-        ac.createMediaStreamSource(stream).connect(an);
-        bins = new Uint8Array(an.frequencyBinCount);
-        cur = stream; rdy = true; err = ''; silent = 0; pending = false;
-      })
+      .then(function (stream) { attach(stream, 'local'); pending = false; })
       .catch(function (e) {
         pending = false;
         err = (e && e.name) || 'ошибка';
         if (err === 'NotAllowedError' || err === 'SecurityError') { denied = true; return; }
         nextDevice();                              // занято или недоступно — пробуем другой вход
       });
+  }
+  /* Один вход на всю игру: сюда приходит и локальный микрофон, и поток с телефона.
+     Контекст создаётся ОДИН раз — раньше каждый повторный запрос плодил новый AudioContext. */
+  function attach(stream, kind) {
+    var tr = stream.getAudioTracks()[0];
+    if (tr) {
+      devName = tr.label || '';
+      tr.onended = function () { if (src === kind) drop('устройство отключилось'); };
+      tr.onmute = function () { if (src === kind) drop('микрофон замолчал'); };
+    }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!ac) ac = new AC();
+    if (ac.state === 'suspended') ac.resume();          // иначе анализатор отдаёт тишину
+    if (!an) { an = ac.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0.25; }
+    if (node) { try { node.disconnect(); } catch (e) {} }
+    node = ac.createMediaStreamSource(stream);
+    node.connect(an);
+    /* Chromium отдаёт из удалённого потока тишину, пока поток не «проигрывается»
+       хоть куда-то. Держим скрытый беззвучный аудиоэлемент — только ради этого. */
+    if (kind === 'phone') {
+      if (!sink) {
+        sink = document.createElement('audio');
+        sink.muted = true; sink.autoplay = true; sink.setAttribute('playsinline', '');
+        sink.style.display = 'none'; document.body.appendChild(sink);
+      }
+      try { sink.srcObject = stream; var pp = sink.play(); if (pp && pp.catch) pp.catch(function () {}); } catch (e) {}
+    }
+    bins = new Uint8Array(an.frequencyBinCount);
+    cur = stream; src = kind; rdy = true; err = ''; silent = 0;
+    floorE = 10;                                        // другой микрофон — другой уровень шума
   }
   function resume() { if (ac && ac.state === 'suspended') ac.resume(); }
 
@@ -903,6 +920,11 @@ var Mic = (function () {
     busy: function () { return listening; },
     record: recBegin,
     recording: function () { return !!rec; },
+    src: function () { return src; },
+    fromPhone: function (stream) {                       // поток пришёл с телефона по WebRTC
+      try { attach(stream, 'phone'); denied = false; return true; } catch (e) { return false; }
+    },
+    backToLocal: function () { if (src === 'phone') { src = 'local'; rdy = false; request(false); } },
     cancel: function () { listening = false; speaking = false; cb = null; cont = null; recDone(false); },
     arm: function (fn) { if (!rdy) return; cont = fn; listening = true; speaking = false; frames = []; quiet = 0; tout = 1e9; },
     disarm: function () { cont = null; listening = false; speaking = false; },
@@ -3444,7 +3466,7 @@ function toLesson(key, obj) {
 
 function lessonHeard(sample) {
   if (state !== 'lesson' || les.phase !== 'listen') return;
-  if (sample) { les.said++; Voice.add('cmd.' + les.key, sample); lessonStep(true); }
+  if (sample) { les.said++; Voice.add(cmdKey(les.key), sample); lessonStep(true); }
   else lessonStep(false);            // промолчал — не застреваем, идём дальше
 }
 
@@ -4029,6 +4051,9 @@ function nextStage() { stage++; startStage(); }
 /* Ключ урока → команда. Одно слово учится в двух местах (сюжет и бесконечный), образцы лежат
    под разными ключами ('cmd.jump' и 'cmd.el_jump0') — перечисляем оба. */
 var CMD_OF = { jump: 'jump', el_jump0: 'jump', gas: 'gas', el_gas0: 'gas', fuel: 'fuel', light: 'light' };
+/* Ключ образца зависит от микрофона: телефонный тракт звучит иначе, и смешивать записи
+   с двух микрофонов в одной корзине нельзя — распознавание начнёт путаться. */
+function cmdKey(k) { return (Mic.src() === 'phone' ? 'cmd.p.' : 'cmd.') + k; }
 
 /* Выученные слова становятся живыми командами — в том числе выученные в прошлые заходы.
    ВЫКЛЮЧЕНО 09.09.2026 по просьбе владельца: во время свободной езды микрофон не слушает
@@ -4040,7 +4065,7 @@ function armCommands() {
   Mic.arm(function (sample) {
     if (state !== 'play' || A.talking()) return;
     var words = [];
-    for (var k in CMD_OF) if ((learned[k] || (LESSONS[k] && Stats.known(LESSONS[k].word))) && Voice.count('cmd.' + k) >= 2) words.push('cmd.' + k);
+    for (var k in CMD_OF) if ((learned[k] || (LESSONS[k] && Stats.known(LESSONS[k].word))) && Voice.count(cmdKey(k)) >= 2) words.push(cmdKey(k));
     if (!words.length) return;
     var m = Voice.match(sample, words);
     if (!m || !m.ok) return;
@@ -4970,7 +4995,7 @@ function loadScript(urls, cb) {
 }
 var Pult = {
   on: false, everOn: false, steer: 0, gas: false, lastT: -9, code: '', token: '', peer: null, conn: null,
-  loading: false, tries: 0, reT: 0,
+  loading: false, tries: 0, reT: 0, call: null,
   fresh: function () { return T - this.lastT < 1.5; },
   /* Раньше проверялось только «объект peer существует». После сна компьютера объект
      оставался, поэтому связь не переоткрывалась НИКОГДА, а телефон получал «такого кода нет». */
@@ -4981,7 +5006,9 @@ var Pult = {
   },
   drop: function () {
     if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+    if (this.call) { try { this.call.close(); } catch (e) {} this.call = null; }
     this.peer = null; this.conn = null; this.on = false; this.steer = 0; this.gas = false; this.lastT = -9;
+    Mic.backToLocal();
   },
   /* Код и токен постоянные: сервер отдаёт занятый id обратно, если токен совпал,
      поэтому у родителя на телефоне остаётся тот же код и тот же QR. */
@@ -5014,6 +5041,16 @@ var Pult = {
         conn.on('open', function () { self.on = true; self.everOn = true; self.status('Телефон подключён ✓'); A.coin(3); track('pult_on'); setTimeout(function () { self.hideBox(); }, 1200); });
         conn.on('data', function (m) { self.onData(m); });
         conn.on('close', function () { self.on = false; self.steer = 0; self.gas = false; self.status('Телефон отключился'); });
+      });
+      /* Телефон звонит со своим микрофоном: ребёнок держит телефон в руках, и его голос
+         слышно лучше, чем через микрофон компьютера на другом конце комнаты. */
+      peer.on('call', function (call) {
+        try { call.answer(); } catch (e) { return; }
+        call.on('stream', function (stream) {
+          if (Mic.fromPhone(stream)) { self.status('Микрофон телефона подключён 🎤'); track('mic_phone'); }
+        });
+        call.on('close', function () { Mic.backToLocal(); });
+        self.call = call;
       });
       peer.on('disconnected', function () { self.status('Восстанавливаю связь…'); self.retry(); });
       peer.on('close', function () { self.peer = null; self.on = false; });
@@ -5813,6 +5850,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
                gm: gmSel, gmId: (GAMEMODES[gmSel] || {}).id, ctl: (MODES[modeSel] || {}).id, voiceCtl: voiceCtl, story: story,
                pult: +Pult.steer.toFixed(2), pultFresh: Pult.fresh(), pultOn: Pult.on,
+               micSrc: Mic.src(), micReady: Mic.ready(),
                tg: TG.dbg(), T: +T.toFixed(1), known: Stats.list().filter(function (r) { return r.n >= Stats.need; }).length,
                said: les.said, recs: Rec.count(), rec: Mic.recording(),
                word: { t: +wordT.toFixed(1), due: +wordDue.toFixed(1), want: wantEl, armed: wordArmed, next: nextLessonKey(), met: Object.keys(metEl).length },
