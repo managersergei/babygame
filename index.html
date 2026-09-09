@@ -1530,6 +1530,7 @@ function patternFor(t) {                           // есть ли сейчас
   return false;
 }
 function canSummon(k) {                            // можно ли прямо сейчас показать предмет слова k
+  if (state === 'lane') return !!LANE_SHOW[k] && k !== 'gas0';   // в «руле» газа нет, а прыжок есть
   if (k === 'jump0' || k === 'gas0') return true;  // сценарий старта — по runT
   if (PROP_KIND[k]) return (TH().props || []).indexOf(k) >= 0 && patternFor('prop');
   if (ROAD_EL[k])   return patternFor(k);
@@ -1557,13 +1558,18 @@ function nextLessonKey() {
 /* Таймер вышел — заказываем дороге предмет слова k. */
 function orderWord(k) {
   wantEl = k; wantT = 0;
+  if (state === 'lane') return;                                // предмет поставит сам режим «руль»
   if (k === 'robot')      { startChase(true); return; }        // робот приходит сам, сразу с уроком
   if (k === 'rocket')     rocketT = 41;                        // ракета — на следующем кадре
   else if (SKY_EL[k])     skyT = 99;                           // небо — на следующем кадре
   else if (k === 'train') railT = 96;                          // переезд — на следующем кадре
   /* бензин, ведро с краской и дорожные предметы заберут spawnAhead / spawnEndless по wantEl */
 }
-function armedObj() { for (var i = 0; i < objs.length; i++) if (objs[i].lesson) return objs[i]; return null; }
+function armedObj() {
+  var arr = state === 'lane' ? ln.objs : objs;
+  for (var i = 0; i < arr.length; i++) if (arr[i].lesson) return arr[i];
+  return null;
+}
 /* Заказ завис (связка с нужным предметом не выпала) — ставим предмет сами, впереди по дороге.
    Без этого промежуток между словами растягивался до минуты. */
 function forceSpawn(k) {
@@ -2394,8 +2400,9 @@ function drawSky() {
     g.restore();
   }
 }
+var bgX = null;                       // если задан — параллакс считается от него, а не от carX
 function layer(rate, period, fn) {
-  var scroll = carX * rate, base = Math.floor(scroll / period);
+  var scroll = (bgX == null ? carX : bgX) * rate, base = Math.floor(scroll / period);
   var off = scroll - base * period, n = Math.ceil(W / period) + 2;
   for (var i = -1; i < n; i++) fn(i * period - off, base + i);   // индекс мировой, не экранный
 }
@@ -3303,6 +3310,14 @@ function scr(o) { return (o.x - carX) + CARX; }
 /* Куда смотреть на каждом уроке. */
 function lessonFocus(key) {
   var o;
+  if (les.from === 'lane') {                                     // в «руле» координаты свои
+    if (les.obj) {
+      var lo = les.obj, lp = laneProj(lo.z);
+      return [W / 2 + lo.lane * lp.half * 0.6, lp.y - laneH(lo, lp.k) * 0.55];
+    }
+    var nr = laneProj(0);
+    return [W / 2 + ln.x * nr.half * 0.6, H * LN.carY - 90 * S];   // урок про клавишу — смотрим на машинку
+  }
   if (les.obj) {
     var ob = les.obj, oy;
     if (ob.t === 'rail' && ob.train) {                           // на уроке «поезд» смотрим на состав
@@ -3336,10 +3351,10 @@ function lessonFocus(key) {
 var REPS = 2;                                   // обычное слово — два повтора
 var REPS_CMD = 3;                               // командное слово — три, чтобы точнее узнавалось
 function repsFor(key) { var L = LESSONS[key]; return (L && L.reps) || REPS; }
-var les = { key: '', got: 0, said: 0, phase: '', t: 0, obj: null };   // said — попытки, где ребёнок что-то сказал
+var les = { key: '', got: 0, said: 0, phase: '', t: 0, obj: null, from: 'play' };   // said — попытки, где ребёнок что-то сказал
 
 function toLesson(key, obj) {
-  EV('lesson', key); state = 'lesson'; les.key = key; les.got = 0; les.said = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
+  EV('lesson', key); les.from = state; state = 'lesson'; les.key = key; les.got = 0; les.said = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
   var f = lessonFocus(key);
   camTo(f[0], f[1], key === 'one' || key === 'two' || key === 'three' ? 1.5 : 1.8);
   Mic.disarm(); Mic.cancel();
@@ -3403,6 +3418,7 @@ function applyLesson() {
   wordArmed = false; rollWord(); EV('learned', key);   // следующее слово — через wordMin..wordMax c езды
   flash = 0.35;
   A.fanfare();
+  if (les.from === 'lane') { state = 'lane'; setPad(); return; }   // «чудо» урока к «рулю» не относится
   if (L.after) L.after();
   else { state = 'play'; armCommands(); }
   setPad();
@@ -3504,9 +3520,10 @@ function drawKeyHint(kind, cx, cy) {
 }
 
 function drawLesson() {
-  var L = LESSONS[les.key], bg = L.bg;
+  var L = LESSONS[les.key], bg = les.from === 'lane' ? 'lane' : L.bg;
   withCam(function () {
-    if (bg === 'repair') drawRepair();
+    if (bg === 'lane') Lane.scene();
+    else if (bg === 'repair') drawRepair();
     else if (bg === 'paint') drawPaintScene();
     else if (bg === 'wash') drawWashScene();
     else drawPlayScene();
@@ -4435,21 +4452,51 @@ function toGameMode(quiet) {                       // quiet — пришли г�
    телефон-руль) и объезжает то, что едет навстречу. Проигрыша нет: удар — «ой»,
    звёздочка — «ура». Вид машинки сзади пока рисуем сами: настоящие спрайты
    «сзади» — после согласования с владельцем (ПРАВИЛА-КОНТЕНТА).                */
-var ln = { x: 0, spd: 0.5, dash: 0, objs: [], spawnT: 0, t: 0, hitT: 0, boost: 0, autoT: 0 };
+/* Настройки режима в одном месте: скорость, зазоры, зона удара, прыжок.
+   Раньше эти числа были рассыпаны по коду тремя разными системами координат. */
+var LN = {
+  spd0: 0.26, spdMax: 0.55, accel: 0.0022,   // глубина в секунду: старт, потолок, разгон
+  gapMin: 0.62, gapMax: 1.00,                // зазор между объектами ПО ГЛУБИНЕ, а не по времени
+  pStar: 0.55, pFuel: 0.66,                  // доли выпадения: звезда, бензин, дальше препятствие
+  hitHi: 0.045, hitLo: -0.10,                // окно проверки касания
+  forgive: 0.72, greedy: 1.30,               // зона: препятствие строже картинки, бонус щедрее
+  jumpV: 1000, grav: 2600, overK: 0.65,      // прыжок и доля высоты объекта, с которой он «перепрыгнут»
+  carW: 200, carH: 118, carY: 0.90,
+  hzHalf: 62, nearHalf: 0.64, pow: 2.1, zMax: 1.9,
+  decorGap: [0.8, 1.6], skyGap: [2.6, 5.0]
+};
+var ln = { x: 0, y: 0, vy: 0, spd: 0, dash: 0, run: 0, objs: [], spawnZ: 0, decorZ: 0, skyZ: 0,
+           t: 0, hitT: 0, jumps: 0, autoT: 0, best: 0 };
 var LANE_KINDS = [
   { t:'star',     h: 70,  good: true },
   { t:'fuel',     h: 78,  good: true },
-  { t:'cone',     h: 80 },
-  { t:'ball',     h: 70 },
-  { t:'hedgehog', h: 64 },
+  { t:'cone',     h: 80,  jump: true },
+  { t:'ball',     h: 70,  jump: true },
+  { t:'hedgehog', h: 64,  jump: true },
   { t:'haystack', h: 120 }
 ];
+var LANE_DECOR = [ { t:'tree', h: 170 }, { t:'house', h: 160 }, { t:'bush', h: 70 }, { t:'flower', h: 56 } ];
+var LANE_SKY   = [ { t:'bird', h: 56 }, { t:'cloud', h: 90 }, { t:'balloon', h: 92 } ];
+/* Какие слова этот режим умеет показать: дорога, обочина и небо. */
+var LANE_SHOW = { star:1, fuel:1, cone:1, ball:1, hedgehog:1, haystack:1,
+                  tree:1, house:1, bush:1, flower:1, bird:1, cloud:1, balloon:1, jump0:1 };
+function laneKind(t) {
+  var all = LANE_KINDS.concat(LANE_DECOR, LANE_SKY);
+  for (var i = 0; i < all.length; i++) if (all[i].t === t) return all[i];
+  return null;
+}
 var CAR_BACK = { monster: ['#5aa64a', '#3f7d35'], fire: ['#e63946', '#a4161a'], race: ['#ffcf3d', '#e0691f'], police: ['#f2f6fb', '#2b6cb0'] };
 
+/* Тень рисуется отдельно от кузова и остаётся на земле — иначе прыжка не видно. */
+function drawRearShadow(x, y, w, lift) {
+  var k = clamp(1 - lift / (260 * S), 0.35, 1);
+  g.save(); g.globalAlpha = 0.28 * k;
+  g.fillStyle = '#000'; g.beginPath(); g.ellipse(x, y + 6 * S, w * 0.56 * k, 14 * S * k, 0, 0, TAU); g.fill();
+  g.restore();
+}
 function drawRearCar(x, y, w, h, tilt, blink) {
   var c = CAR_BACK[car.id] || CAR_BACK.race, big = car.id === 'monster';
   g.save(); g.translate(x, y); g.rotate(clamp(tilt, -1, 1) * 0.07);
-  g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(0, 6 * S, w * 0.56, 14 * S, 0, 0, TAU); g.fill();
   var wr = big ? h * 0.36 : h * 0.26, wy = -wr * 0.9;
   g.fillStyle = '#2b2140';
   roundRect(-w * 0.5 - wr * 0.2, wy - wr, wr * 1.3, wr * 2, wr * 0.5); g.fill();
@@ -4467,12 +4514,28 @@ function drawRearCar(x, y, w, h, tilt, blink) {
   g.restore();
 }
 
+/* ЕДИНСТВЕННЫЙ источник правды о геометрии дороги. По нему строятся края, разметка,
+   объекты, машинка И зоны столкновения — раньше это были три разные системы. */
+function laneProj(z) {
+  var hy = roadTop(), by = H * LN.carY;
+  var p = Math.pow(clamp(1 - z, 0, LN.zMax), LN.pow);
+  var half = LN.hzHalf * S + (W * LN.nearHalf - LN.hzHalf * S) * p;
+  return { p: p, y: hy + (by - hy) * p, half: half, k: 0.12 + 0.88 * p, hy: hy, by: by };
+}
+function laneH(o, k) { return o.h * S * k * 1.6; }        // экранная высота объекта
+
 var Lane = {
   start: function () {
     A.init(); car = CARS[sel]; tune();
-    ln.x = 0; ln.spd = 0.5; ln.dash = 0; ln.objs = []; ln.spawnT = 1.2; ln.t = 0; ln.hitT = 0; ln.boost = 0; ln.autoT = 0;
-    parts.length = 0; texts.length = 0; stars = 0; row = 0; celebrate = 0;
-    state = 'lane'; setPad(); Pult.ensure();
+    ln.x = 0; ln.y = 0; ln.vy = 0; ln.spd = LN.spd0; ln.dash = 0; ln.run = 0;
+    ln.objs = []; ln.spawnZ = 0.5; ln.decorZ = 0.3; ln.skyZ = 1.5;
+    ln.t = 0; ln.hitT = 0; ln.jumps = 0; ln.autoT = 0; ln.hits = 0; ln.overs = 0; ln.takes = 0;
+    parts.length = 0; texts.length = 0; objs.length = 0;
+    stars = 0; row = 0; celebrate = 0; shake = 0; flash = 0; themeIx = 0;
+    learned = {}; metEl = {}; resetRhythm(); seedKnown();     // уроки слов — общие с бесконечным режимом
+    ln.best = 0; try { ln.best = +(localStorage.getItem('babygame.best') || 0) || 0; } catch (e) {}
+    state = 'lane'; setPad();
+    if (!Pult.everOn) Pult.ensure();                          // окно пульта — только пока телефон ни разу не подключался
     track('start', { game: 'lane' });
     A.fanfare(); A.say(['Поехали!', 'Объезжай препятствия!']);
     EV('lane', 'start');
@@ -4482,95 +4545,205 @@ var Lane = {
     if (Pult.on && Pult.fresh()) return Pult.steer;
     return (K.left ? -1 : 0) + (K.right ? 1 : 0);
   },
-  action: function () {                     // пробел / большая кнопка: гудок и ускорение
-    if (ln.boost > 0) return;
-    ln.boost = 1.2; A.rev(); popText('БИ-БИ!', W / 2, H * 0.55, '#ffd93d'); EV('lane', 'beep');
+  action: function () {                     // пробел / большая кнопка: прыжок (как и во всей остальной игре)
+    if (ln.y > 0) return;
+    ln.vy = LN.jumpV * S * (car.jump || 1); ln.jumps++;
+    A.honk(); EV('lane', 'jump');
   },
   update: function (dt) {
     ln.t += dt;
     var target = clamp(Lane.steer(), -1, 1);
     ln.x = clamp(ln.x + (target - ln.x) * Math.min(1, dt * 5.5), -1.05, 1.05);
-    if (ln.boost > 0) ln.boost -= dt;
     if (ln.hitT > 0) ln.hitT -= dt;
-    var v = ln.spd * (ln.boost > 0 ? 1.55 : 1) * (ln.hitT > 0 ? 0.45 : 1);
-    ln.spd = Math.min(0.85, ln.spd + dt * 0.006);
-    ln.dash = (ln.dash + dt * v * 2.2) % 1;
-    ln.spawnT -= dt;
-    if (ln.spawnT <= 0) {
-      ln.spawnT = rnd(0.7, 1.15) / (0.6 + v);
-      var w = RNG(), kind = w < 0.42 ? LANE_KINDS[0] : w < 0.52 ? LANE_KINDS[1] : pick(LANE_KINDS.slice(2));
-      var lane = ri(-1, 1), lastO = ln.objs[ln.objs.length - 1];
-      // рядом с прошлым препятствием — в другую полосу: проезд есть всегда
-      if (lastO && !kind.good && !lastO.good && lastO.z > 0.75 && lastO.lane === lane) lane = lane === 1 ? -1 : lane + 1;
-      ln.objs.push({ t: kind.t, lane: lane, z: 1, good: !!kind.good, h: kind.h, done: false });
+    if (ln.y > 0 || ln.vy > 0) {
+      ln.y += ln.vy * dt; ln.vy -= LN.grav * S * dt;
+      if (ln.y <= 0) { ln.y = 0; ln.vy = 0; }
     }
+    var v = ln.spd * (ln.hitT > 0 ? 0.45 : 1);
+    ln.spd = Math.min(LN.spdMax, ln.spd + dt * LN.accel);
+    ln.dash = (ln.dash + dt * v * 16) % 16;
+    ln.run += dt * v * 900 * S;
+    Lane.rhythm(dt);
+    Lane.spawn(dt, v);
+    var near = laneProj(0);
     for (var i = ln.objs.length - 1; i >= 0; i--) {
       var o = ln.objs[i];
       o.z -= dt * v;
-      if (!o.done && o.z < 0.07 && Math.abs(o.lane - ln.x) < 0.58) {
-        o.done = true;
-        var p = Lane.pos(o.z, o.lane);
-        if (o.good) {
-          if (o.t === 'star') {
-            stars++; row++; noteStars(); A.coin(row); popText('+1', p.x, p.y - 60 * S, '#ffd93d');
-            burst(p.x, p.y - 30 * S, 10, ['#ffd93d', '#fff'], 260 * S, 'spark'); EV('lane', 'star');
-            if (stars % TUNE.praiseEvery === 0) { celebrate = 2; A.fanfare(); A.say(pick(['Хорошо!', 'Здорово!'])); track('lane_praise', { stars: stars }); }
-          } else {
-            A.coin(3); popText('БЕНЗИН!', p.x, p.y - 60 * S, '#7bd66b');
-            burst(p.x, p.y - 30 * S, 8, '#7bd66b', 200 * S, 'dot'); EV('lane', 'fuel');
-          }
-        } else {
-          ln.hitT = 0.9; shake = 9 * S; row = 0; A.clunk(); popText('ОЙ!', p.x, p.y - 70 * S, '#ff6b6b');
-          burst(p.x, p.y - 20 * S, 12, ['#c9c9c9', '#8a94a6'], 220 * S, 'dot'); EV('lane', 'hit ' + o.t);
-          track('lane_hit', { t: o.t });
-        }
+      if (o.lesson && o.z < 0.62 && o.z > 0.18) {            // предмет заказанного слова доехал до кадра
+        o.lesson = false; toLesson(o.lessonKey, o); return;
       }
-      if (o.z < -0.15) ln.objs.splice(i, 1);
+      if (!o.done && !o.decor && !o.sky && o.z < LN.hitHi && o.z > LN.hitLo) {
+        var hpx = laneH(o, near.k);
+        var ow = sprW(o.t, hpx) * 0.5;
+        var dx = Math.abs(o.lane - ln.x) * near.half * 0.6;
+        var reach = (LN.carW * S * 0.42 + ow) * (o.good ? LN.greedy : LN.forgive);
+        if (dx < reach) Lane.touch(o, near);
+      }
+      if (!o.done && o.z <= LN.hitLo) o.done = 'passed';
+      var q = laneProj(o.z);
+      if (q.y - laneH(o, q.k) > H + 40 * S || o.z < -1.2) ln.objs.splice(i, 1);
     }
   },
-  pos: function (z, lane) {                 // z: 1 — горизонт, 0 — у машинки
-    var hy = roadTop(), by = H * 0.93, hw = 62 * S, bw = W * 0.64;
-    var p = Math.pow(clamp(1 - z, 0, 1.3), 2.1);
-    var half = hw + (bw - hw) * p;
-    return { x: W / 2 + lane * half * 0.6, y: hy + (by - hy) * p, k: 0.12 + 0.88 * p, half: half, hy: hy, by: by };
+  /* Ритм уроков — тот же, что в бесконечном режиме: слово раз в 15–30 с, общий прогресс. */
+  rhythm: function (dt) {
+    wordT += dt;
+    if (wantEl) {
+      wantT += dt;
+      if (wantT > 5 && !wordArmed) Lane.force(wantEl);
+      if (wantT > 12) { wantEl = null; wantT = 0; }
+    }
+    if (wordArmed && !armedObj()) wordArmed = false;
+    var nk = nextLessonKey();
+    if (!nk || wantEl || wordArmed || wordT < wordDue - TUNE.wordLead) return;
+    if (nk === 'jump0') { metEl.jump0 = 1; toLesson('el_jump0', null); return; }   // предмета не нужно
+    orderWord(nk);
+  },
+  force: function (k) {                     // заказ завис — ставим предмет сами
+    var kind = laneKind(k);
+    if (!kind) { wantEl = null; return; }
+    Lane.push(kind, Lane.freeLane(kind), 1);
+  },
+  freeLane: function (kind) {
+    if (LANE_DECOR.indexOf(kind) >= 0) return RNG() < 0.5 ? -1.85 : 1.85;
+    if (LANE_SKY.indexOf(kind) >= 0)   return rnd(-1.2, 1.2);
+    var busy = {}, i;
+    for (i = 0; i < ln.objs.length; i++) {
+      var o = ln.objs[i];
+      if (!o.decor && !o.sky && o.z > 0.55) busy[o.lane] = 1;
+    }
+    var free = [];
+    for (i = -1; i <= 1; i++) if (!busy[i]) free.push(i);
+    if (!free.length) free = [-1, 0, 1];
+    return free[Math.floor(RNG() * free.length)];
+  },
+  push: function (kind, lane, z) {
+    var o = { t: kind.t, lane: lane, z: z, good: !!kind.good, jump: !!kind.jump, h: kind.h,
+              decor: LANE_DECOR.indexOf(kind) >= 0, sky: LANE_SKY.indexOf(kind) >= 0,
+              ph: rnd(0, TAU), done: false };
+    ln.objs.push(o);
+    markFirst(o, o.t);
+    return o;
+  },
+  spawn: function (dt, v) {
+    ln.spawnZ -= dt * v; ln.decorZ -= dt * v; ln.skyZ -= dt * v;
+    if (ln.spawnZ <= 0) {
+      ln.spawnZ = rnd(LN.gapMin, LN.gapMax);
+      var kind = null;
+      if (wantEl && LANE_SHOW[wantEl] && !wordArmed) kind = laneKind(wantEl);
+      if (!kind || kind.decor || LANE_DECOR.indexOf(kind) >= 0 || LANE_SKY.indexOf(kind) >= 0) {
+        var w = RNG();
+        kind = w < LN.pStar ? LANE_KINDS[0] : w < LN.pFuel ? LANE_KINDS[1] : pick(LANE_KINDS.slice(2));
+      }
+      Lane.push(kind, Lane.freeLane(kind), 1);
+    }
+    if (ln.decorZ <= 0) {
+      ln.decorZ = rnd(LN.decorGap[0], LN.decorGap[1]);
+      var dk = (wantEl && LANE_SHOW[wantEl] && !wordArmed && laneKind(wantEl) && LANE_DECOR.indexOf(laneKind(wantEl)) >= 0)
+             ? laneKind(wantEl) : pick(LANE_DECOR);
+      Lane.push(dk, Lane.freeLane(dk), 1);
+    }
+    if (ln.skyZ <= 0) {
+      ln.skyZ = rnd(LN.skyGap[0], LN.skyGap[1]);
+      var sk = (wantEl && LANE_SHOW[wantEl] && !wordArmed && laneKind(wantEl) && LANE_SKY.indexOf(laneKind(wantEl)) >= 0)
+             ? laneKind(wantEl) : pick(LANE_SKY);
+      Lane.push(sk, Lane.freeLane(sk), 1);
+    }
+  },
+  touch: function (o, near) {
+    var p = laneProj(o.z), px = W / 2 + o.lane * p.half * 0.6, py = p.y;
+    if (o.good) {
+      o.done = 'take';
+      if (o.t === 'star') {
+        stars++; row++; Lane.note(); A.coin(row);
+        popText('+1', px, py - 60 * S, '#ffd93d');
+        burst(px, GY - (py - 30 * S), 10, ['#ffd93d', '#fff'], 260 * S, 'spark'); EV('lane', 'star'); ln.takes++;
+        if (stars % TUNE.praiseEvery === 0) { celebrate = 2; A.fanfare(); A.say(pick(['Хорошо!', 'Здорово!'])); track('lane_praise', { stars: stars }); }
+      } else {
+        A.coin(3); popText('БЕНЗИН!', px, py - 60 * S, '#7bd66b');
+        burst(px, GY - (py - 30 * S), 8, '#7bd66b', 200 * S, 'dot'); EV('lane', 'fuel');
+      }
+      return;
+    }
+    if (o.jump && ln.y > laneH(o, near.k) * LN.overK) {      // перепрыгнул — награда, а не удар
+      o.done = 'over'; stars++; row++; Lane.note(); A.coin(row + 2);
+      popText('ОП!', px, py - 90 * S, '#ffd93d');
+      burst(px, GY - (py - 40 * S), 8, ['#ffd93d', '#fff'], 240 * S, 'spark'); EV('lane', 'over ' + o.t); ln.overs++;
+      return;
+    }
+    o.done = 'hit';
+    ln.hitT = 0.9; shake = 9 * S; row = 0; A.clunk(); popText('ОЙ!', px, py - 70 * S, '#ff6b6b');
+    burst(px, GY - (py - 20 * S), 12, ['#c9c9c9', '#8a94a6'], 220 * S, 'dot'); EV('lane', 'hit ' + o.t); ln.hits++;
+    track('lane_hit', { t: o.t });
+  },
+  note: function () {                        // рекорд общий с бесконечным режимом, но всплывашка — экранная
+    if (stars <= ln.best) return;
+    var first = ln.best > 0;
+    ln.best = stars;
+    try { localStorage.setItem('babygame.best', String(stars)); } catch (e) {}
+    if (first && stars === ln.best) popText('РЕКОРД!', W / 2, H * 0.35, '#ffd93d');
+  },
+  pos: function (z, lane) { var q = laneProj(z); q.x = W / 2 + lane * q.half * 0.6; return q; },
+  /* Сцена без HUD: нужна и самому режиму, и уроку, начатому из него. */
+  scene: function () {
+    bgX = ln.run;
+    drawSky(); drawClouds(); drawFar();
+    bgX = null;
+    var far = laneProj(1);
+    g.fillStyle = TH().grass; g.fillRect(0, far.hy, W, H - far.hy);
+    // край дороги — по той же кривой, что и всё остальное, а не двумя прямыми
+    var SEG = 18, zs = [], i;
+    for (i = 0; i <= SEG; i++) zs.push(1 - (1 - (-0.35)) * (i / SEG));
+    g.fillStyle = TH().road[0];
+    g.beginPath();
+    for (i = 0; i <= SEG; i++) { var a = laneProj(zs[i]); if (i === 0) g.moveTo(W / 2 - a.half, a.y); else g.lineTo(W / 2 - a.half, a.y); }
+    for (i = SEG; i >= 0; i--) { var b = laneProj(zs[i]); g.lineTo(W / 2 + b.half, b.y); }
+    g.closePath(); g.fill();
+    g.lineWidth = 6 * S; g.strokeStyle = '#f2f6fb';
+    for (var side = -1; side <= 1; side += 2) {
+      g.beginPath();
+      for (i = 0; i <= SEG; i++) { var c = laneProj(zs[i]); if (i === 0) g.moveTo(W / 2 + side * c.half, c.y); else g.lineTo(W / 2 + side * c.half, c.y); }
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    for (i = 0; i < 16; i++) {
+      var z0 = (((i - ln.dash) % 16) + 16) % 16 / 16, z1 = Math.min(1, z0 + 0.035);
+      for (var j = 0; j < 2; j++) {
+        var l = j ? 0.5 : -0.5, aa = Lane.pos(z1, l), bb = Lane.pos(z0, l);
+        g.beginPath(); g.moveTo(aa.x - 3 * S * aa.k, aa.y); g.lineTo(aa.x + 3 * S * aa.k, aa.y);
+        g.lineTo(bb.x + 4 * S * bb.k, bb.y); g.lineTo(bb.x - 4 * S * bb.k, bb.y); g.closePath(); g.fill();
+      }
+    }
+    // массив уже упорядочен по спавну: дальние впереди, ближние в конце — сортировать не нужно
+    for (i = 0; i < ln.objs.length; i++) {
+      var o = ln.objs[i], p = laneProj(o.z);
+      if (p.p <= 0.001) continue;
+      var hpx = laneH(o, p.k), x = W / 2 + o.lane * p.half * 0.6;
+      var y = o.sky ? p.hy - (0.35 + o.ph % 0.3) * (p.hy) * 0.55 * p.k - 10 * S : p.y + 4 * S * p.k;
+      var a = clamp(1 + o.z / 0.28, 0, 1);                  // на выезде гаснет, а не пропадает хлопком
+      if (o.done === 'take') continue;
+      g.save(); g.globalAlpha = a;
+      if (!o.sky) {
+        g.save(); g.globalAlpha = a * 0.25; g.fillStyle = '#000';
+        g.beginPath(); g.ellipse(x, p.y, sprW(o.t, hpx) * 0.45, 9 * S * p.k, 0, 0, TAU); g.fill(); g.restore();
+      }
+      spr(frameOf(o.t, o.ph), x, y, hpx, withMove(o.t, o.ph, hpx, o.done === 'hit' ? { rot: 0.5 } : {}));
+      g.restore();
+    }
+    var near = laneProj(0), cx = W / 2 + ln.x * near.half * 0.6;
+    drawRearShadow(cx, H * LN.carY, LN.carW * S, ln.y);
+    drawRearCar(cx, H * LN.carY - ln.y, LN.carW * S, LN.carH * S,
+                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 14) % 2 === 0);
+    drawParts(false);
   },
   draw: function (dt) {
-    drawSky(); drawClouds(); drawFar();
-    var near = Lane.pos(0, 0), far = Lane.pos(1, 0);
-    g.fillStyle = '#79c86a'; g.fillRect(0, far.hy, W, H - far.hy);
-    g.fillStyle = '#5b6470';
-    g.beginPath(); g.moveTo(W / 2 - far.half, far.hy); g.lineTo(W / 2 + far.half, far.hy);
-    g.lineTo(W / 2 + near.half * 1.15, H); g.lineTo(W / 2 - near.half * 1.15, H); g.closePath(); g.fill();
-    g.lineWidth = 6 * S; g.strokeStyle = '#f2f6fb';
-    g.beginPath(); g.moveTo(W / 2 - far.half, far.hy); g.lineTo(W / 2 - near.half * 1.15, H); g.stroke();
-    g.beginPath(); g.moveTo(W / 2 + far.half, far.hy); g.lineTo(W / 2 + near.half * 1.15, H); g.stroke();
-    g.fillStyle = 'rgba(255,255,255,.85)';
-    for (var i = 0; i < 14; i++) {
-      var z0 = (i + ln.dash) / 14, z1 = z0 + 0.035;
-      if (z1 > 1) continue;
-      for (var j = 0; j < 2; j++) {
-        var l = j ? 0.5 : -0.5, a = Lane.pos(z1, l), b = Lane.pos(z0, l);
-        g.beginPath(); g.moveTo(a.x - 3 * S * a.k, a.y); g.lineTo(a.x + 3 * S * a.k, a.y);
-        g.lineTo(b.x + 4 * S * b.k, b.y); g.lineTo(b.x - 4 * S * b.k, b.y); g.closePath(); g.fill();
-      }
-    }
-    var os = ln.objs.slice().sort(function (a, b) { return b.z - a.z; });
-    os.forEach(function (o) {
-      if (o.done) return;
-      var p = Lane.pos(o.z, o.lane);
-      g.save(); g.globalAlpha = 0.25; g.fillStyle = '#000';
-      g.beginPath(); g.ellipse(p.x, p.y, 34 * S * p.k, 9 * S * p.k, 0, 0, TAU); g.fill(); g.restore();
-      spr(o.t, p.x, p.y + 4 * S * p.k, o.h * S * p.k * 1.6, {});
-    });
-    var cx = W / 2 + ln.x * near.half * 0.6;
-    drawRearCar(cx, H * 0.9, 200 * S, 118 * S, clamp(Lane.steer(), -1, 1) - ln.x * 0.3, ln.hitT > 0 && Math.floor(ln.t * 14) % 2 === 0);
-    drawParts(false);
+    Lane.scene();
     texts.forEach(function (t) {
       g.save(); g.globalAlpha = clamp(t.life != null ? t.life : 1, 0, 1);
       outText(t.t, t.x, t.y, 34 * S, t.c || t.col || '#fff', '#2b2140'); g.restore();
     });
     outText('⭐ ' + stars, 24 * S, 30 * S, 34 * S, '#fff', '#2b6cb0', 'left');
-    if (!Pult.on && !REC) { g.save(); g.globalAlpha = 0.8; outText('📱 телефон-руль — кнопка справа внизу', W / 2, 30 * S, 20 * S, '#fff', '#2b6cb0'); g.restore(); }
+    if (ln.best > 0) { g.save(); g.globalAlpha = 0.75; outText('рекорд ' + ln.best, 24 * S, 60 * S, 20 * S, '#fff', '#2b6cb0', 'left'); g.restore(); }
+    if (!Pult.on && !REC && ln.t < 8) { g.save(); g.globalAlpha = 0.8; outText('📱 телефон-руль — кнопка справа внизу', W / 2, H * 0.06, 20 * S, '#fff', '#2b6cb0'); g.restore(); }
     if (celebrate > 0) { g.save(); g.globalAlpha = Math.min(1, celebrate); outText('УРА!', W / 2, H * 0.3, 90 * S, '#ffd93d', '#e0691f'); g.restore(); }
   },
   auto: function () {                        // автоигра: полоса без препятствий, лучше со звездой
@@ -4579,15 +4752,27 @@ var Lane = {
       var danger = 1.2, bonus = 0;
       for (var i = 0; i < ln.objs.length; i++) {
         var o = ln.objs[i];
-        if (o.done || o.lane !== l || o.z < -0.05) continue;
+        if (o.done || o.decor || o.sky || o.lane !== l || o.z < -0.05) continue;
         if (o.good) bonus += 0.25; else if (o.z < danger) danger = o.z;
       }
       var score = danger + bonus - Math.abs(l - ln.x) * 0.05;
       if (score > bestScore) { bestScore = score; bestLane = l; }
     }
     ln.autoT = bestLane;
+    if (!AUTO) return;
+    for (var q = 0; q < ln.objs.length; q++) {              // прыжок через то, что прыгается
+      var oo = ln.objs[q];
+      if (!oo.done && oo.jump && Math.abs(oo.lane - ln.x) < 0.5 && oo.z < 0.22 && oo.z > 0.10) { Lane.action(); break; }
+    }
   },
-  dbg: function () { return { x: +ln.x.toFixed(2), objs: ln.objs.length, spd: +ln.spd.toFixed(2), hit: ln.hitT > 0 }; }
+  dbg: function () {
+    var o = ln.objs[0] || {};
+    return { x: +ln.x.toFixed(2), y: Math.round(ln.y), objs: ln.objs.length, spd: +ln.spd.toFixed(3),
+             hit: ln.hitT > 0, want: wantEl, armed: wordArmed, jumps: ln.jumps,
+             hits: ln.hits, overs: ln.overs, takes: ln.takes, best: ln.best,
+             maxZ: ln.objs.length ? +Math.min.apply(null, ln.objs.map(function (o) { return o.z; })).toFixed(2) : null,
+             first: o.t ? { t: o.t, lane: o.lane, z: +o.z.toFixed(2) } : null };
+  }
 };
 
 /* ═══════════════ 17g. ТЕЛЕФОН-РУЛЬ ═══════════════
@@ -4603,7 +4788,7 @@ function loadScript(urls, cb) {
   })();
 }
 var Pult = {
-  on: false, steer: 0, lastT: -9, code: '', peer: null, conn: null, loading: false,
+  on: false, everOn: false, steer: 0, lastT: -9, code: '', peer: null, conn: null, loading: false,
   fresh: function () { return T - this.lastT < 1.5; },
   ensure: function () { if (!this.peer && !this.loading && !REC) this.open(); this.showBox(); },
   open: function () {
@@ -4618,7 +4803,7 @@ var Pult = {
       peer.on('open', function () { self.status('Ждём телефон…'); self.render(); });
       peer.on('connection', function (conn) {
         self.conn = conn;
-        conn.on('open', function () { self.on = true; self.status('Телефон подключён ✓'); A.coin(3); track('pult_on'); setTimeout(function () { self.hideBox(); }, 1200); });
+        conn.on('open', function () { self.on = true; self.everOn = true; self.status('Телефон подключён ✓'); A.coin(3); track('pult_on'); setTimeout(function () { self.hideBox(); }, 1200); });
         conn.on('data', function (m) { self.onData(m); });
         conn.on('close', function () { self.on = false; self.status('Телефон отключился'); });
       });
@@ -4627,7 +4812,10 @@ var Pult = {
   },
   onData: function (m) {
     if (!m) return;
-    if (m.t === 'steer') { this.steer = clamp(+m.v || 0, -1, 1); this.lastT = T; }
+    if (m.t === 'steer') {
+      if (m.off) { this.steer = 0; this.lastT = -9; return; }   // наклон выключили — сразу отдаём управление кнопкам
+      this.steer = clamp(+m.v || 0, -1, 1); this.lastT = T;
+    }
     else if (m.t === 'key') { if (m.d) keyDown(m.k); else keyUp(m.k); }
   },
   url: function () { return (location.protocol === 'file:' ? '(нужен сайт по https)' : location.origin + location.pathname.replace(/[^\/]*$/, '') + 'pult.html'); },
@@ -4916,7 +5104,7 @@ function keyDown(k) {
   A.init(); A.music();
   if (Voice.on) { Mic.request(true); Mic.resume(); }
   if (k === 'space') {
-    if (state !== 'play' && state !== 'garage' && A.talking()) return;   // не перебиваем диктора
+    if (state !== 'play' && state !== 'garage' && state !== 'lane' && A.talking()) return;   // не перебиваем диктора
     if (state === 'garage') toGameMode();
     else if (state === 'gamemode') { if (GAMEMODES[gmSel].id === 'lane') Lane.start(); else if (MODES.length < 2) startGame(); else toMode(); }
     else if (state === 'repair') repairSpace();
@@ -5358,6 +5546,7 @@ function ready() {
     if (/[?&]rail=1/.test(location.search)) objs.push({ t: 'rail', x: carX + 900 * S });
   }
   else if (q === 'mode') toMode();
+  else if (q === 'lane') { car = CARS[sel]; Lane.start(); }
   else if (q === 'play' || q === 'empty') {
     car = CARS[sel]; startGame();
     if (q === 'empty') { fuel = 0.0001; spd = 0; }
@@ -5370,6 +5559,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
+    window.__lane = function () { return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS }; };  // тест: режим «руль» изнутри
     window.__bg = function () {
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
