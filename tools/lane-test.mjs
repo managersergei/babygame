@@ -36,7 +36,8 @@ async function open(q, storage) {
 }
 const lane = p => p.evaluate(() => window.__bg().lane);
 // на время точечных замеров дорогу замораживаем, иначе в счётчики попадают случайные объекты
-const freeze = p => p.evaluate(() => { const L = window.__lane(); L.ln.spawnZ = 999; L.ln.decorZ = 999; L.ln.skyZ = 999; L.ln.objs.length = 0; L.ln.hits = 0; L.ln.overs = 0; L.ln.x = 0; });
+// quiet() обязателен: урок слова, начавшийся посреди проверки, замораживает объекты — исход не наступает никогда
+const freeze = p => p.evaluate(() => { const L = window.__lane(); L.quiet(); L.ln.spawnZ = 999; L.ln.decorZ = 999; L.ln.skyZ = 999; L.ln.objs.length = 0; L.ln.hits = 0; L.ln.overs = 0; L.ln.x = 0; });
 // исход конкретного объекта надёжнее ждать, чем угадывать паузу: скорость гуляет от рельефа
 async function outcome(p, kind, jumpAfter) {
   await freeze(p);
@@ -102,8 +103,10 @@ p = await open("?s=lane&test=1", ALL_KNOWN);
 const s0 = (await lane(p)).spd;
 ck("старт медленный", s0 <= 0.32, `спд ${s0}`);
 // скорость гуляет от рельефа, поэтому сравниваем средние за пару секунд, а не мгновенные значения
+// канистра даёт турбо на 2,2 с — такие кадры в замер скорости брать нельзя
 const avgSpd = async (ms) => { let s = 0, n = 0; const t0 = Date.now();
-  while (Date.now() - t0 < ms) { s += (await lane(p)).spd; n++; await p.waitForTimeout(120); } return s / n; };
+  while (Date.now() - t0 < ms) { const L = await lane(p); if (!L.boost) { s += L.spd; n++; } await p.waitForTimeout(120); }
+  return n ? s / n : 0; };
 await p.keyboard.down("ArrowUp");                  // газ: скорость должна вырасти за пару секунд, а не за две минуты
 await p.waitForTimeout(1500);
 const sg = await avgSpd(2000);
@@ -114,7 +117,7 @@ const sr = await avgSpd(2000);
 ck("без газа возвращается", sr < sg * 0.92, `после отпускания ${sr.toFixed(3)}`);
 await p.waitForTimeout(15000);
 const s1 = await lane(p);
-ck("скорость держится в разумных пределах", s1.spd > 0.2 && s1.spd < 0.7, `через 20 с ${s1.spd}`);
+ck("скорость держится в разумных пределах", s1.spd > 0.2 && s1.spd <= 0.7, `через 20 с ${s1.spd}${s1.boost ? " (турбо)" : ""}`);
 ck("на дороге не толпа", s1.objs <= 10, `объектов ${s1.objs}`);
 await p.close();
 

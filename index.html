@@ -309,6 +309,7 @@ var MOVE = {
   sheep:      { rot: 0.018, sy: 0.034, sp: 1.3 },
   chicken:    { rot: 0.075, sy: 0.020, sp: 2.4, bias: 0.6 },      // клюёт: наклон вперёд и назад
   hedgehog:   { rot: 0.030, sy: 0.040, d: 0.030, sp: 5.0 },       // семенит
+  star:       { sx: 0.42, d: 0.055, sp: 3.2 },                    // подпрыгивает и поворачивается, как монетка
   loc_monkey: { rot: 0.090, sy: 0.010, sp: 1.4 },                 // раскачивается
   windmill:   { rot: 0.012, sy: 0.008, sp: 0.9 },                 // тяжело покачивается на ветру
   butterfly:  { sx: 0.34, d: 0.030, sp: 7.5 },                    // машет крыльями
@@ -3545,10 +3546,10 @@ function lessonFocus(key) {
   if (les.from === 'lane') {                                     // в «руле» координаты свои
     if (les.obj) {
       var lo = les.obj, lp = laneProj(lo.z);
-      return [W / 2 + lo.lane * lp.half * 0.6, lp.y - laneH(lo, lp.k) * 0.55];
+      return [W / 2 + lo.lane * lp.half * LN.laneK, lp.y - laneH(lo, lp.k) * 0.55];
     }
     var nr = laneProj(0);
-    return [W / 2 + ln.x * nr.half * 0.6, H * LN.carY - 90 * S];   // урок про клавишу — смотрим на машинку
+    return [W / 2 + ln.x * nr.half * LN.laneK, H * LN.carY - 90 * S];   // урок про клавишу — смотрим на машинку
   }
   if (les.obj) {
     var ob = les.obj, oy;
@@ -4731,7 +4732,8 @@ function toGameMode(quiet) {                       // quiet — пришли г�
 /* Настройки режима в одном месте: скорость, зазоры, зона удара, прыжок.
    Раньше эти числа были рассыпаны по коду тремя разными системами координат. */
 var LN = {
-  spd0: 0.30, spdMax: 0.62, spdK: 0.9,       // глубина в секунду: старт, потолок, скорость выхода на цель
+  laneK: 0.74,                              // насколько ряды расходятся к краям: при 0,6 четверть асфальта не работала
+  spd0: 0.30, spdMax: 0.70, spdK: 0.9,       // глубина в секунду: старт, потолок (турбо от канистры), скорость выхода на цель
   gasK: 0.45, wzGain: 0.0016, wzCap: 0.12,   // прибавка от газа и медленный рост базы от пройденного пути
   gapMin: 0.62, gapMax: 1.00,                // зазор между объектами ПО ГЛУБИНЕ, а не по времени
   pStar: 0.55, pFuel: 0.66,                  // доли выпадения: звезда, бензин, дальше препятствие
@@ -4742,9 +4744,10 @@ var LN = {
   camUp: 90,                                 // камера поднята: перепад горизонт→машинка вырос на треть
   hzHalf: 62, nearHalf: 0.50, pow: 2.1, zMax: 1.9,
   hillAmp: 120, hillA: 1.9, hillB: 0.83,     // рельеф: две синусоиды, амплитуда в пикселях у камеры
-  decorGap: [0.8, 1.6], skyGap: [2.6, 5.0]
+  curvAmp: 620, curvA: 0.55, curvB: 0.27,     // изгибы дороги: тот же приём, что и рельеф, но по горизонтали
+  decorGap: [0.45, 0.95], skyGap: [2.6, 5.0]   // обочина вдвое плотнее: пустая обочина не даёт ощущения движения
 };
-var ln = { x: 0, y: 0, vy: 0, spd: 0, gas: 0, brake: 0, dash: 0, run: 0, wz: 0, slope: 0,
+var ln = { x: 0, y: 0, vy: 0, spd: 0, gas: 0, brake: 0, boost: 0, kick: 0, recShown: 0, dash: 0, run: 0, wz: 0, slope: 0,
            objs: [], spawnZ: 0, decorZ: 0, skyZ: 0,
            t: 0, hitT: 0, jumps: 0, autoT: 0, best: 0 };
 var LANE_KINDS = [
@@ -4754,9 +4757,17 @@ var LANE_KINDS = [
   { t:'ball',     h: 46,  jump: true },
   { t:'hedgehog', h: 42,  jump: true },
   { t:'haystack', h: 78,  jump: true },                     // был выше машинки и без прыжка — глухая стена
-  { t:'balloon',  h: 60,  jump: true, pop: true, air: 190 } // шарик на уровне прыжка, а не в небе
+  { t:'balloon',  h: 60,  jump: true, pop: true, air: 190 }, // шарик на уровне прыжка, а не в небе
+  { t:'auto',     h: 92,  slow: 0.55 }                      // попутная машина: её объезжают, а не перепрыгивают
 ];
 var LANE_DECOR = [ { t:'tree', h: 170 }, { t:'house', h: 160 }, { t:'bush', h: 70 }, { t:'flower', h: 56 } ];
+/* Обочина «руля» была одна и та же в любой локации: дерево, дом, куст, цветок.
+   PROP_H уже сводит высоты всего реквизита к общей шкале — берём оттуда предметы темы. */
+function laneKindProp(t) { return PROP_H[t] ? { t: t, h: PROP_H[t] } : null; }
+function laneDecorPool() {
+  var extra = (TH().props || []).concat(TH().extra || []).map(laneKindProp).filter(Boolean);
+  return extra.length ? LANE_DECOR.concat(extra) : LANE_DECOR;
+}
 var LANE_SKY   = [ { t:'bird', h: 56 }, { t:'cloud', h: 90 }, { t:'balloon', h: 92 } ];
 /* Какие слова этот режим умеет показать: дорога, обочина и небо. */
 var LANE_SHOW = { star:1, fuel:1, cone:1, ball:1, hedgehog:1, haystack:1,
@@ -4767,6 +4778,9 @@ function laneKind(t) {
   return null;
 }
 var CAR_BACK = { monster: ['#5aa64a', '#3f7d35'], fire: ['#e63946', '#a4161a'], race: ['#ffcf3d', '#e0691f'], police: ['#f2f6fb', '#2b6cb0'] };
+/* Попутные машины рисуются тем же drawRearCar, что и машинка игрока: отдельного
+   спрайта не нужно, а «сзади» — единственный ракурс, который в этом режиме и виден. */
+var TRAFFIC = [['#4fc3f7', '#2b6cb0'], ['#f4a261', '#c1121f'], ['#b7e4c7', '#40916c'], ['#ffcf3d', '#e0691f']];
 
 /* Тень рисуется отдельно от кузова и остаётся на земле — иначе прыжка не видно. */
 function drawRearShadow(x, y, w, lift) {
@@ -4775,8 +4789,8 @@ function drawRearShadow(x, y, w, lift) {
   g.fillStyle = '#000'; g.beginPath(); g.ellipse(x, y + 6 * S, w * 0.56 * k, 14 * S * k, 0, 0, TAU); g.fill();
   g.restore();
 }
-function drawRearCar(x, y, w, h, tilt, blink) {
-  var c = CAR_BACK[car.id] || CAR_BACK.race, big = car.id === 'monster';
+function drawRearCar(x, y, w, h, tilt, blink, col) {
+  var c = col || CAR_BACK[car.id] || CAR_BACK.race, big = !col && car.id === 'monster';
   g.save(); g.translate(x, y); g.rotate(clamp(tilt, -1, 1) * 0.07);
   var wr = big ? h * 0.36 : h * 0.26, wy = -wr * 0.9;
   g.fillStyle = '#2b2140';
@@ -4818,6 +4832,12 @@ function drawRearCar(x, y, w, h, tilt, blink) {
 function hillAt(wz) {
   return (Math.sin(wz * LN.hillA) + 0.55 * Math.sin(wz * LN.hillB + 1.7)) * LN.hillAmp * S * 0.5;
 }
+/* Изгиб дороги. Читается как «поворот», хотя управление не меняется: боковой снос,
+   как и рельеф, вычитается по камере — под машинкой он всегда ноль, и все расчёты
+   касаний (они в координатах рядов) остаются нетронутыми. */
+function curveAt(wz) {
+  return (Math.sin(wz * LN.curvA) + 0.5 * Math.sin(wz * LN.curvB + 1.3)) * LN.curvAmp * S * 0.5;
+}
 /* ЕДИНСТВЕННЫЙ источник правды о геометрии. Рельеф встроен ВНУТРЬ проекции и вычитает
    высоту под самой машинкой — поэтому при z = 0 смещение всегда ноль, и вся арифметика
    столкновений остаётся ровно такой же, как без холмов. */
@@ -4826,14 +4846,20 @@ function laneProj(z) {
   var p = Math.pow(clamp(1 - z, 0, LN.zMax), LN.pow);
   var half = LN.hzHalf * S + (W * LN.nearHalf - LN.hzHalf * S) * p;
   var dy = (hillAt(ln.wz + z) - hillAt(ln.wz)) * p;
-  return { p: p, y: hy + (by - hy) * p - dy, half: half, k: 0.12 + 0.88 * p, hy: hy, by: by, dy: dy };
+  /* У рельефа смещение гасится множителем p — горизонт по вертикали неподвижен.
+     У изгиба наоборот: боковой снос должен РАСТИ к горизонту, иначе поворот не читается.
+     Отсюда zc*zc — та же квадратичная накачка, что и в классических псевдо-3D-гонках. */
+  var zc = clamp(z, 0, 1);
+  var dx = (curveAt(ln.wz + zc) - curveAt(ln.wz)) * zc * zc;
+  return { p: p, y: hy + (by - hy) * p - dy, half: half, k: 0.12 + 0.88 * p,
+           hy: hy, by: by, dy: dy, cx: W / 2 + dx };
 }
 function laneH(o, k) { return o.h * S * k * 1.6; }        // экранная высота объекта
 
 var Lane = {
   start: function () {
     A.init(); car = CARS[sel]; tune();
-    ln.x = 0; ln.y = 0; ln.vy = 0; ln.spd = LN.spd0; ln.gas = 0; ln.brake = 0; ln.dash = 0; ln.run = 0; ln.wz = 0; ln.slope = 0;
+    ln.x = 0; ln.y = 0; ln.vy = 0; ln.spd = LN.spd0; ln.gas = 0; ln.brake = 0; ln.boost = 0; ln.kick = 0; ln.recShown = 0; ln.dash = 0; ln.run = 0; ln.wz = 0; ln.slope = 0;
     ln.objs = []; ln.spawnZ = 0.5; ln.decorZ = 0.3; ln.skyZ = 1.5;
     ln.t = 0; ln.hitT = 0; ln.jumps = 0; ln.autoT = 0; ln.hits = 0; ln.overs = 0; ln.takes = 0;
     parts.length = 0; texts.length = 0; objs.length = 0;
@@ -4869,7 +4895,7 @@ var Lane = {
         ln.y = 0; ln.vy = 0;
         if (wasUp) {                                        // приземление: звук и пыль из-под колёс
           A.land();
-          var nn = laneProj(0), cxl = W / 2 + ln.x * nn.half * 0.6;
+          var nn = laneProj(0), cxl = nn.cx + ln.x * nn.half * LN.laneK;
           for (var d0 = 0; d0 < 7; d0++)
             P({ x: cxl + rnd(-60, 60) * S, y: GY - H * LN.carY, vx: rnd(-70, 70) * S, vy: rnd(20, 90) * S,
                 r: rnd(5, 11) * S, c: pick(['#e8e0cd', '#d4c9ae']), kind: 'puff', life: rnd(0.3, 0.55), ay: 60 * S });
@@ -4880,8 +4906,10 @@ var Lane = {
        линейно — раньше прирост был 0,85 % в секунду и его просто не было видно. */
     ln.gas = (K.gas || (Pult.on && Pult.gas) ? 1 : 0);
     ln.brake = Math.max(0, ln.brake - dt / 0.9);
+    if (ln.boost > 0) ln.boost -= dt;                     // турбо от канистры
+    if (ln.kick > 0) ln.kick = Math.max(0, ln.kick - dt * 3.5);   // отдача кузова после удара
     var base = LN.spd0 + Math.min(LN.wzCap, ln.wz * LN.wzGain);
-    var goal = base * (1 + ln.gas * LN.gasK) * (1 - ln.slope * 0.18);   // в гору чуть медленнее, под гору чуть быстрее
+    var goal = base * (1 + ln.gas * LN.gasK + (ln.boost > 0 ? 0.5 : 0)) * (1 - ln.slope * 0.18);   // в гору чуть медленнее, под гору чуть быстрее
     ln.spd += (Math.min(LN.spdMax, goal) - ln.spd) * Math.min(1, dt * LN.spdK);
     var b = ln.brake * ln.brake * (3 - 2 * ln.brake);       // плавное торможение вместо ступеньки ×0,45
     var v = ln.spd * (1 - 0.55 * b);
@@ -4891,7 +4919,7 @@ var Lane = {
     ln.slope = (hillAt(ln.wz + 0.06) - hillAt(ln.wz)) / (0.06 * LN.hillAmp * S);   // + в гору, − под гору
     A.engine(clamp((ln.spd - LN.spd0) / (LN.spdMax - LN.spd0), 0, 1) * (1 - 0.5 * b), 1, true);
     if (ln.gas && ln.y === 0 && Math.floor(ln.t * 22) !== Math.floor((ln.t - dt) * 22)) {
-      var nz = laneProj(0), cxg = W / 2 + ln.x * nz.half * 0.6;
+      var nz = laneProj(0), cxg = nz.cx + ln.x * nz.half * LN.laneK;
       P({ x: cxg + rnd(-50, 50) * S, y: GY - H * LN.carY, vx: rnd(-40, 40) * S, vy: rnd(10, 50) * S,
           r: rnd(4, 9) * S, c: pick(['#e8e0cd', '#d4c9ae']), kind: 'puff', life: rnd(0.25, 0.5), ay: 40 * S });
     }
@@ -4900,14 +4928,14 @@ var Lane = {
     var near = laneProj(0);
     for (var i = ln.objs.length - 1; i >= 0; i--) {
       var o = ln.objs[i];
-      o.z -= dt * v;
+      o.z -= dt * v * (o.slow ? 1 - o.slow : 1);   // попутная едет в ту же сторону — сближение медленнее
       if (o.lesson && o.z < 0.62 && o.z > 0.18) {            // предмет заказанного слова доехал до кадра
         o.lesson = false; toLesson(o.lessonKey, o); return;
       }
       if (!o.done && !o.decor && !o.sky && o.z < LN.hitHi && o.z > LN.hitLo) {
         var hpx = laneH(o, near.k);
-        var ow = sprW(o.t, hpx) * 0.5;
-        var dx = Math.abs(o.lane - ln.x) * near.half * 0.6;
+        var ow = (o.slow ? hpx * 1.9 : sprW(o.t, hpx)) * 0.5;   // у попутной машины спрайта нет — ширину знает только отрисовка
+        var dx = Math.abs(o.lane - ln.x) * near.half * LN.laneK;
         var reach = (LN.carW * S * 0.42 + ow) * (o.good ? LN.greedy : LN.forgive);
         /* Раньше исход решался в ОДИН кадр: прыжок на пять сотых позже уже считался ударом.
            Пока машинка поднимается, решение откладывается и берётся максимум высоты за окно. */
@@ -4922,8 +4950,23 @@ var Lane = {
       if (!o.done && o.z <= LN.hitLo) {
         o.done = 'passed';
         if (!o.decor && !o.sky && !o.good) {                 // объехал — тоже молодец
-          stars++; row++; Lane.note(); A.coin(Math.min(row, 6)); ln.dodge = (ln.dodge || 0) + 1;
+          /* Раньше звезда за объезд падала молча и без картинки: ребёнок не понимал,
+             за что. Теперь награда привязана к месту объезда, а близкий — заметнее. */
+          var d0 = Math.abs(o.lane - ln.x), pp = Lane.pos(0, o.lane);
+          stars++; row++; Lane.note(); ln.dodge = (ln.dodge || 0) + 1;
+          if (d0 < 0.75) {
+            A.coin(Math.min(row, 6) + 2); A.whoosh();
+            popText('ВЖУХ!', pp.x, pp.y - 70 * S, '#7bd66b');
+            burst(pp.x, GY - (pp.y - 30 * S), 8, ['#fff', '#cfe9f7'], 200 * S, 'dot');
+          } else {
+            A.coin(Math.min(row, 6));
+            popText('+1', pp.x, pp.y - 50 * S, '#ffd93d');
+          }
         }
+      }
+      if (o.fly) {                                       // разлёт сбитого предмета
+        o.fx = (o.fx || 0) + o.fvx * dt; o.fy = (o.fy || 0) + o.fvy * dt;
+        o.fvy -= 900 * S * dt; o.frotA = (o.frotA || 0) + o.frot * dt;
       }
       var q = laneProj(o.z);
       if (q.y - laneH(o, q.k) > H + 40 * S || o.z < -1.2) ln.objs.splice(i, 1);
@@ -4949,7 +4992,8 @@ var Lane = {
     Lane.push(kind, Lane.freeLane(kind), 1);
   },
   freeLane: function (kind) {
-    if (LANE_DECOR.indexOf(kind) >= 0) return RNG() < 0.5 ? -1.85 : 1.85;
+    if (LANE_DECOR.indexOf(kind) >= 0 || (kind && PROP_H[kind.t] && !kind.good && !kind.jump))
+      return (RNG() < 0.5 ? -1 : 1) * rnd(1.55, 3.1);   // обочина уходит вглубь, а не стоит в одну линию
     if (LANE_SKY.indexOf(kind) >= 0)   return rnd(-1.2, 1.2);
     var busy = {}, i;
     for (i = 0; i < ln.objs.length; i++) {
@@ -4964,6 +5008,7 @@ var Lane = {
   push: function (kind, lane, z) {
     var o = { t: kind.t, lane: lane, z: z, good: !!kind.good, jump: !!kind.jump, h: kind.h,
               pop: !!kind.pop, air: kind.air || 0,          // шарик: висит на высоте прыжка и лопается
+              slow: kind.slow || 0, col: kind.slow ? pick(TRAFFIC) : null,   // попутная машина едет, а не стоит
               decor: LANE_DECOR.indexOf(kind) >= 0, sky: LANE_SKY.indexOf(kind) >= 0,
               ph: rnd(0, TAU), done: false };
     ln.objs.push(o);
@@ -4981,11 +5026,18 @@ var Lane = {
         kind = w < LN.pStar ? LANE_KINDS[0] : w < LN.pFuel ? LANE_KINDS[1] : pick(LANE_KINDS.slice(2));
       }
       Lane.push(kind, Lane.freeLane(kind), 1);
+      /* Когда ребёнок освоился, изредка ставим второе препятствие в другой ряд:
+         иначе полосу выбирать не приходится — препятствие всегда одно на всю ширину.
+         freeLane отдаёт незанятый ряд, так что проезд остаётся всегда. */
+      if (stars > 40 && !kind.good && RNG() < 0.35) {
+        var k2 = pick(LANE_KINDS.slice(2)), free2 = Lane.freeLane(k2);
+        if (free2 !== undefined) Lane.push(k2, free2, 1.02);
+      }
     }
     if (ln.decorZ <= 0) {
       ln.decorZ = rnd(LN.decorGap[0], LN.decorGap[1]);
       var dk = (wantEl && LANE_SHOW[wantEl] && !wordArmed && laneKind(wantEl) && LANE_DECOR.indexOf(laneKind(wantEl)) >= 0)
-             ? laneKind(wantEl) : pick(LANE_DECOR);
+             ? laneKind(wantEl) : pick(laneDecorPool());
       Lane.push(dk, Lane.freeLane(dk), 1);
     }
     if (ln.skyZ <= 0) {
@@ -4996,11 +5048,11 @@ var Lane = {
     }
   },
   touch: function (o, near, peak) {
-    var p = laneProj(o.z), px = W / 2 + o.lane * p.half * 0.6, py = p.y;
+    var p = laneProj(o.z), px = p.cx + o.lane * p.half * LN.laneK, py = p.y;
     var high = Math.max(ln.y, peak || 0);
     if (o.pop) {                                            // шарик: допрыгнул — лопнул, не допрыгнул — пролетел мимо
       if (high > o.air * S * 0.55) {
-        o.done = 'over'; stars++; row++; Lane.note(); A.coin(row + 2);
+        o.done = 'over'; stars++; row++; Lane.note(); A.pop(); A.coin(row + 2);
         popText('ХЛОП!', px, py - o.air * S - 30 * S, '#ffd93d');
         burst(px, GY - (py - o.air * S), 10, ['#ff6b6b', '#ffd93d', '#fff'], 260 * S, 'conf'); EV('lane', 'pop');
         ln.overs++;
@@ -5014,20 +5066,35 @@ var Lane = {
         popText('+1', px, py - 60 * S, '#ffd93d');
         burst(px, GY - (py - 30 * S), 10, ['#ffd93d', '#fff'], 260 * S, 'spark'); EV('lane', 'star'); ln.takes++;
         if (stars % TUNE.praiseEvery === 0) { celebrate = 2; A.fanfare(stars); A.say(pick(['Хорошо!', 'Здорово!'])); track('lane_praise', { stars: stars }); }
+        /* Раньше «руль» был заперт в одной деревне на всю сессию. Без вспышки:
+           смена места — конфетти и реплика, полноэкранный белый для 2–4 лет запрещён. */
+        if (stars % TUNE.themeEvery === 0) {
+          themeIx++; A.cheer(); A.say('Молодец! Поехали!');
+          popText('НОВОЕ МЕСТО!', W / 2, H * 0.28, '#ffd93d');
+          burst(W / 2, GY - H * 0.5, 26, ['#ff4d6d', '#ffd93d', '#4fc3f7', '#7bd66b'], 320 * S, 'conf');
+        }
       } else {
-        A.coin(3); popText('БЕНЗИН!', px, py - 60 * S, '#7bd66b');
-        burst(px, GY - (py - 30 * S), 8, '#7bd66b', 200 * S, 'dot'); EV('lane', 'fuel');
+        /* Канистра ничего не давала — ни звезды, ни скорости. Теперь это турбо:
+           два с лишним секунды заметно быстрее, и это видно, а не написано. */
+        stars++; row++; Lane.note(); A.fuelUp(); ln.boost = 2.2;
+        popText('ТУРБО!', px, py - 60 * S, '#7bd66b');
+        burst(px, GY - (py - 30 * S), 12, ['#7bd66b', '#ffd93d', '#fff'], 260 * S, 'spark'); EV('lane', 'fuel');
       }
       return;
     }
     if (o.jump && high > laneH(o, near.k) * LN.overK) {     // перепрыгнул — награда, а не удар
       o.done = 'over'; stars++; row++; Lane.note(); A.coin(row + 2);
-      popText('ОП!', px, py - 90 * S, '#ffd93d');
+      popText('ОП!', px, py - 90 * S, '#ffd93d'); praiseJump();   // пул похвал уже озвучен, сам держит паузу 12 с
       burst(px, GY - (py - 40 * S), 8, ['#ffd93d', '#fff'], 240 * S, 'spark'); EV('lane', 'over ' + o.t); ln.overs++;
       return;
     }
     o.done = 'hit';
-    ln.hitT = 0.9; ln.brake = 1; shake = 3.5 * S; row = 0; A.clunk(); popText('ОЙ!', px, py - 70 * S, '#ff6b6b');
+    /* Тряска всего кадра для 2–4 лет запрещена — отдачу отыгрывает сама машинка. */
+    ln.hitT = 0.9; ln.brake = 1; ln.kick = 1; row = 0; A.clunk(); popText('ОЙ!', px, py - 70 * S, '#ff6b6b');
+    /* Раньше конус после удара оставался стоять — будто въехали в стену. Разлёт
+       живёт в экранных пикселях объекта и на расчёты глубины не влияет. */
+    o.fly = 1; o.fvx = (o.lane - ln.x >= 0 ? 1 : -1) * rnd(160, 300) * S;
+    o.fvy = rnd(180, 320) * S; o.frot = rnd(-9, 9);
     burst(px, GY - (py - 20 * S), 12, ['#c9c9c9', '#8a94a6'], 220 * S, 'dot'); EV('lane', 'hit ' + o.t); ln.hits++;
     track('lane_hit', { t: o.t });
   },
@@ -5036,9 +5103,15 @@ var Lane = {
     var first = ln.best > 0;
     ln.best = stars;
     try { localStorage.setItem('babygame.best', String(stars)); } catch (e) {}
-    if (first && stars === ln.best) popText('РЕКОРД!', W / 2, H * 0.35, '#ffd93d');
+    /* Раньше это кричалось на КАЖДУЮ звезду после побития рекорда — к десятой
+       звезде слово «рекорд» переставало что-либо значить. */
+    if (first && !ln.recShown) {
+      ln.recShown = 1; A.fanfare(2);
+      popText('РЕКОРД!', W / 2, H * 0.35, '#ffd93d');
+      burst(W / 2, GY - H * 0.45, 22, ['#ffd93d', '#fff'], 300 * S, 'spark');
+    }
   },
-  pos: function (z, lane) { var q = laneProj(z); q.x = W / 2 + lane * q.half * 0.6; return q; },
+  pos: function (z, lane) { var q = laneProj(z); q.x = q.cx + lane * q.half * LN.laneK; return q; },
   /* Сцена без HUD: нужна и самому режиму, и уроку, начатому из него. */
   scene: function () {
     bgX = ln.run;
@@ -5052,17 +5125,37 @@ var Lane = {
     gg2.addColorStop(0, mix(TH().grass, TH().sky[2], 0.35)); gg2.addColorStop(0.35, TH().grass);
     g.fillStyle = gg2; g.fillRect(0, gy0, W, H - gy0);
     // край дороги — по той же кривой, что и всё остальное, а не двумя прямыми
-    var SEG = 40, zs = [], i;                                 // чаще у камеры: там экранный шаг наибольший
-    for (i = 0; i <= SEG; i++) zs.push(1 - 1.35 * Math.pow(i / SEG, 1.4));
+    /* Проекции считаем один раз на кадр: раньше те же 40 точек прогонялись через
+       laneProj трижды (полотно, кромка, бордюр) — 120 объектов в мусор на кадр. */
+    var SEG = 40, zs = [], PR = [], i;                        // чаще у камеры: там экранный шаг наибольший
+    for (i = 0; i <= SEG; i++) { zs.push(1 - 1.35 * Math.pow(i / SEG, 1.4)); PR.push(laneProj(zs[i])); }
     g.fillStyle = TH().road[0];
     g.beginPath();
-    for (i = 0; i <= SEG; i++) { var a = laneProj(zs[i]); if (i === 0) g.moveTo(W / 2 - a.half, a.y); else g.lineTo(W / 2 - a.half, a.y); }
-    for (i = SEG; i >= 0; i--) { var b = laneProj(zs[i]); g.lineTo(W / 2 + b.half, b.y); }
+    for (i = 0; i <= SEG; i++) { var a = PR[i]; if (i === 0) g.moveTo(a.cx - a.half, a.y); else g.lineTo(a.cx - a.half, a.y); }
+    for (i = SEG; i >= 0; i--) { var b = PR[i]; g.lineTo(b.cx + b.half, b.y); }
     g.closePath(); g.fill();
+
+    /* Полосатый бордюр. На идеально прямой дороге разметка по центру — единственный
+       источник скорости, и его мало: обочина, бегущая мимо, читается куда сильнее.
+       Фаза привязана к ln.dash — тому же счётчику, что и пунктир. */
+    for (i = 0; i < SEG; i++) {
+      var ra = PR[i], rb = PR[i + 1];
+      if (ra.p <= 0.001 && rb.p <= 0.001) continue;
+      g.fillStyle = ((i + Math.floor(ln.dash)) % 2) ? '#e8402f' : '#f7f2ea';
+      for (var sd = -1; sd <= 1; sd += 2) {
+        g.beginPath();
+        g.moveTo(ra.cx + sd * ra.half, ra.y);
+        g.lineTo(ra.cx + sd * (ra.half + 20 * S * ra.k), ra.y);
+        g.lineTo(rb.cx + sd * (rb.half + 20 * S * rb.k), rb.y);
+        g.lineTo(rb.cx + sd * rb.half, rb.y);
+        g.closePath(); g.fill();
+      }
+    }
+
     g.lineWidth = 6 * S; g.strokeStyle = '#f2f6fb';
     for (var side = -1; side <= 1; side += 2) {
       g.beginPath();
-      for (i = 0; i <= SEG; i++) { var c = laneProj(zs[i]); if (i === 0) g.moveTo(W / 2 + side * c.half, c.y); else g.lineTo(W / 2 + side * c.half, c.y); }
+      for (i = 0; i <= SEG; i++) { var c = PR[i]; if (i === 0) g.moveTo(c.cx + side * c.half, c.y); else g.lineTo(c.cx + side * c.half, c.y); }
       g.stroke();
     }
     g.fillStyle = 'rgba(255,255,255,.85)';
@@ -5078,12 +5171,13 @@ var Lane = {
     for (i = 0; i < ln.objs.length; i++) {
       var o = ln.objs[i], p = laneProj(o.z);
       if (p.p <= 0.001) continue;
-      var hpx = laneH(o, p.k), x = W / 2 + o.lane * p.half * 0.6;
+      var hpx = laneH(o, p.k), x = p.cx + o.lane * p.half * LN.laneK + (o.fx || 0) * p.k;
       var y = o.sky ? p.y - (140 + (o.ph % 1) * 90) * S * p.k - 40 * S
             : o.air ? p.y - o.air * S * p.k
             : p.y + 4 * S * p.k;
+      if (o.fy) y -= o.fy * p.k;
       var a = clamp(1 + o.z / 0.28, 0, 1);                  // на выезде гаснет, а не пропадает хлопком
-      if (o.done === 'take') continue;
+      if (o.done === 'take' || (o.done === 'over' && o.pop)) continue;   // лопнувший шарик не должен лететь дальше целым
       if (state === 'lesson' && o !== les.obj && LESSON_HIDE[o.t]) continue;
       g.save(); g.globalAlpha = a;
       if (!o.sky) {
@@ -5091,10 +5185,11 @@ var Lane = {
            Ниже, шире, у камеры темнее и пульсирует: это и подсказка дистанции, и таймер прыжка. */
         var near0 = o.z < 0.35, pu = near0 ? 1 + 0.12 * Math.sin(T * 12) : 1;
         g.save(); g.globalAlpha = a * (near0 ? 0.45 : 0.32); g.fillStyle = '#000';
-        g.beginPath(); g.ellipse(x, p.y + 10 * S * p.k, sprW(o.t, hpx) * 0.62 * pu, 11 * S * p.k, 0, 0, TAU);
+        g.beginPath(); g.ellipse(x, p.y + 10 * S * p.k, (o.slow ? hpx * 1.9 : sprW(o.t, hpx)) * 0.62 * pu, 11 * S * p.k, 0, 0, TAU);
         g.fill(); g.restore();
       }
-      spr(frameOf(o.t, o.ph), x, y, hpx, withMove(o.t, o.ph, hpx, o.done === 'hit' ? { rot: 0.5 } : {}));
+      if (o.slow) drawRearCar(x, y, hpx * 1.9, hpx, 0, false, o.col);
+      else spr(frameOf(o.t, o.ph), x, y, hpx, withMove(o.t, o.ph, hpx, o.fly ? { rot: o.frotA || 0 } : {}));
       g.restore();
     }
     /* Скоростные штрихи от точки схода — единственная безопасная для дошкольника подсказка
@@ -5106,14 +5201,16 @@ var Lane = {
         var ph3 = ((ln.t * (0.9 + r0) + q3 * 0.125) % 1), zz = 1 - ph3;
         var pa = laneProj(zz), pb2 = laneProj(Math.max(-0.2, zz - 0.06));
         var lx = (q3 % 2 ? 1 : -1) * (0.86 + (q3 % 3) * 0.06);
-        g.beginPath(); g.moveTo(W / 2 + lx * pa.half, pa.y); g.lineTo(W / 2 + lx * pb2.half, pb2.y); g.stroke();
+        g.beginPath(); g.moveTo(pa.cx + lx * pa.half, pa.y); g.lineTo(pb2.cx + lx * pb2.half, pb2.y); g.stroke();
       }
       g.restore();
     }
-    var near = laneProj(0), cx = W / 2 + ln.x * near.half * 0.6;
+    var near = laneProj(0), cx = near.cx + ln.x * near.half * LN.laneK;
     drawRearShadow(cx, H * LN.carY, LN.carW * S, ln.y);
-    var squat = ln.gas ? 0.96 : 1;                            // лёгкое приседание на газу
-    drawRearCar(cx, H * LN.carY - ln.y, LN.carW * S, LN.carH * S * squat,
+    /* На удар кузов приседает и клюёт вниз — это заметно не хуже тряски кадра,
+       но не двигает весь мир и не нарушает возрастное правило. */
+    var squat = (ln.gas ? 0.96 : 1) * (1 - ln.kick * 0.10);
+    drawRearCar(cx, H * LN.carY - ln.y + ln.kick * 10 * S, LN.carW * S, LN.carH * S * squat,
                 clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0);   // 2,5 вспышки в секунду — в пределах правила о трёх
     drawParts(false);
   },
@@ -5153,6 +5250,7 @@ var Lane = {
   dbg: function () {
     var o = ln.objs[0] || {};
     return { x: +ln.x.toFixed(2), y: Math.round(ln.y), objs: ln.objs.length, spd: +ln.spd.toFixed(3),
+             boost: +Math.max(0, ln.boost).toFixed(2),   // турбо от канистры искажает замер скорости в тесте
              hit: ln.hitT > 0, want: wantEl, armed: wordArmed, jumps: ln.jumps,
              hits: ln.hits, overs: ln.overs, takes: ln.takes, best: ln.best,
              maxZ: ln.objs.length ? +Math.min.apply(null, ln.objs.map(function (o) { return o.z; })).toFixed(2) : null,
@@ -6065,7 +6163,12 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
-    window.__lane = function () { return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS }; };  // тест: режим «руль» изнутри
+    /* Тест: режим «руль» изнутри. quiet() глушит очередь слов — иначе урок,
+       начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
+    window.__lane = function () {
+      return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS,
+               quiet: function () { wantEl = null; wordArmed = false; wordT = -1e9; } };
+    };
     window.__bg = function () {
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
