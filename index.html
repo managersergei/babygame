@@ -1447,7 +1447,7 @@ function spawnAhead() {
       for (var k = 0; k < m; k++) objs.push({ t:'cone', x: obsMark(x + k * 440 * S), y:0, hit:false });
       nextX = lastObsX + rnd(430, 600) * S;
     } else if (r < 0.48) {                             // лужа
-      objs.push({ t:'puddle', x: obsMark(x), w: rnd(120, 200) * S, done:false });
+      objs.push({ t:'puddle', x: obsMark(x), w: rnd(80, 120) * S, done:false });
       nextX = lastObsX + rnd(430, 600) * S;
     } else if (r < 0.58) {                             // дополнительная канистра
       spawnFuel(x);
@@ -1577,7 +1577,7 @@ function forceSpawn(k) {
   if (k === 'star')          o = { t:'star', x:x, y: 95 * S, ph: rnd(0, TAU) };
   else if (k === 'balloon')  o = { t:'balloon', x:x, y: 200 * S, ph: rnd(0, TAU) };
   else if (k === 'cone')     o = { t:'cone', x:x, y:0, hit:false };
-  else if (k === 'puddle')   o = { t:'puddle', x:x, w: rnd(110, 175) * S, done:false };
+  else if (k === 'puddle')   o = { t:'puddle', x:x, w: rnd(80, 120) * S, done:false };
   else if (k === 'ramp')     o = { t:'ramp', x:x, w: 132 * S, h: 76 * S };
   else if (k === 'plat')     o = { t:'plat', x:x, w: rnd(250, 330) * S, h: rnd(115, 165) * S };
   else if (k === 'pit')      o = { t:'pit', x:x, w: 150 * S };
@@ -1734,7 +1734,7 @@ function spawnEndless(x) {
       o = { t:'star', x:px2, y:sy, ph:rnd(0, TAU) };
     } else if (it.t === 'balloon') o = { t:'balloon', x:px2, y:(it.y || 200) * S, ph:rnd(0, TAU) };
     else if (it.t === 'cone')      o = { t:'cone', x:px2, y:0, hit:false };
-    else if (it.t === 'puddle')    o = { t:'puddle', x:px2, w:rnd(110, 175) * S, done:false };
+    else if (it.t === 'puddle')    o = { t:'puddle', x:px2, w:rnd(80, 120) * S, done:false };
     else if (it.t === 'ramp')      o = { t:'ramp', x:px2, w:132 * S, h:76 * S };
     else if (it.t === 'plat')    { platH = rnd(115, 165) * S; o = { t:'plat', x:px2, w:rnd(250, 330) * S, h:platH }; }
     else if (it.t === 'pit')       o = { t:'pit', x:px2, w:150 * S };
@@ -2255,7 +2255,7 @@ function updatePlay(dt) {
         objs.splice(q, 1); continue;
       }
     } else if (o.t === 'cone' && !o.hit) {
-      if (bx1 > o.x - 20*S && bx0 < o.x + 20*S && by0 < 46*S) {
+      if (bx1 > o.x - 11*S && bx0 < o.x + 11*S && by0 < 34*S) {   // был неперепрыгиваем: зона шире прыжка
         o.jumped = false;
         o.hit = true; o.vx = rnd(240, 520) * S + spd * 0.4; o.vy = rnd(280, 520) * S; o.rot = 0; o.vr = rnd(-14, 14);
         A.clatter();
@@ -2782,9 +2782,9 @@ function drawObjs() {
       spr('balloon', sx, GY - by + 42 * S, 84 * S, { rot: Math.sin(o.ph * 1.1) * 0.12 });
     } else if (o.t === 'cone') {
       shadow(sx, GY + 4 * S, 20 * S, 0.18);
-      spr('cone', sx, GY - (o.y || 0), 54 * S, { rot: o.rot || 0 });
+      spr('cone', sx, GY - (o.y || 0), 40 * S, { rot: o.rot || 0 });
     } else if (o.t === 'puddle') {
-      var pw3 = o.w * 0.62, ph3 = 26 * S, py3 = GY + 16 * S, ph2 = o.ph || 0;
+      var pw3 = o.w * 0.52, ph3 = 20 * S, py3 = GY + 16 * S, ph2 = o.ph || 0;   // картинка была шире своей зоны удара
       g.save();
       g.fillStyle = 'rgba(20,40,60,.35)';                        // тёмный ободок-углубление
       g.beginPath(); g.ellipse(sx, py3 + 3 * S, pw3 + 5 * S, ph3 + 4 * S, 0, 0, TAU); g.fill();
