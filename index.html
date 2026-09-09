@@ -509,6 +509,7 @@ function roundRect(x, y, w, h, r) {
 /* ═══════════════ 3. ЗВУК ═══════════════ */
 var A = (function () {
   var ac = null, master = null, eng = null, engGain = null, engFilt = null, noiseBuf = null, muted = false;
+  var roadF = null, roadG = null;                 // шум дороги: скорость должна быть слышна, а не только видна
   var chosen, cur = null, cache = {}, HAVE = {}, qq = [];
   (function () {
     var L = window.VOICE_LIST || [];
@@ -525,7 +526,12 @@ var A = (function () {
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ac = new AC();
-    master = ac.createGain(); master.gain.value = A.vol.sfx; master.connect(ac.destination);   // сохранённая громкость, а не жёсткие 0,55
+    master = ac.createGain(); master.gain.value = A.vol.sfx;    // сохранённая громкость, а не жёсткие 0,55
+    /* Мягкий лимитер: на максимуме ползунка фанфара поверх мотора и монет уходила в хрип. */
+    var lim = ac.createDynamicsCompressor();
+    lim.threshold.value = -8; lim.knee.value = 8; lim.ratio.value = 12;
+    lim.attack.value = 0.003; lim.release.value = 0.22;
+    master.connect(lim); lim.connect(ac.destination);
 
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     var d = noiseBuf.getChannelData(0);
@@ -542,6 +548,13 @@ var A = (function () {
       eng.push({ o: o, m: m });
     });
     engFilt.connect(engGain); engGain.connect(master);
+
+    /* Шум дороги и ветра. Один зациклённый источник на всю игру: на кадр не влияет,
+       громкость и срез ведёт engine() от скорости. */
+    var rs = ac.createBufferSource(); rs.buffer = noiseBuf; rs.loop = true;
+    roadF = ac.createBiquadFilter(); roadF.type = 'lowpass'; roadF.frequency.value = 400;
+    roadG = ac.createGain(); roadG.gain.value = 0;
+    rs.connect(roadF); roadF.connect(roadG); roadG.connect(master); rs.start();
   }
 
   function tone(f, dur, type, vol, to, delay) {
@@ -571,7 +584,9 @@ var A = (function () {
     gg.gain.linearRampToValueAtTime(vol, t + 0.02);
     gg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f); f.connect(gg); gg.connect(master);
-    s.start(t); s.stop(t + dur + 0.05);
+    /* Смещение по буферу — иначе сотый удар звучит бит-в-бит как первый.
+       loop обязателен: без него звук длиннее остатка буфера обрывается. */
+    s.loop = true; s.start(t, RNG() * 1.5); s.stop(t + dur + 0.05);
   }
 
   return {
@@ -583,10 +598,17 @@ var A = (function () {
       eng.forEach(function (e) { e.o.frequency.setTargetAtTime(base * e.m, ac.currentTime, 0.08); });
       engFilt.frequency.setTargetAtTime(420 + r * 1500, ac.currentTime, 0.1);
       engGain.gain.setTargetAtTime(muted || !on || this.ducked ? 0 : 0.035 + r * 0.05, ac.currentTime, 0.12);
+      if (roadG) {                                 // r*r — на малой скорости шума почти нет
+        roadG.gain.setTargetAtTime(muted || !on || this.ducked ? 0 : r * r * 0.045, ac.currentTime, 0.15);
+        roadF.frequency.setTargetAtTime(280 + r * 1500, ac.currentTime, 0.15);
+      }
     },
     honk:    function () { tone(392, 0.32, 'square', 0.2); tone(494, 0.32, 'square', 0.16); },
-    jump:    function () { tone(300, 0.26, 'sine', 0.28, 900); tone(600, 0.2, 'triangle', 0.12, 1500); },
-    land:    function () { noise(0.22, 0.28, 900, 90, 0, 'lowpass'); tone(90, 0.16, 'sine', 0.22, 45); },
+    /* ±9 % по высоте: за заезд прыжков сотни, и абсолютно одинаковый звук ухо перестаёт замечать. */
+    jump:    function () { var k = 0.92 + RNG() * 0.17;
+                           tone(300 * k, 0.26, 'sine', 0.28, 900 * k); tone(600 * k, 0.2, 'triangle', 0.12, 1500 * k); },
+    land:    function () { var k = 0.9 + RNG() * 0.2;
+                           noise(0.22, 0.28, 900 * k, 90, 0, 'lowpass'); tone(90 * k, 0.16, 'sine', 0.22, 45); },
     coin:    function (n) { var b = 880 * Math.pow(1.06, Math.min(n || 0, 8));
                             tone(b, 0.1, 'triangle', 0.22); tone(b * 1.5, 0.16, 'triangle', 0.18, null, 0.07); },
     pop:     function () { noise(0.09, 0.34, 2200, 600); tone(900, 0.08, 'sine', 0.14, 1800); },
@@ -594,20 +616,37 @@ var A = (function () {
     clunk:   function () { noise(0.16, 0.24, 500, 120, 0, 'lowpass'); tone(150, 0.12, 'square', 0.14, 70); },
     whee:    function () { tone(420, 0.5, 'sine', 0.22, 1250); },
     rev:     function () { tone(70, 0.45, 'sawtooth', 0.22, 220); noise(0.4, 0.1, 300, 1400); },
+    click:   function () { noise(0.05, 0.18, 2600, 900, 0, 'bandpass'); tone(1500, 0.05, 'square', 0.09); },
+    bolt:    function () { tone(1200, 0.06, 'square', 0.11); tone(1700, 0.07, 'square', 0.09, null, 0.06);
+                           noise(0.08, 0.12, 3000, 1200); },
     siren:   function () { for (var i = 0; i < 6; i++)
                              tone(i % 2 ? 980 : 700, 0.22, 'square', 0.13, null, i * 0.22); },
-    fanfare: function () { [523, 659, 784, 1047, 1319].forEach(function (f, i) {
-                             tone(f, 0.34, 'triangle', 0.22, null, i * 0.11); }); },
-    cheer:   function () { noise(1.1, 0.16, 700, 2400); },
+    /* Звонок шлагбаума: сирена уже значит «скорая», «полиция» и «робот» —
+       ещё одно значение сделало бы её ничего не значащей. */
+    bell:    function () { for (var i = 0; i < 8; i++)
+                             tone(i % 2 ? 880 : 660, 0.17, 'square', 0.15, null, i * 0.19); },
+    /* Три варианта: одна и та же фанфара звучала и на «поехали», и на рекорде —
+       к концу заезда ухо перестаёт отличать большое событие от рядового. */
+    fanfare: function (v) {
+      [[523, 659, 784, 1047, 1319], [587, 740, 880, 1175, 1480], [494, 622, 740, 988, 1245]][Math.abs(v | 0) % 3]
+        .forEach(function (f, i) { tone(f, 0.34, 'triangle', 0.22, null, i * 0.11); });
+    },
+    /* Один полосовой шум звучал как «шшш». Три смещённых слоя (в noise теперь случайное
+       смещение по буферу) плюс несколько нот сверху дают подобие радостной толпы. */
+    cheer:   function () {
+      for (var ci = 0; ci < 3; ci++) noise(0.9 + RNG() * 0.4, 0.09, 600 + ci * 500, 1800 + ci * 700, ci * 0.09);
+      for (var cj = 0; cj < 4; cj++) tone(880 + RNG() * 700, 0.22, 'triangle', 0.05, null, 0.1 + RNG() * 0.7);
+    },
     whoosh:  function () { noise(0.2, 0.16, 300, 2000); },
     fuelUp:  function () { noise(0.35, 0.14, 500, 1600); [523, 784, 1047].forEach(function (f, i) {
                              tone(f, 0.2, 'sine', 0.22, null, i * 0.09); }); },
-    beep:    function () { tone(1046, 0.1, 'square', 0.13); },
+    beep:    function (k) { tone(1046 * (1 + (k || 0) * 0.4), 0.1, 'square', 0.13); },   // k=0..1 — насколько пуст бак
     clatter: function () { for (var i = 0; i < 3; i++) {
                              noise(0.11, 0.2, 900 - i * 200, 160, i * 0.07, 'bandpass');
                              tone(210 - i * 30, 0.09, 'square', 0.1, 90, i * 0.07); } },
     hiss:    function () { noise(0.5, 0.16, 5200, 900, 0, 'bandpass'); },
     thud:    function () { noise(0.16, 0.26, 420, 90, 0, 'lowpass'); tone(120, 0.14, 'sine', 0.2, 60); },
+    skid:    function () { noise(0.28, 0.1, 2600, 700, 0, 'bandpass'); },   // короткий шелест шин
     fall:    function () { tone(500, 0.35, 'sine', 0.22, 90); noise(0.3, 0.2, 700, 120, 0.12, 'lowpass'); },
     crunch:  function () { noise(0.22, 0.3, 1800, 300, 0, 'bandpass');
                            tone(160, 0.16, 'square', 0.16, 70); },
@@ -667,10 +706,11 @@ var A = (function () {
       if (!('speechSynthesis' in window)) return;
       try {
         var v = this.voice();
-        if (!v) return;
+        if (!v) { if (qq.length) A.say(qq.shift()); return; }   // очередь реплик не должна рваться на первой ненайденной mp3
         speechSynthesis.cancel();
         var u = new SpeechSynthesisUtterance(text);
-        u.voice = v; u.lang = 'ru-RU'; u.rate = 0.94; u.pitch = 1.06; u.volume = 1;
+        u.voice = v; u.lang = 'ru-RU'; u.rate = 0.94; u.pitch = 1.06; u.volume = this.vol.voice;
+        u.onend = function () { if (qq.length) A.say(qq.shift()); };
         speechSynthesis.speak(u);
       } catch (e) {}
     },
@@ -708,11 +748,30 @@ var A = (function () {
         m = document.createElement('audio');
         m.id = 'bgm';
         m.src = 'assets/music/' + self.tracks[Math.floor(RNG() * self.tracks.length)];
-        m.addEventListener('ended', function () {          // следующий трек — другой
+        /* Кроссфейд за 1,2 с до конца: смена src по 'ended' давала паузу на загрузку —
+           каждые 45 секунд музыка проваливалась в тишину. */
+        m.addEventListener('timeupdate', function () {
+          if (!m.duration || m.duration - m.currentTime > 1.2 || m.dataset.sw) return;
+          m.dataset.sw = '1';
           var t = self.tracks[Math.floor(RNG() * self.tracks.length)];
           if ('assets/music/' + t === m.getAttribute('src')) t = self.tracks[0];
-          m.src = 'assets/music/' + t;
-          var p2 = m.play(); if (p2 && p2.catch) p2.catch(function () {});
+          var nx = new Audio('assets/music/' + t);
+          nx.volume = 0;
+          var pn = nx.play(); if (pn && pn.catch) pn.catch(function () {});
+          var v0 = m.volume, st = 0;
+          var iv = setInterval(function () {
+            st += 0.08;
+            var k = Math.min(1, st / 1.1);
+            m.volume = v0 * (1 - k);
+            nx.volume = muted ? 0 : self.vol.mus * k;
+            if (k < 1) return;
+            clearInterval(iv);
+            try { m.pause(); } catch (e) {}
+            m.src = nx.src; m.currentTime = nx.currentTime; m.volume = muted ? 0 : self.vol.mus;
+            var pm = m.play(); if (pm && pm.catch) pm.catch(function () {});
+            try { nx.pause(); } catch (e) {}
+            m.dataset.sw = '';
+          }, 90);
         });
         document.body.appendChild(m);
       }
@@ -721,7 +780,8 @@ var A = (function () {
     },
     toggle: function () {
       muted = !muted;
-      if (master) master.gain.value = muted ? 0 : this.vol.sfx;
+      if (muted && cur) { try { cur.pause(); } catch (e) {} }   // кнопка должна затыкать и уже начатую реплику
+      if (master) master.gain.value = muted ? 0 : this.vol.sfx * ((this.ducked || this.sayDuck) ? 0.06 : 1);
       var mm = document.getElementById('bgm'); if (mm) mm.volume = muted ? 0 : this.vol.mus;
       if (muted && 'speechSynthesis' in window) try { speechSynthesis.cancel(); } catch (e) {}
       return muted;
@@ -1832,6 +1892,7 @@ function action() {
 }
 
 function doFx(cw) {
+  if (fxT > 0.1) return;                          // третье нажатие подряд играло полную сирену поверх предыдущей
   fxT = 0.55; sirenT = car.siren ? 1.4 : 0;
   var bx = carX - cw * 0.42;
 
@@ -1988,7 +2049,7 @@ function updatePlay(dt) {
     else if (K.left)  spd -= BRK * dt;
     else              spd += (CRUISE - spd) * Math.min(1, dt * 1.2);
     spd = clamp(spd, 26 * S, VMAX * 1.3);
-    if (K.left && spd < CRUISE * 0.55 && RNG() < dt * 6) A.clunk();
+    if (K.left && spd < CRUISE * 0.55 && RNG() < dt * 3) A.skid();   // clunk означает поломку — торможение так звучать не должно
   }
   carX += spd * dt;
 
@@ -1998,7 +2059,7 @@ function updatePlay(dt) {
     fuel -= (spd * dt) / FUELDIST + dt * 0.005;
     if (fuel < 0.25) {
       beepT -= dt;
-      if (beepT <= 0) { A.beep(); beepT = 0.9; }
+      if (beepT <= 0) { var kb = 1 - clamp(fuel / 0.25, 0, 1); A.beep(kb); beepT = 0.9 - kb * 0.55; }   // к нулю интервал сжимается до 0,35 с
       /* Один раз на бак сказать словами — писк сам по себе ребёнку ничего не объясняет.
          Не перебиваем ни урок, ни другую реплику. */
       if (!lowT && state === 'play' && !A.talking()) { lowT = 1; A.say('Мало бензина!'); }
@@ -2019,6 +2080,7 @@ function updatePlay(dt) {
       var hard = vy < -640 * S;
       carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.26;
       A.land();
+      if (hard) A.thud();                    // тяжёлая посадка должна и звучать тяжело
       if (hard) shake = 5 * S;
       for (var i = 0; i < (hard ? 20 : 9); i++)
         P({ x: carX + rnd(-cw*0.4, cw*0.4), y: gh + 4*S, vx: rnd(-300,300)*S, vy: rnd(60,260)*S,
@@ -2211,7 +2273,7 @@ function updatePlay(dt) {
     if (o.t === 'rail') {                          // переезд: поезд идёт ПОПЕРЁК дороги
       // голова выходит на полотно за trainLead c до приезда машинки при её текущей скорости
       if (!o.train && !o.done && o.x - carX < Math.max(spd, CRUISE) * (0.30 * TUNE.trainPass + TUNE.trainLead)) {
-        o.train = 1; o.p = 0; o.cars = ri(2, 4); A.siren();
+        o.train = 1; o.p = 0; o.cars = ri(2, 4); A.bell();
       }
       if (o.train) {
         o.p += dt / TUNE.trainPass;                // 0 — далеко на горизонте, 1 — уехал за нижний край
@@ -2240,7 +2302,7 @@ function updatePlay(dt) {
     }
     if (o.t === 'bucket' && bx1 > o.x - 46 * S && bx0 < o.x + 46 * S && by0 < 120 * S) {
       carPaint = o.col.skin; damage = 0;
-      A.fanfare(); A.splash(); flash = 0.3;
+      A.fanfare(stars); A.splash(); flash = 0.3;
       A.say('Ух ты! Какая красивая машинка!');
       popText(o.col.name + '!', o.x, 150 * S, o.col.c === '#16161d' ? '#fff' : o.col.c);
       burst(o.x, 90 * S, 30, [o.col.c, '#fff', '#ffd93d'], 320 * S, 'conf');
@@ -2278,7 +2340,7 @@ function updatePlay(dt) {
         fuelPicks++;
         if (fuelPicks % 10 === 0 && tankMul < 2.0) {          // десятая канистра — бак побольше
           tankMul = Math.min(2.0, tankMul + 0.12); tune();
-          A.fanfare(); flash = 0.35;
+          A.fanfare(stars); flash = 0.35;
           popText('БАК БОЛЬШЕ!', o.x, fy + 110 * S, '#ffd93d');
           burst(o.x, fy + 40 * S, 16, ['#7bd66b', '#ffd93d', '#fff'], 300 * S, 'spark');
         } else popText('+БЕНЗИН', o.x, fy + 60 * S, '#7bd66b');
@@ -2293,7 +2355,7 @@ function updatePlay(dt) {
       var by = o.y + Math.sin(o.ph * 1.6) * 16 * S;
       if (bx1 > o.x - 32*S && bx0 < o.x + 32*S && by1 > by - 38*S && by0 < by + 38*S) {
         stars++; row++;
-        A.pop();
+        A.pop(); A.coin(row);   // звёздочку дали — значит и чим награды тоже
         burst(o.x, by, 16, ['#ff4d6d','#ffd93d','#4fc3f7','#7bd66b'], 340 * S, 'conf');
         popText('ХЛОП!', o.x, by, '#ff4d6d');
         if (!story && row >= TUNE.praiseEvery) { row = 0; milestone(); }
@@ -2332,7 +2394,7 @@ function updatePlay(dt) {
         level++;
         if (story) { finishing = true; A.say('Финиш!'); }
         else { pendingRepair = true; themeIx++; }
-        A.fanfare(); A.cheer(); A.say('Уровень пройден! Ты молодец!');
+        A.fanfare(level); A.cheer(); A.say('Уровень пройден! Ты молодец!');
         popText('УРА!', carX, carY + ch, '#fff');
         for (var c2 = 0; c2 < 90; c2++)
           P({ x: o.x + rnd(-160,160)*S, y: rnd(180, 380)*S, vx: rnd(-260,260)*S, vy: rnd(-40,320)*S,
@@ -3607,7 +3669,7 @@ function applyLesson() {
   }
   wordArmed = false; rollWord(); EV('learned', key);   // следующее слово — через wordMin..wordMax c езды
   flash = 0.12;                                   // полноэкранная вспышка для 2–4 лет запрещена: оставляем еле заметный отблеск
-  A.fanfare();
+  A.fanfare(stars);
   if (les.from === 'lane') { state = 'lane'; setPad(); return; }   // «чудо» урока к «рулю» не относится
   if (L.after) L.after();
   else { state = 'play'; armCommands(); }
@@ -3766,7 +3828,7 @@ function saveScore() {
   try { localStorage.setItem('babygame.best', String(best)); localStorage.setItem('babygame.total', String(total)); } catch (e) {}
 }
 function noteStars() {                                  // звезда собрана: обновляем рекорд на лету
-  if (stars > best) { if (best > 0 && !bestShown) { bestShown = 1; popText('РЕКОРД!', carX, carY + car.h * S, '#ffd93d'); A.fanfare(); } best = stars; saveScore(); }
+  if (stars > best) { if (best > 0 && !bestShown) { bestShown = 1; popText('РЕКОРД!', carX, carY + car.h * S, '#ffd93d'); A.fanfare(2); } best = stars; saveScore(); }
 }
 var bestShown = 0;
 
@@ -4169,7 +4231,7 @@ function armCommands() {
     var key = CMD_OF[m.word.slice(4)];
     if (key === 'jump') { action(); popText('ПРЫЖОК!', carX, carY + car.h * S, '#ffd93d'); }
     else if (key === 'fuel') { fuel = Math.min(1, fuel + 0.5); A.fuelUp(); popText('БЕНЗИН!', carX, carY + car.h * S, '#7bd66b'); }
-    else if (key === 'light') { lights = !lights; A.honk(); }
+    else if (key === 'light') { lights = !lights; A.click(); }   // фары — щелчок переключателя, а не гудок
     else if (key === 'gas') { spd = Math.min(VMAX * 1.2, spd + 300 * S); A.rev(); popText('ГАЗ!', carX, carY + car.h * S, '#ffd93d'); }
   });
 }
@@ -4421,7 +4483,7 @@ function answerRepair() {
   if (rep.phase !== 'ask') return;
   Mic.cancel(); rep.listening = false;
   rep.phase = 'answer'; rep.t = 0; rep.numT = 1;
-  A.fanfare();
+  A.fanfare(stars);
   A.say('Правильно! ' + wheelsWord(rep.n) + '!');
   setPad();
 }
@@ -4440,7 +4502,7 @@ function repairSpace() {
   if (!w) return;
   w.fly = 0.001;
   rep.fixed++; rep.numT = 1;
-  A.clunk(); A.coin(rep.fixed * 2);
+  A.bolt(); A.coin(rep.fixed * 2);   // clunk означает поломку — закрученный болт так звучать не должен
   var nw = numWord(rep.fixed);
   A.say(nw.charAt(0).toUpperCase() + nw.slice(1) + '! Скажи ' + nw + '!');
   rep.echoWord = numWord(rep.fixed); rep.echoNum = rep.fixed; rep.echoPhase = 'say'; rep.echoT = 0;
@@ -4781,7 +4843,8 @@ var Lane = {
     state = 'lane'; setPad();
     if (!Pult.everOn) Pult.ensure();                          // окно пульта — только пока телефон ни разу не подключался
     track('start', { game: 'lane' });
-    A.fanfare(); A.say(['Поехали!', 'Объезжай препятствия!']);
+    A.rev(); A.fanfare(1);
+    setTimeout(function () { A.say(['Поехали!', 'Объезжай препятствия!']); }, 300);   // сначала зажигание
     EV('lane', 'start');
   },
   steer: function () {
@@ -4950,7 +5013,7 @@ var Lane = {
         stars++; row++; Lane.note(); A.coin(row);
         popText('+1', px, py - 60 * S, '#ffd93d');
         burst(px, GY - (py - 30 * S), 10, ['#ffd93d', '#fff'], 260 * S, 'spark'); EV('lane', 'star'); ln.takes++;
-        if (stars % TUNE.praiseEvery === 0) { celebrate = 2; A.fanfare(); A.say(pick(['Хорошо!', 'Здорово!'])); track('lane_praise', { stars: stars }); }
+        if (stars % TUNE.praiseEvery === 0) { celebrate = 2; A.fanfare(stars); A.say(pick(['Хорошо!', 'Здорово!'])); track('lane_praise', { stars: stars }); }
       } else {
         A.coin(3); popText('БЕНЗИН!', px, py - 60 * S, '#7bd66b');
         burst(px, GY - (py - 30 * S), 8, '#7bd66b', 200 * S, 'dot'); EV('lane', 'fuel');
@@ -5230,6 +5293,15 @@ var Pult = {
 };
 document.getElementById('bPult').addEventListener('click', function () { Pult.toggle(); });
 document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') Pult.wake(); });
+/* Свернули вкладку или погас экран телефона — игра не должна продолжать шуметь
+   в кармане. Возвращаемся — музыка сама поднимается. */
+document.addEventListener('visibilitychange', function () {
+  var bm = document.getElementById('bgm');
+  if (document.visibilityState === 'hidden') {
+    if (bm) { try { bm.pause(); } catch (e) {} }
+    A.engine(0, 1, false); A.hush();
+  } else if (state !== 'load') A.music();
+});
 window.addEventListener('online', function () { Pult.wake(); });
 window.addEventListener('pageshow', function () { Pult.wake(); });
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('pultClose').addEventListener(ev, function () { Pult.hideBox(); }); });
@@ -5476,7 +5548,8 @@ function startGame() {
   themeIx = 0;
   if (story || voiceCtl) { if (Voice.on) Mic.request(false); toName(); return; }
   state = 'play';
-  A.fanfare(); A.say('Поехали!');
+  A.rev(); A.fanfare(stars);
+  setTimeout(function () { A.say('Поехали!'); }, 300);   // сначала зажигание, потом диктор
   setPad();
 }
 
@@ -5570,7 +5643,9 @@ window.addEventListener('keyup', function (e) {
 });
 
 function bindKey(el, k) {
-  var on  = function (e) { e.preventDefault(); el.classList.add('down'); keyDown(k); };
+  var on  = function (e) { e.preventDefault(); el.classList.add('down');
+                           if (navigator.vibrate) try { navigator.vibrate(10); } catch (e2) {}   // как на пульте: нажатие отзывается
+                           keyDown(k); };
   var off = function (e) { if (e) e.preventDefault(); el.classList.remove('down'); keyUp(k); };
   el.addEventListener('pointerdown', on);
   el.addEventListener('pointerup', off);
@@ -5711,9 +5786,15 @@ setMicIcon();
     try { localStorage.setItem('babygame.vol', JSON.stringify(A.vol)); } catch (e) {}
     A.applyVol();
   }
+  var prevT = 0;
   Object.keys(ids).forEach(function (kk) {
     document.getElementById(ids[kk]).addEventListener('input', function () {
       A.vol[kk] = this.value / 100; save();
+      /* Ползунок без пробного звука настраивается вслепую. Троттлинг — чтобы
+         протаскивание не превращалось в очередь из полусотни звуков. */
+      var now = +new Date(); if (now - prevT < 400) return; prevT = now;
+      if (kk === 'sfx') A.coin(4);
+      else if (kk === 'voice' && !A.talking()) A.say('Поехали!');
     });
   });
   document.getElementById('bSet').addEventListener('click', function () {
