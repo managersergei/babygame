@@ -5,7 +5,7 @@
 // KV LINKS: code:<КОД> → {chat, ts};  chat:<chat_id> → ["КОД", …] (до MAX_CODES устройств на один чат).
 // Маршруты: POST /tg — вебхук бота (/start КОД, /stop); POST /ev — события игры; GET /status?c=КОД;
 //           GET /setup?key=WEBHOOK_SECRET — один раз после деплоя: регистрирует вебхук и команды бота.
-var CODE_RE = /^[A-Z2-9]{8,10}$/;
+var CODE_RE = /^[ABCDEFGHJKLMNPRSTUVWXYZ23456789]{10}$/;   // тот же алфавит и та же длина, что у игры (index.html, TG.mkCode)
 var TTL = 400 * 86400;            // привязка живёт 400 дней с последнего события
 var MAX_CODES = 5;
 

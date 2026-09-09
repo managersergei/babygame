@@ -4376,7 +4376,7 @@ function toGameMode() {
   setPad();
 }
 
-/* ═══════════════ 17c. РУЛЬ — дорога от третьего лица ═══════════════
+/* ═══════════════ 17f. РУЛЬ — дорога от третьего лица ═══════════════
    Машинка едет «от нас», ребёнок рулит влево-вправо (стрелки, кнопки внизу или
    телефон-руль) и объезжает то, что едет навстречу. Проигрыша нет: удар — «ой»,
    звёздочка — «ура». Вид машинки сзади пока рисуем сами: настоящие спрайты
@@ -4536,7 +4536,7 @@ var Lane = {
   dbg: function () { return { x: +ln.x.toFixed(2), objs: ln.objs.length, spd: +ln.spd.toFixed(2), hit: ln.hitT > 0 }; }
 };
 
-/* ═══════════════ 17d. ТЕЛЕФОН-РУЛЬ ═══════════════
+/* ═══════════════ 17g. ТЕЛЕФОН-РУЛЬ ═══════════════
    pult.html на телефоне шлёт наклон и кнопки через WebRTC (PeerJS): без сервера,
    только сигналинг. Код из 4 знаков показываем на экране игры.               */
 function loadScript(urls, cb) {
@@ -5272,7 +5272,7 @@ function ready() {
 fit();
 setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подстраховка
 
-  if (DBG || REC || /[?&]test=1/.test(location.search))
+  if (DBG || REC || /[?&]test=1/.test(location.search)) {
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
@@ -5303,6 +5303,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
                  return mg === 1e9 ? null : Math.round(mg / S);
                })() };
     };
+  }
 })();
 </script>
 </body>

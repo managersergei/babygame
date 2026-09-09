@@ -1,6 +1,6 @@
 /* Офлайн-кэш: страницы — сеть, потом кэш; ассеты — кэш, потом сеть. Версию менять при выкатке. */
-var VER = 'bg-2026-09-08a';
-var CORE = ['./', 'index.html', 'pult.html', 'manifest.json', 'assets/voice/list.js'];
+var VER = 'bg-2026-09-09a';
+var CORE = ['./', 'index.html', 'pult.html', 'manifest.json', 'assets/voice/list.js', 'assets/paths.js'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(VER).then(function (c) { return c.addAll(CORE); }).then(function () { return self.skipWaiting(); }));
 });
