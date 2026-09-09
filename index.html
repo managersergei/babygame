@@ -2729,7 +2729,9 @@ function treeBand() {                                   // плотная опу
   var hb = grassTop() + 6 * S, t = TH();
   layer(0.44, 190 * S, function (x, i) {
     var r = h1r(i * 5.3), h = (74 + r * 62) * S, w = (34 + r * 22) * S;
-    var base = t.far === 'jungle' ? '#2c6e45' : '#5aa257';
+    /* Лес брал зелень константой и на закате оставался ярко-зелёным, а в зиме и
+       космосе — тоже. Подмешиваем траву локации: она у каждой темы своя. */
+    var base = mix(t.far === 'jungle' ? '#2c6e45' : '#5aa257', mix(t.grass, '#000000', 0.35), 0.55);
     var cx = x + 40 * S, cy = hb - h + w * 0.5;
     g.fillStyle = '#6b4f34';                                    // ствол трапецией, а не прямоугольником
     g.beginPath();
@@ -2936,7 +2938,8 @@ function drawProps() {
   layer(0.55, 430 * S, function (x, i) {
     var nm = pr[(i % pr.length + pr.length) % pr.length];
     var cx = x + 90 * S;
-    if (still && Math.abs(cx - CARX) < 150 * S) return;
+    /* На неподвижных экранах машинка стоит то на CARX, то по центру — оберегаем оба места. */
+    if (still && (Math.abs(cx - CARX) < 150 * S || Math.abs(cx - W / 2) < 210 * S)) return;
     var hh = (PROP_H[nm] || 150) * 0.86 * S, ww = sprW(nm, hh) * 0.5;
     if (nm === 'fence') return;                                   // забор ставим только у дома, ниже
     ground(cx, pb - 1 * S, ww * 0.9);
@@ -3027,8 +3030,11 @@ function mix(c1, c2, k) {
 }
 function haze(col, k) { return mix(col, TH().sky[2], k); }
 
+/* Цвет тени — от травы локации, а не константа: на снегу и в космосе тёмно-зелёное
+   пятно читалось как клякса. */
+function shColor() { return mix(TH().grass, '#000000', 0.72); }
 function shadow(x, y, w, a) {
-  g.save(); g.globalAlpha = a || 0.22; g.fillStyle = '#1d2b1a';
+  g.save(); g.globalAlpha = a || 0.22; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(x, y, w, Math.max(4 * S, w * 0.22), 0, 0, TAU); g.fill(); g.restore();
 }
 /* «Приземление» объекта: пятно вытоптанной земли, мягкая тень и узкая контактная тень
@@ -3037,7 +3043,7 @@ function ground(x, y, w) {
   g.save();
   g.globalAlpha = 0.16; g.fillStyle = mix(TH().grass, '#4a3a22', 0.5);
   g.beginPath(); g.ellipse(x, y, w * 1.05, Math.max(4 * S, w * 0.26), 0, 0, TAU); g.fill();
-  g.globalAlpha = 0.22; g.fillStyle = '#1d2b1a';
+  g.globalAlpha = 0.22; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(x, y, w * 0.78, Math.max(3 * S, w * 0.19), 0, 0, TAU); g.fill();
   g.globalAlpha = 0.30;
   g.beginPath(); g.ellipse(x, y + 1 * S, w * 0.42, Math.max(2 * S, w * 0.07), 0, 0, TAU); g.fill();
@@ -3045,7 +3051,9 @@ function ground(x, y, w) {
 }
 /* Пучки травы поверх основания — перекрытие убеждает сильнее любой тени. */
 function tufts(x, y, w, seed) {
-  g.save(); g.strokeStyle = mix(TH().grass, '#000000', 0.28); g.lineWidth = 2.2 * S; g.lineCap = 'round';
+  var th = TH();
+  if (th.snow || th.name === 'космос') return;   // на снегу и на Луне трава не растёт
+  g.save(); g.strokeStyle = mix(th.grass, '#000000', 0.28); g.lineWidth = 2.2 * S; g.lineCap = 'round';
   for (var i = 0; i < 5; i++) {
     var r = h1r(seed * 3.1 + i), tx = x + (r - 0.5) * w * 1.7, hh = (5 + r * 7) * S;
     g.beginPath(); g.moveTo(tx, y + 1 * S);
@@ -3059,8 +3067,11 @@ function fenceRun(x, y, h, n) {
   var w = sprW('fence', h) * 0.94;
   for (var i = 0; i < n; i++) spr('fence', x + (i - (n - 1) / 2) * w, y, h, { alpha: 0.98 });
 }
-/* Порядок отрисовки по глубине: небо → дальнее → у обочины → на дороге. */
-var Z_OF = { cloudy:0, plane:0, bird:0, butterfly:1, rail:2, rocket:2, prop:3, traffic:3.5, tlight:4, flower:4, hedgehog:5, sheep:5 };
+/* Порядок по РЕАЛЬНОЙ глубине основания. Раньше светофор (стоит на асфальте,
+   ближе всех) и овца уходили ПОД ежа и цветок, которые стоят у кромки травы
+   на 58*S дальше от зрителя. */
+var Z_OF = { cloudy:0, plane:0, bird:0, butterfly:1, rail:2, rocket:2, prop:3, traffic:3.5,
+             flower:4, hedgehog:4.2, tlight:5.5, sheep:5.6 };
 function zOf(o) { return Z_OF[o.t] != null ? Z_OF[o.t] : 6; }
 function zOrder(a, b) { return zOf(a) - zOf(b) || a.x - b.x; }
 
@@ -3158,6 +3169,7 @@ function drawObjs() {
     } else if (o.t === 'plane') {
       spr('plane', sx, o.y + Math.sin((o.ph || 0) * 1.6) * 7 * S, 96 * S, { mid: true, sx: -1 });
     } else if (o.t === 'flower') {
+      ground(sx, roadTop() - 8 * S, 16 * S);
       spr(frameOf('flower', o.ph), sx, roadTop() - 8 * S, 60 * S, withMove('flower', o.ph, 60 * S, {}));
     } else if (o.t === 'apple') {
       var ab = Math.sin((o.ph || 0) * 2.4 + T * 2) * 8 * S;
@@ -3168,15 +3180,21 @@ function drawObjs() {
       // есть кадры оборота — крутим ими; нет — как раньше, сжатием по ширине
       spr(frameOf('coin', o.ph), sx, GY - o.y + 30 * S - cb, 52 * S, withMove('coin', o.ph, 52 * S, {}));
     } else if (o.t === 'ball') {
-      spr('ball', sx, GY + 4 * S - ballH(o), 62 * S, { rot: T * 3 });
+      /* Тень мяча — единственная подсказка, на какой он высоте: сжимается и светлеет,
+         когда мяч вверху, и наоборот. Без неё мяч висел в воздухе без опоры. */
+      var bhh = ballH(o), bk = clamp(1 - bhh / (70 * S), 0.35, 1);
+      shadow(sx, GY + 8 * S, 24 * S * bk, 0.10 + 0.18 * bk);
+      spr('ball', sx, GY + 4 * S - bhh, 62 * S, { rot: T * 3 });
     } else if (o.t === 'hedgehog') {
+      ground(sx, roadTop() - 6 * S, 18 * S);
       spr(frameOf('hedgehog', o.ph), sx, roadTop() - 6 * S, 58 * S, withMove('hedgehog', o.ph, 58 * S, {}));
     } else if (o.t === 'butterfly') {
       spr(frameOf('butterfly', o.ph), sx, o.y + Math.sin(T * 5) * 12 * S, 56 * S, withMove('butterfly', o.ph, 56 * S, { mid: true }));
     } else if (o.t === 'rocket') {
       var rb = roadTop() - 6 * S;                    // космодром стоит в глубине, за дорогой
-      if (!o.gone) spr('launchpad', sx + 34 * S, rb, 118 * S);
-      spr('loc_rocket', sx, rb - (o.h || 0), 118 * S, { rot: (o.h || 0) > 0 ? 0.06 : 0 });
+      ground(sx, rb, 30 * S);
+      if (!o.gone) spr('launchpad', sx + 34 * S, rb, 150 * S);
+      spr('loc_rocket', sx, rb - (o.h || 0), 178 * S, { rot: (o.h || 0) > 0 ? 0.06 : 0 });   // была 118*S против 170*S у декорации на обочине
       if ((o.h || 0) > 0) {                          // огонь и дым при взлёте
         g.save(); g.globalAlpha = 0.9;
         for (var fz = 0; fz < 3; fz++) {
@@ -3193,8 +3211,11 @@ function drawObjs() {
     } else if (o.t === 'prop') {
       var pby = roadTop() - 10 * S;                            // на траве, а не на кромке асфальта
       var phh = (PROP_H[o.kind] || 130) * S;
-      ground(sx, pby - 1 * S, sprW(o.kind, phh) * 0.42);        // тень по реальной ширине: у стога она была втрое уже
-      if (o.kind === 'fence') { fenceRun(sx, pby, phh, 4); tufts(sx, pby, phh * 0.6, o.ph || 1); return; }
+      /* Забор — это ЧЕТЫРЕ пролёта: пятно земли под ним считаем по всей длине,
+         иначе оно вчетверо уже самого забора. */
+      var isFence = o.kind === 'fence';
+      ground(sx, pby - 1 * S, sprW(o.kind, phh) * (isFence ? 1.88 : 0.42));
+      if (isFence) { fenceRun(sx, pby, phh, 4); tufts(sx, pby, phh * 0.6, o.ph || 1); return; }
       spr(frameOf(o.kind, o.ph), sx, pby, phh,
           withMove(o.kind, o.ph, phh,
                    { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.010 }));   // общий «вдох» плюс своё движение
@@ -3233,7 +3254,7 @@ function drawObjs() {
       g.restore();
     } else if (o.t === 'mon') {
       var mh2 = 96 * S, hop2 = Math.abs(Math.sin((o.ph || 0) * 5)) * 10 * S;
-      g.save(); g.globalAlpha = 0.3; g.fillStyle = '#1d2b1a';
+      g.save(); g.globalAlpha = 0.3; g.fillStyle = shColor();
       g.beginPath(); g.ellipse(sx, GY + 8 * S, 34 * S, 8 * S, 0, 0, TAU); g.fill(); g.restore();
       var msk = (o.skin || 'monster_a') + (Math.floor(T * 3.6 + (o.ph || 0)) % 2 ? '_run' : '');   // 1,8 шага в секунду, и соседи не в такт
       if (!ok(IMG[msk])) msk = o.skin || 'monster_a';
@@ -3254,8 +3275,9 @@ function drawObjs() {
       g.restore();
     } else if (o.t === 'sheep') {
       var hop = Math.abs(Math.sin((o.ph || 0) * (o.run ? 9 : 2.2))) * (o.run ? 30 : 5) * S;
-      spr(frameOf('sheep', o.ph), sx, GY + 4 * S - hop, 100 * S,
-          o.run ? { rot: Math.sin(o.ph * 9) * 0.12 } : withMove('sheep', o.ph, 100 * S, {}));
+      ground(sx, GY + 4 * S, 26 * S);
+      spr(frameOf('sheep', o.ph), sx, GY + 4 * S - hop, 82 * S,   // была 100*S — выше коровы (84); в общей шкале овца 78
+          o.run ? { rot: Math.sin(o.ph * 9) * 0.12 } : withMove('sheep', o.ph, 82 * S, {}));
     } else if (o.t === 'arch') {
       spr('arch', sx, GY + 4 * S, o.h);
     }
@@ -3268,18 +3290,29 @@ function drawCar() {
 
   g.save();
   g.globalAlpha = clamp(1 - carY / (320 * S), 0.15, 0.5);
-  g.fillStyle = '#1d2b1a';
+  g.fillStyle = shColor();
   g.beginPath();
-  g.ellipse(x, GY + 8 * S, w * 0.42 * clamp(1 - carY / (900 * S), 0.5, 1), 13 * S, 0, 0, TAU);
+  /* Тень сжимается по ОБЕИМ осям: высота была константой, и в прыжке пятно
+     выглядело плоской полосой вместо уходящего вниз овала. */
+  var shk = clamp(1 - carY / (900 * S), 0.5, 1);
+  g.ellipse(x, GY + 8 * S, w * 0.42 * shk, 13 * S * shk, 0, 0, TAU);
   g.fill();
   g.restore();
 
   if (spd > VMAX * 0.62) {
+    /* Штрихи скорости. Раньше и позиция, и длина, и прозрачность брались из rnd()
+       на каждом кадре — получался белый шум, а не движение. Теперь у каждого штриха
+       своя постоянная дорожка, а бежит он по фазе от пройденного пути. */
+    var sk2 = clamp((spd - VMAX * 0.62) / (VMAX * 0.38), 0, 1);
     g.save(); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 4 * S; g.lineCap = 'round';
     for (var i = 0; i < 6; i++) {
-      var ly = y - rnd(20, h * 0.85), lx = x - w * 0.5 - rnd(20, 150) * S;
-      g.globalAlpha = rnd(0.2, 0.6);
-      g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx - rnd(40, 110) * S, ly); g.stroke();
+      var r6 = h1r(i * 7.7);
+      var ly = y - (20 + r6 * (h * 0.85 - 20));
+      var lenn = (40 + r6 * 70) * S;
+      var ph6 = ((carX * (0.9 + r6 * 0.5) / (260 * S) + i * 0.17) % 1);
+      var lx = x - w * 0.5 - ph6 * 170 * S;
+      g.globalAlpha = (0.2 + r6 * 0.4) * sk2 * (1 - ph6 * 0.6);
+      g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx - lenn, ly); g.stroke();
     }
     g.restore();
   }
@@ -3453,11 +3486,11 @@ function drawGarage(dt) {
     spr(frameOf('bird', garageT * 2), bx0, 120 * S + Math.sin(garageT * 1.3) * 18 * S, 54 * S,
         withMove('bird', garageT * 2, 54 * S, { mid: true }));
   }
-  layer(0.5, 620 * S, function (x, i) {
-    if ((i & 1) === 0) spr('tree', x + 100 * S, GY - 16 * S, 200 * S, withMove('tree', i, 200 * S, {}));
-    else spr('house', x + 90 * S, GY - 18 * S, 165 * S);
-  });
   drawRoad();
+  /* Раньше этот ряд рисовался ДО дороги и на 36*S ниже кромки травы — полотно и
+     трава закрашивали дома на три четверти. Берём общий drawProps: он ставит
+     реквизит на верх травы, с тенью, пучками и палисадником. */
+  drawProps();
 
   g.save();
   g.fillStyle = 'rgba(255,255,255,.22)';
@@ -3477,7 +3510,7 @@ function drawGarage(dt) {
     g.save(); g.globalAlpha = alpha;
     g.fillStyle = 'rgba(20,30,20,.28)';
     g.beginPath(); g.ellipse(W / 2 + pos * step, GY + 12 * S, vehW(c.id, hh) * 0.4, 15 * S * k, 0, 0, TAU); g.fill();
-    drawVehicle(c.id, W / 2 + pos * step, GY + 6 * S + bob, hh, {});
+    drawVehicle(c.id, W / 2 + pos * step, GY + bob, hh, {});          // база кузова — GY, как в самой игре
     g.restore();
     /* Раз в пару секунд центральная машинка показывает, чем она особенная —
        иначе четыре карточки отличаются только цветом и выбор ничего не значит. */
@@ -3743,9 +3776,9 @@ function updateName(dt) {
 }
 
 function drawName() {
-  drawSky(); drawClouds(); drawFar(); drawRoad();
+  drawSky(); drawClouds(); drawFar(); drawRoad(); drawProps();   // обочина не должна пустовать и на этом экране
   var bob = Math.sin(T * 2) * 8 * S;
-  drawVehicle(car.id, W * 0.5, GY + 6 * S + bob, car.h * S * 1.15, {});
+  drawVehicle(car.id, W * 0.5, GY + bob, car.h * S * 1.15, {});
 
   outText('ДАВАЙ ЗНАКОМИТЬСЯ!', W / 2, 62 * S, 46 * S, '#fff', '#2b6cb0');
   drawMicBubble(W / 2, Math.min(168 * S, H * 0.24),
@@ -3947,7 +3980,7 @@ function applyLesson() {
   setPad();
 }
 
-function finishLine() { objs.push({ t: 'arch', x: carX + 2200 * S, h: 260 * S, used: false }); }
+function finishLine() { objs.push({ t: 'arch', x: carX + 2200 * S, h: 340 * S, used: false }); }   // тот же размер, что у радуги-ворот: было 260*S
 function resumeRun() { state = 'play'; A.say('Поехали!'); armCommands(); setPad(); }
 
 LESSONS.jump.after = function () {
@@ -4226,11 +4259,11 @@ function drawCrash() {
   drawParts(true);
   var h = car.h * S;
   g.save();
-  g.globalAlpha = 0.4; g.fillStyle = '#1d2b1a';
+  g.globalAlpha = 0.4; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(CARX, GY + 8 * S, vehW(car.id, h) * 0.42, 13 * S, 0, 0, TAU); g.fill();
   g.restore();
   noWheels = crash.t > 0.5; missWheels = 1;        // колесо отлетело — кузов оседает
-  drawVehicle(car.id, CARX, GY + 8 * S + (noWheels ? 10 * S : 0), h, { rot: crash.tilt });
+  drawVehicle(car.id, CARX, GY + (noWheels ? 10 * S : 0), h, { rot: crash.tilt });
   noWheels = false;
   var wx = (crash.wx - carX) + CARX;
   spr('wheel', wx, GY + 4 * S - crash.wy, 66 * S, { rot: crash.rot, mid: true });
@@ -4386,12 +4419,12 @@ function drawDirt(cx, base, w, h) {
 function drawWashScene() {
   drawSky(); drawClouds(); drawFar(); drawRoad();
   var hh = car.h * S * 1.2, cx = W * 0.38;
-  g.save(); g.globalAlpha = 0.35; g.fillStyle = '#1d2b1a';
+  g.save(); g.globalAlpha = 0.35; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(cx, GY + 10 * S, vehW(car.id, hh) * 0.42, 14 * S, 0, 0, TAU); g.fill();
   g.restore();
   var wbob = Math.sin(T * 2) * 5 * S;
-  drawVehicle(car.id, cx, GY + 6 * S + wbob, hh, {});
-  drawDirt(cx, GY + 6 * S + wbob, vehW(car.id, hh), hh);        // грязь качается вместе с кузовом
+  drawVehicle(car.id, cx, GY + wbob, hh, {});
+  drawDirt(cx, GY + wbob, vehW(car.id, hh), hh);               // грязь качается вместе с кузовом
 
   /* Мойщик. Раньше это была ВТОРАЯ такая же машинка (когда игрок сам за пожарную),
      без тени и с размером, привязанным к росту игрока. Теперь размер свой, тень есть,
@@ -4423,7 +4456,7 @@ function drawRobot() {
   if (!robot.on) return;
   var sx = (robot.x - carX) + CARX;
   if (sx < -400 * S || sx > W + 400 * S) return;
-  g.save(); g.globalAlpha = 0.32; g.fillStyle = '#1d2b1a';
+  g.save(); g.globalAlpha = 0.32; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(sx, GY + 8 * S, 84 * S, 15 * S, 0, 0, TAU); g.fill();
   g.restore();
   spr('robot', sx, GY + 6 * S + Math.abs(Math.sin(T * 8)) * 6 * S, 205 * S,
@@ -4473,9 +4506,9 @@ function updateIntro(dt) {
 }
 
 function drawIntro() {
-  drawSky(); drawClouds(); drawFar(); drawRoad();
+  drawSky(); drawClouds(); drawFar(); drawRoad(); drawProps();   // обочина не должна пустовать и на этом экране
   var k = clamp(intro.t / 4.5, 0, 1);
-  drawVehicle(car.id, W * 0.12 + k * W * 0.76, GY + 6 * S + Math.sin(intro.t * 9) * 3 * S, car.h * S * 0.95, {});
+  drawVehicle(car.id, W * 0.12 + k * W * 0.76, GY + Math.sin(intro.t * 9) * 3 * S, car.h * S * 0.95, {});
 
   var e = 1 - Math.pow(1 - clamp(intro.t * 2.4, 0, 1), 3);          // выезд карточки
   var pw = Math.min(W * 0.74, 700 * S), ph = 230 * S;
@@ -4681,7 +4714,7 @@ function paintColor() {
 function drawPaintScene() {
   drawSky(); drawClouds(); drawFar(); drawRoad();
   var hh = car.h * S * 1.15, bob = Math.sin(T * 2) * 6 * S, cx = W * 0.33;
-  g.save(); g.globalAlpha = 0.35; g.fillStyle = '#1d2b1a';
+  g.save(); g.globalAlpha = 0.35; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(cx, GY + 10 * S, vehW(car.id, hh) * 0.42, 14 * S, 0, 0, TAU); g.fill();
   g.restore();
   /* Раньше цвет подменялся одним кадром: самого действия «красим» видно не было.
@@ -4690,20 +4723,20 @@ function drawPaintScene() {
   var kp = pnt.phase === 'painting' ? clamp(pnt.t / 0.8, 0, 1) : 1;
   if (kp < 1 && carPaint) {
     var keep = carPaint;
-    carPaint = null; drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {}); carPaint = keep;
+    carPaint = null; drawVehicle(car.id, cx, GY + bob, hh, {}); carPaint = keep;
     g.save();
-    g.beginPath(); g.rect(0, GY + 6 * S + bob - hh, W, hh * kp); g.clip();
-    drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {});
+    g.beginPath(); g.rect(0, GY + bob - hh, W, hh * kp); g.clip();
+    drawVehicle(car.id, cx, GY + bob, hh, {});
     g.restore();
     if (kp > 0.02 && kp < 0.98)                      // капли по кромке заливки
       P({ x: cx + rnd(-vehW(car.id, hh) * 0.4, vehW(car.id, hh) * 0.4), y: GY - (GY + 6 * S + bob - hh + hh * kp) + 6 * S,
           vx: rnd(-30, 30) * S, vy: rnd(-10, 30) * S, r: rnd(4, 8) * S, c: paintColor(),
           kind: 'drop', life: 0.5, ay: 300 * S });
-  } else drawVehicle(car.id, cx, GY + 6 * S + bob, hh, {});
+  } else drawVehicle(car.id, cx, GY + bob, hh, {});
 
   // мастер с ведром краски
   var mx = W * 0.68, mh = 176 * S;   // был 300*S: мастер выходил вдвое выше машинки и выше дома
-  g.save(); g.globalAlpha = 0.3; g.fillStyle = '#1d2b1a';
+  g.save(); g.globalAlpha = 0.3; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(mx, GY + 10 * S, 60 * S, 12 * S, 0, 0, TAU); g.fill();
   g.restore();
   spr('master', mx, GY + 6 * S, mh, { rot: Math.sin(T * 1.4) * 0.02 });
@@ -4980,7 +5013,7 @@ function drawRepair() {
   spr('master', shx + 96 * S, GY + 4 * S, 168 * S, { rot: Math.sin(T * 1.5) * 0.025 });
 
   g.save();
-  g.globalAlpha = 0.4; g.fillStyle = '#1d2b1a';
+  g.globalAlpha = 0.4; g.fillStyle = shColor();
   g.beginPath(); g.ellipse(cx, GY + 10 * S, vehW(car.id, hh) * 0.42, 14 * S, 0, 0, TAU); g.fill();
   g.restore();
 
@@ -4989,7 +5022,7 @@ function drawRepair() {
   var missing = 0;
   rep.wheels.forEach(function (w) { if (!w.gone) missing++; });
   noWheels = missing > 0; missWheels = missing;
-  drawVehicle(car.id, cx, GY + 8 * S + (noWheels ? 10 * S : 0), hh, { rot: noWheels ? -0.03 : 0 });
+  drawVehicle(car.id, cx, GY + (noWheels ? 10 * S : 0), hh, { rot: noWheels ? -0.03 : 0 });
   noWheels = false;
 
   rep.wheels.forEach(function (w) {
@@ -5001,7 +5034,7 @@ function drawRepair() {
       wy = lerp(wy, GY - hh * 0.3, k);
       sz = lerp(sz, 70 * S, k); rot = w.fly * 9;
     } else {
-      g.save(); g.globalAlpha = 0.25; g.fillStyle = '#1d2b1a';
+      g.save(); g.globalAlpha = 0.25; g.fillStyle = shColor();
       g.beginPath(); g.ellipse(wx, GY + 12 * S, sz * 0.4, 9 * S, 0, 0, TAU); g.fill(); g.restore();
     }
     spr('wheel', wx, wy, sz, { rot: rot, mid: true });
@@ -5059,7 +5092,7 @@ function drawRepair() {
 /* ═══════════════ 17d. ЭКРАН «ВО ЧТО ИГРАЕМ» ═══════════════ */
 function drawGameMode(dt) {
   gmT += dt;
-  drawSky(); drawClouds(); drawFar(); drawRoad();
+  drawSky(); drawClouds(); drawFar(); drawRoad(); drawProps();
 
   var hh = car.h * S * 1.0, bob = Math.sin(gmT * 2) * 6 * S, cwid = vehW(car.id, hh);
   g.save(); g.fillStyle = 'rgba(255,255,255,.8)';
@@ -5539,12 +5572,20 @@ var Lane = {
       }
     }
 
-    g.lineWidth = 6 * S; g.strokeStyle = '#f2f6fb';
+    /* Кромка сужается к горизонту, как и всё остальное: постоянные 6*S у точки схода
+       выходили толще самой полосы. Рисуем отрезками, каждый со своей толщиной. */
+    g.strokeStyle = '#f2f6fb'; g.lineCap = 'round';
     for (var side = -1; side <= 1; side += 2) {
-      g.beginPath();
-      for (i = 0; i <= SEG; i++) { var c = PR[i]; if (i === 0) g.moveTo(c.cx + side * c.half, c.y); else g.lineTo(c.cx + side * c.half, c.y); }
-      g.stroke();
+      for (i = 0; i < SEG; i++) {
+        var c = PR[i], c2 = PR[i + 1];
+        g.lineWidth = Math.max(1.2 * S, 6 * S * (c.k + c2.k) * 0.5);
+        g.beginPath();
+        g.moveTo(c.cx + side * c.half, c.y);
+        g.lineTo(c2.cx + side * c2.half, c2.y);
+        g.stroke();
+      }
     }
+    g.lineCap = 'butt';
     g.fillStyle = 'rgba(255,255,255,.85)';
     for (i = 0; i < 16; i++) {
       var z0 = (((i - ln.dash) % 16) + 16) % 16 / 16, z1 = Math.min(1, z0 + 0.035);
@@ -5572,7 +5613,10 @@ var Lane = {
            Ниже, шире, у камеры темнее и пульсирует: это и подсказка дистанции, и таймер прыжка. */
         var near0 = o.z < 0.35, pu = near0 ? 1 + 0.12 * Math.sin(T * 12) : 1;
         g.save(); g.globalAlpha = a * (near0 ? 0.45 : 0.32); g.fillStyle = '#000';
-        g.beginPath(); g.ellipse(x, p.y + 10 * S * p.k, (o.slow ? hpx * 1.9 : sprW(o.t, hpx)) * 0.62 * pu, 11 * S * p.k, 0, 0, TAU);
+        /* Тень была 1,24 ширины объекта (0,62 полуоси × 2) — шире самого предмета.
+           И одной высоты у камеры и у горизонта. Теперь 0,86 ширины и высота от глубины. */
+        var shw = (o.slow ? hpx * 1.9 : sprW(o.t, hpx)) * 0.43 * pu;
+        g.beginPath(); g.ellipse(x, p.y + 10 * S * p.k, shw, Math.max(2 * S, shw * 0.3), 0, 0, TAU);
         g.fill(); g.restore();
       }
       if (o.slow) drawRearCar(x, y, hpx * 1.9, hpx, 0, false, o.col);
