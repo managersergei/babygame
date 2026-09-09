@@ -455,29 +455,10 @@ function paintedCanvas(id, p) {
 }
 
 /* Снимаем n задних колёс: вырезаем их из спрайта и рисуем голую ось. */
-function brokenCanvas(id, missing) {
-  var base = imgOf(id);
-  if (!missing || !WHEELS[id] || !ok(base)) return base;
-  var key = 'brk|' + id + '|' + missing + '|' + (carPaint ? carPaint.c + carPaint.m : '');
-  if (PAINTED[key]) return PAINTED[key];
-  var c = document.createElement('canvas');
-  c.width = iw(base); c.height = ih(base);
-  var x = c.getContext('2d'), ws = WHEELS[id], i, w;
-  x.drawImage(base, 0, 0);
-  x.globalCompositeOperation = 'destination-out';
-  for (i = 0; i < missing && i < ws.length; i++) {
-    w = ws[i];
-    x.beginPath(); x.arc(w.x, w.y, w.r, 0, TAU); x.fill();
-  }
-  x.globalCompositeOperation = 'source-over';
-  for (i = 0; i < missing && i < ws.length; i++) {
-    w = ws[i];
-    x.fillStyle = '#454c5c';
-    x.beginPath(); x.arc(w.x, w.y - w.r * 0.28, w.r * 0.15, 0, TAU); x.fill();
-  }
-  PAINTED[key] = c;
-  return c;
-}
+/* Здесь была brokenCanvas — вырезала колёса из спрайта кодом. Она опиралась на карту
+   WHEELS, которой в файле нет вовсе, поэтому не вызывалась никогда и оставалась ловушкой
+   для следующей правки. Колёса сняты в самих спрайтах (tools/gen_wheels.py), лестница
+   _w1.._w4 проверена числами. */
 
 function imgOf(name) {
   if (car && name === car.id) {
@@ -4440,7 +4421,10 @@ function drawRepair() {
   g.beginPath(); g.ellipse(cx, GY + 10 * S, vehW(car.id, hh) * 0.42, 14 * S, 0, 0, TAU); g.fill();
   g.restore();
 
-  var missing = Math.max(0, rep.n - rep.fixed);
+  /* Считаем колёса, которые ЕЩЁ НЕ ДОЕХАЛИ до машины, а не произнесённые слова:
+     раньше кузов отращивал колесо в момент ответа, за полсекунды до посадки колеса. */
+  var missing = 0;
+  rep.wheels.forEach(function (w) { if (!w.gone) missing++; });
   noWheels = missing > 0; missWheels = missing;
   drawVehicle(car.id, cx, GY + 8 * S + (noWheels ? 10 * S : 0), hh, { rot: noWheels ? -0.03 : 0 });
   noWheels = false;
