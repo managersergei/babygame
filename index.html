@@ -44,8 +44,8 @@
     #micAsk { top:auto; bottom:max(96px,env(safe-area-inset-bottom)); }
   }
   .tool { pointer-events:auto; cursor:pointer; border:none; width:40px; height:40px; border-radius:50%;
-    background:rgba(255,255,255,.45); box-shadow:0 3px 10px rgba(0,0,0,.18);
-    font-size:19px; line-height:40px; text-align:center; padding:0; opacity:.8; }
+    background:rgba(255,255,255,.72); box-shadow:0 3px 10px rgba(0,0,0,.22), 0 0 0 2px rgba(43,33,64,.14);
+    font-size:19px; line-height:40px; text-align:center; padding:0; opacity:.92; }
 
   /* Кнопка для взрослого — держим вверху, чтобы не лезла в игровые карточки. */
   #micAsk { position:fixed; z-index:10; left:50%; transform:translateX(-50%); top:12px;
@@ -61,6 +61,11 @@
   #stats .dots { letter-spacing:2px; color:#ffb703; }
   #stats .done { color:#2f9e50; font-size:13px; }
   #stats .empty { font-weight:700; color:#8a94a6; font-size:14px; }
+  #stats .sum { font-size:14px; color:#68645c; margin:0 0 10px; }
+  #stats .sum b { color:#2f9e50; font-size:16px; }
+  #stats .bar { height:8px; border-radius:4px; background:#ece7dc; margin:6px 0 0; overflow:hidden; }
+  #stats .bar i { display:block; height:100%; background:#7bd66b; }
+  #stats .w.fin { background:#f2fbf1; border-radius:8px; padding:2px 6px; margin:5px -6px; }
   #stats .tip { font-weight:700; color:#8a94a6; font-size:12.5px; line-height:1.35; margin:0 0 8px; }
   #stats .row.top { margin:0 0 10px; padding-bottom:10px; border-bottom:1px solid #ece7dc; }
   #stats .r button[data-play] { font-size:12px; padding:4px 8px; }
@@ -116,6 +121,11 @@
   #parent .hint { font-size:13px; color:#8a94a6; margin:8px 0 0; }
   #parent .tgopen { margin:16px 0 0; font-size:15px; color:#2b6cb0; cursor:pointer; text-decoration:underline; }
   @media (max-width:520px) { #parent .steps { flex-direction:column; } #parent .steps li { flex-direction:row; text-align:left; } }
+  /* Телефон в альбомной: высота 390 px, а карточка набирает ~470 — кнопка ИГРАТЬ уезжала за кадр. */
+  @media (max-height:520px) { #parent .card { padding:14px 18px; } #parent h2 { font-size:19px; margin:0 0 6px; }
+    #parent .lead { font-size:15px; margin:0 0 9px; } #parent .steps li { padding:8px 6px; font-size:12px; }
+    #parent .steps b { font-size:20px; } #parent details { margin:0 0 10px; }
+    #parent button { padding:9px 22px; font-size:16px; } }
 
   /* окно QR телеграм-бота */
   #bot canvas { display:none; margin:10px auto; image-rendering:pixelated; border:8px solid #fff; border-radius:10px; }
@@ -144,7 +154,7 @@
 
 <div id="pad">
   <button class="key" id="kL"><span class="big">◀</span><span class="cap">ВЛЕВО</span></button>
-  <button class="key wide" id="kS"><span class="big">⬆ ПРЫЖОК</span><span class="cap">ПРОБЕЛ</span></button>
+  <button class="key wide" id="kS"><span class="big">⬆ ПРЫЖОК</span><span class="cap" id="kSCap">ПРОБЕЛ</span></button>
   <button class="key" id="kR"><span class="big">▶</span><span class="cap">ВПРАВО</span></button>
 </div>
 
@@ -164,7 +174,7 @@
       <p>Игра запоминает, как слово звучит у вашего ребёнка, и хранит короткую запись второй попытки каждого слова — только на этом устройстве, никуда не отправляя. Послушать, скачать или удалить — кнопка 📊.</p>
     </details>
     <button id="parentGo">ИГРАТЬ</button>
-    <p class="hint">или нажмите ПРОБЕЛ</p>
+    <p class="hint" id="pgHint">или нажмите ПРОБЕЛ</p>
     <p class="tgopen" id="tgOpen" style="display:none">📲 Отчёты о прогрессе в Telegram</p>
   </div>
 </div>
@@ -257,6 +267,7 @@ function fit() {
   // полкадра пустого неба, а вся игра ютилась узкой полоской внизу.
   GY = Math.round(clamp(H * 0.58, H * 0.42, H - 210 * S) + 52 * S);
   CARX = W * 0.30;
+  if (typeof LN !== 'undefined' && LN) LN.carY = clamp((H - 112) / H, 0.62, 0.90);   // низкий экран: кузов не должен уходить под кнопки
 }
 window.addEventListener('resize', fit);
 function checkTurn() {                            // портрет на телефоне: просим повернуть
@@ -1222,18 +1233,18 @@ var WEIGHT = { star: 34, balloon: 15, cone: 12, puddle: 10, ramp: 11, plat: 9, p
 
 /* Уроки слов: одно новое слово за этап. bg — что рисуем фоном урока. */
 var LESSONS = {
-  jump:  { reps: REPS_CMD, key:'⎵', word:'ПРЫЖОК', say:'прыжок', icon:'⬆',  why:'и машинка перепрыгнет яму!', ask:'Ой! Яма! Скажи слово: прыжок!' },
-  fuel:  { word:'БЕНЗИН', say:'бензин', icon:'⛽', why:'и мы найдём бензин!',        ask:'Скажи слово: бензин!' },
-  light: { word:'ФАРА',   say:'фара',   icon:'💡', why:'и мы включим фары!',         ask:'Стало темно! Скажи слово: фара!' },
-  one:   { word:'ОДИН',   say:'один',   icon:'1', why:'одно колесо!',   ask:'Упало одно колесо. Скажи слово: один!',  bg:'repair' },
-  two:   { word:'ДВА',    say:'два',    icon:'2', why:'два колеса!',    ask:'Упало два колеса. Скажи слово: два!',    bg:'repair' },
-  three: { word:'ТРИ',    say:'три',    icon:'3', why:'три колеса!',    ask:'Упало три колеса. Скажи слово: три!',    bg:'repair' },
-  black: { word:'ЧЁРНЫЙ', say:'чёрный', icon:'🎨', why:'и покрасим машинку!', ask:'Скажи слово: чёрный!', bg:'paint' },
-  red:   { word:'КРАСНЫЙ',say:'красный',icon:'🎨', why:'и покрасим машинку!', ask:'Скажи слово: красный!', bg:'paint' },
-  gas:   { reps: REPS_CMD, key:'▶', word:'ГАЗ',    say:'газ',    icon:'💨', why:'и мы убежим от робота!',   ask:'Ой-ой! Злой робот нас догоняет! Скажи слово: газ!' },
-  stop:  { word:'СТОП',   say:'стоп',   icon:'✋', why:'и машинка остановится!',   ask:'Красный свет! Скажи слово: стоп!' },
-  beep:  { word:'БИБИ',   say:'би-би',  icon:'📣', why:'и овечка уйдёт с дороги!', ask:'Смотри, на дороге овечка! Скажи слово: би-би!' },
-  water: { word:'ВОДА',   say:'вода',   icon:'💧', why:'и мы помоем машинку!',     ask:'Машинка вся грязная! Скажи слово: вода!', bg:'wash' }
+  jump:  { reps: REPS_CMD, key:'⎵', word:'ПРЫЖОК', say:'прыжок', icon:'⬆',  tip:'Скажешь прыжок — и машинка перепрыгнет яму!', ask:'Ой! Яма! Скажи слово: прыжок!' },
+  fuel:  { word:'БЕНЗИН', say:'бензин', icon:'⛽', tip:'Скажешь бензин — и мы найдём бензин!', ask:'Скажи слово: бензин!' },
+  light: { word:'ФАРА',   say:'фара',   icon:'💡', tip:'Скажешь фара — и мы включим фары!', ask:'Стало темно! Скажи слово: фара!' },
+  one:   { word:'ОДИН',   say:'один',   icon:'1', tip:'Один — это одно колесо!', ask:'Упало одно колесо. Скажи слово: один!',  bg:'repair' },
+  two:   { word:'ДВА',    say:'два',    icon:'2', tip:'Два — это два колеса!', ask:'Упало два колеса. Скажи слово: два!',    bg:'repair' },
+  three: { word:'ТРИ',    say:'три',    icon:'3', tip:'Три — это три колеса!', ask:'Упало три колеса. Скажи слово: три!',    bg:'repair' },
+  black: { word:'ЧЁРНЫЙ', say:'чёрный', icon:'🎨', tip:'Скажешь чёрный — и машинка станет чёрной!', ask:'Скажи слово: чёрный!', bg:'paint' },
+  red:   { word:'КРАСНЫЙ',say:'красный',icon:'🎨', tip:'Скажешь красный — и машинка станет красной!', ask:'Скажи слово: красный!', bg:'paint' },
+  gas:   { reps: REPS_CMD, key:'▶', word:'ГАЗ',    say:'газ',    icon:'💨', tip:'Скажешь газ — и мы убежим от робота!', ask:'Ой-ой! Злой робот нас догоняет! Скажи слово: газ!' },
+  stop:  { word:'СТОП',   say:'стоп',   icon:'✋', tip:'Скажешь стоп — и машинка остановится!', ask:'Красный свет! Скажи слово: стоп!' },
+  beep:  { word:'БИБИ',   say:'би-би',  icon:'📣', tip:'Скажешь би-би — и овечка уйдёт с дороги!', ask:'Смотри, на дороге овечка! Скажи слово: би-би!' },
+  water: { word:'ВОДА',   say:'вода',   icon:'💧', tip:'Скажешь вода — и мы помоем машинку!', ask:'Машинка вся грязная! Скажи слово: вода!', bg:'wash' }
 };
 
 /* Бесконечный режим: первая встреча с элементом — знакомство со словом. */
@@ -1295,15 +1306,15 @@ var CMD_ELEMS = {};        // три повтора — только у ПРЫЖ
 ELEM_WORDS.forEach(function (e) {
   LESSONS['el_' + e[0]] = {
     reps: CMD_ELEMS[e[0]] ? REPS_CMD : REPS,
-    word: e[1], say: e[2], icon: e[4], why: e[5],
+    word: e[1], say: e[2], icon: e[4],
     ask: 'Смотри, это ' + e[3] + '! Скажи: ' + e[2] + '!',
     tip: e[5],
     after: function () { state = 'play'; armCommands(); }
   };
 });
 LESSONS.el_gas0 = {
-  reps: REPS_CMD, key: '▶', keyName: 'СТРЕЛКА ВПРАВО',
-  word: 'ГАЗ', say: 'газ', icon: '💨', why: 'Жми стрелку вправо или скажи газ!',
+  reps: REPS_CMD, key: '▶',
+  word: 'ГАЗ', say: 'газ', icon: '💨',
   ask: 'Чтобы машина научилась ехать быстро, скажи: гааааз!',
   tip: 'Нажми стрелку вправо, чтобы машина ехала быстро!',
   after: function () {
@@ -1315,8 +1326,8 @@ LESSONS.el_gas0 = {
 };
 
 LESSONS.el_jump0 = {
-  reps: REPS_CMD, key: '⎵', keyName: 'ПРОБЕЛ', keySay: 'Или нажми пробел!',
-  word: 'ПРЫЖОК', say: 'прыжок', icon: '⬆', why: 'Жми пробел, чтобы прыгать!',
+  reps: REPS_CMD, key: '⎵', keySay: 'Или нажми пробел!',
+  word: 'ПРЫЖОК', say: 'прыжок', icon: '⬆',
   ask: 'Твоя машина может прыгать! Скажи: прыжок!',
   tip: 'Жми пробел, чтобы прыгать!',
   after: function () { state = 'play'; armCommands(); }
@@ -1369,6 +1380,10 @@ var fuel = 1, outOfFuel = false, emptyShown = false, beepT = 0, lowT = 0, refuel
 /* Каждый десятый собранный бензин чуть увеличивает бак: видно по шкале, сбрасывается после проигрыша. */
 var fuelPicks = 0, tankMul = 1;
 var celebrate = 0, flash = 0, flashX = null, flashY = null, shake = 0, sirenT = 0, fxT = 0, T = 0;
+var starWas = -1, starPopT = -9;   // счётчик звёзд подпрыгивает, когда число меняется
+/* Есть ли у ребёнка клавиатура. На планшете «нажимай пробел» — инструкция в пустоту. */
+var TOUCH = (function () { try { return ('ontouchstart' in window) || navigator.maxTouchPoints > 0; } catch (e) { return false; } })();
+function KEYW(t) { return (TOUCH ? '⬆ ' : 'ПРОБЕЛ — ') + t; }   // на планшете клавиатуры нет
 
 var CARX = 0;
 var CRUISE, VMAX, ACC, BRK, GRAV, JUMP1, JUMP2, FUELDIST, EASYSPD;
@@ -1617,7 +1632,15 @@ function startChase(lesson) {
     for (var i = objs.length - 1; i >= 0; i--)
       if (objs[i].t === 'mon' && scr(objs[i]) > W) objs.splice(i, 1);
   A.siren();
-  if (lesson) { wantEl = null; metEl.robot = 1; toLesson('el_robot', { x: robot.x }); return; }
+  if (lesson) {
+    /* Робот стартует в 760*S ПОЗАДИ машинки — на уроке «робот» камера смотрела в пустую
+       дорогу за левым краем экрана. Подтягиваем его в кадр и возвращаем на место после урока. */
+    wantEl = null; metEl.robot = 1;
+    robot.x = carX - 300 * S;
+    LESSONS.el_robot.after = function () { robot.x = carX - TUNE.robotStart * S; state = 'play'; armCommands(); };
+    toLesson('el_robot', { x: robot.x });
+    return;
+  }
   A.say('Я тебя догоню!');
 }
 /* Что ребёнок уже знает — помечаем сразу на старте, иначе известное слово держит очередь,
@@ -1861,7 +1884,7 @@ function doFx(cw) {
 
 /* ═══════════════ 9. БЕНЗИН ═══════════════ */
 function refuel() {
-  fuel = 1; outOfFuel = false; emptyShown = false; refuels++;
+  fuel = 1; outOfFuel = false; emptyShown = false; lowT = 0; refuels++;
   spd = (easy ? EASYSPD : CRUISE) * 0.7;
   flash = 0.3;
   A.fuelUp(); A.say('Поехали!');
@@ -1876,14 +1899,17 @@ function drawFuelBar() {
   /* Ширину считаем ДО отрисовки: раньше подложка и колба рисовались по старой ширине,
      а заливка и обводка по новой — шкала выглядела сломанной. */
   var w = tankMul > 1 ? Math.min(w0 * tankMul, W * 0.34) : w0;
-  spr('fuel', ix, y + h + 18 * S, 84 * S);
+  /* Мало бензина ребёнок узнаёт не по надписи (он её не читает), а по тому,
+     что канистра начинает подпрыгивать. Движение объекта возрасту разрешено, мигание — нет. */
+  spr('fuel', ix, y + h + 18 * S, 84 * S,
+      (fuel < 0.25 && !outOfFuel) ? { dy: -Math.abs(Math.sin(T * 4)) * 10 * S } : {});
   var bx = x + 76 * S;
   g.save();
   g.fillStyle = 'rgba(20,25,40,.35)'; roundRect(bx - 4*S, y - 4*S, w + 8*S, h + 8*S, (h+8*S)/2); g.fill();
   g.fillStyle = 'rgba(255,255,255,.45)'; roundRect(bx, y, w, h, h/2); g.fill();
   var f = clamp(fuel, 0, 1);
   var col = f > 0.5 ? '#4ade80' : f > 0.25 ? '#ffd93d' : '#ff4d4d';
-  if (f < 0.25) g.globalAlpha = 0.55 + Math.abs(Math.sin(T * 7)) * 0.45;
+  if (f < 0.25) g.globalAlpha = 0.7 + Math.abs(Math.sin(T * 3.4)) * 0.3;   // 1,1 Гц: было 2,2 — впритык к возрастному порогу
   if (f > 0.005) {
     var grd = g.createLinearGradient(bx, y, bx, y + h);
     grd.addColorStop(0, '#ffffff'); grd.addColorStop(0.25, col); grd.addColorStop(1, col);
@@ -1897,14 +1923,17 @@ function drawFuelBar() {
      а крупная надпись за краем шкалы выглядела приклеенной. */
   var lv = Math.round((tankMul - 1) / 0.12);
   for (var q = 1; q <= lv && q <= 6; q++) {
-    var nx = bx + w0 * 0.5 + (w - w0 * 0.5) * (q / 7);
+    /* Насечка — прежняя граница бака: первая на краю исходного, каждая следующая — перед
+       своим апгрейдом. Участок справа от последней и есть «вот сколько прибавилось». */
+    var nx = bx + w0 * (1 + 0.12 * (q - 1));
+    if (nx > bx + w - 6 * S) break;
     g.fillStyle = 'rgba(122,75,0,.45)';
     roundRect(nx, y + h * 0.28, 3 * S, h * 0.44, 1.5 * S); g.fill();
   }
   g.restore();
 
-  if (f < 0.25 && !outOfFuel) {
-    g.save(); g.globalAlpha = 0.6 + Math.abs(Math.sin(T * 7)) * 0.4;
+  if (f < 0.25 && !outOfFuel) {          // надпись для взрослого — спокойная, мигает уже сама шкала
+    g.save(); g.globalAlpha = 0.85;
     outText('МАЛО БЕНЗИНА!', bx + w0 * 0.5, y + h + 30 * S, 26 * S, '#fff', '#c0392b');
     g.restore();
   }
@@ -1916,9 +1945,15 @@ function drawEmptyScreen() {
   var bob = Math.sin(T * 2.2) * 10 * S;
   spr('fuel', W / 2, H * 0.60 + bob, 220 * S);
   outText('БЕНЗИН ЗАКОНЧИЛСЯ!', W / 2, H * 0.24, 60 * S, '#fff', '#c0392b');
-  outText('собрал ' + stars + ' звёздочек', W / 2, H * 0.335, 34 * S, '#ffd93d', '#7a4b00');
+  /* Счёт звёзд — иконкой и числом, как в HUD: слово «звёздочек» ребёнок не прочтёт. */
+  g.save();
+  g.font = '900 ' + (46 * S) + 'px "Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif';
+  var stw = g.measureText(String(stars)).width;
+  g.restore();
+  spr('star', W / 2 - stw / 2 - 34 * S, H * 0.335 + 14 * S, 58 * S);
+  outText(String(stars), W / 2 + 20 * S, H * 0.335, 46 * S, '#ffd93d', '#7a4b00', 'right');
   g.globalAlpha = 0.55 + Math.sin(T * 4.5) * 0.45;
-  outText('ПРОБЕЛ — ЗАПРАВИТЬСЯ!', W / 2, H * 0.74, 44 * S, '#fff', '#e0691f');
+  outText(KEYW('ЗАПРАВИТЬСЯ!'), W / 2, H * 0.74, 44 * S, '#fff', '#e0691f');
   g.restore();
 }
 
@@ -1964,6 +1999,9 @@ function updatePlay(dt) {
     if (fuel < 0.25) {
       beepT -= dt;
       if (beepT <= 0) { A.beep(); beepT = 0.9; }
+      /* Один раз на бак сказать словами — писк сам по себе ребёнку ничего не объясняет.
+         Не перебиваем ни урок, ни другую реплику. */
+      if (!lowT && state === 'play' && !A.talking()) { lowT = 1; A.say('Мало бензина!'); }
     }
     if (fuel <= 0) {
       fuel = 0; outOfFuel = true; jumps = 0;
@@ -3046,28 +3084,57 @@ function outWrap(txt, x, y, size, maxW, fill, stroke, lh) {
   return lines.length;
 }
 
+/* Счётчик звёзд рисуется одинаково в обоих режимах: спрайт игры, а не эмодзи,
+   на полупрозрачной капсуле — та же подложка, что у шкалы бензина. Иконка ставится
+   по ИЗМЕРЕННОЙ ширине числа, иначе на трёхзначном счёте она заезжает под цифры. */
+function HUDTOP() { return W <= 1000 ? 46 : 0; }   // на узких экранах ряд #tools стоит сверху справа
+
+/* Рекорд показан сундуком — тем же, что на экране проигрыша. Слово «рекорд» ребёнок
+   не читает, а две разные формы одного и того же в одной игре сбивают и взрослого. */
+function drawBest(v, hudTop) {
+  g.save(); g.globalAlpha = 0.8;
+  spr('chest', W - 116 * S, 118 * S + hudTop, 40 * S);
+  outText(String(v), W - 30 * S, 100 * S + hudTop, 30 * S, '#fff', '#2b6cb0', 'right');
+  g.restore();
+}
+
+function drawStarCount() {
+  var bx = W - 30 * S, by = 46 * S + HUDTOP(), t = String(stars);
+  if (stars !== starWas) { if (starWas >= 0) starPopT = T; starWas = stars; }
+  var pop = 1 + 0.34 * Math.max(0, 1 - (T - starPopT) * 4.5);   // счётчик отзывается на награду
+  g.save();
+  g.font = '900 ' + (60 * S) + 'px "Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif';
+  var tw = g.measureText(t).width;
+  g.globalAlpha = 0.26; g.fillStyle = '#2b2140';
+  roundRect(bx - tw - 96 * S, by - 22 * S, tw + 108 * S, 70 * S, 35 * S); g.fill();
+  g.restore();
+  spr('star', bx - tw - 44 * S, by + 34 * S, 68 * S * pop);
+  outText(t, bx, by + 6 * S, 60 * S * pop, '#ffd93d', '#7a4b00', 'right');
+}
+
 function drawHUD() {
   drawFuelBar();
 
-  var bx = W - 30 * S, by = 46 * S;
-  spr('star', bx - 108 * S, by + 34 * S, 68 * S);
-  outText(String(stars), bx, by + 6 * S, 60 * S, '#ffd93d', '#7a4b00', 'right');
+  drawStarCount();
 
+  /* Ряд «сколько звёзд до уровня». Подложка нужна, чтобы ряд не терялся на светлом небе;
+     ширина = 10 шагов по 40*S от левого края 34*S плюс поля — при смене шага пересчитать. */
+  g.save(); g.globalAlpha = 0.22; g.fillStyle = '#2b2140';
+  roundRect(10 * S, 126 * S, 408 * S, 44 * S, 22 * S); g.fill(); g.restore();
   for (var i = 0; i < 10; i++) {
     var x = 34 * S + i * 40 * S, y = 148 * S;
     g.save(); g.globalAlpha = i < row ? 1 : 0.28;
     var im = IMG.star;
-    if (ok(im)) { var h = i < row ? 40 * S : 32 * S, w = iw(im) * (h / ih(im));
+    var isNew = (i === row - 1);                   // только что полученная — подпрыгивает
+    if (ok(im)) { var h = (i < row ? 40 * S : 32 * S) * (isNew ? 1 + 0.25 * Math.max(0, 1 - (T - starPopT) * 5) : 1),
+                  w = iw(im) * (h / ih(im));
                   g.drawImage(im, x - w / 2, y - h / 2, w, h); }
     g.restore();
   }
 
   outText(car.name, W / 2, 44 * S, 34 * S, '#ffffff', '#2b6cb0');
-  if (best > 0) {                                       // рекорд — мелко и спокойно, под счётчиком звёзд
-    g.save(); g.globalAlpha = 0.75;
-    outText('рекорд ' + best, W - 30 * S, 104 * S, 24 * S, '#fff', '#2b6cb0', 'right');
-    g.restore();
-  }
+  var hudTop = HUDTOP();
+  if (best > 0) drawBest(best, hudTop);
 
   texts.forEach(function (t) {
     g.save(); g.globalAlpha = clamp(t.life / t.max, 0, 1);
@@ -3125,7 +3192,7 @@ function drawGarage(dt) {
 
   outText(CARS[sel].name, W / 2, 78 * S, 54 * S, '#ffd93d', '#7a4b00');
   g.save(); g.globalAlpha = 0.5 + Math.sin(garageT * 4) * 0.5;
-  outText('ПРОБЕЛ — ДАЛЬШЕ ▶', W / 2, 134 * S, 28 * S, '#fff', '#e0691f');
+  outText(KEYW('ДАЛЬШЕ ▶'), W / 2, 134 * S, 28 * S, '#fff', '#e0691f');
   g.restore();
 
   garageVoice(dt);
@@ -3192,7 +3259,7 @@ function drawMode(dt) {
     roundRect(0, 0, cw, chh, 28 * S); g.stroke();
 
     outText(m.title, cw / 2, 44 * S, 30 * S, isSel ? '#e0691f' : '#5a6472', '#fff');
-    outText(m.sub, cw / 2, 80 * S, 19 * S, '#5a6472', 'rgba(255,255,255,.9)');
+    outText(m.sub, cw / 2, 80 * S, Math.max(14, 19 * S), '#5a6472', 'rgba(255,255,255,.9)');
 
     var kw = 68 * S, kh = 58 * S;
     var ws = m.keys.map(function (l) { return l.length > 2 ? kw * 2.4 : kw; });
@@ -3206,7 +3273,7 @@ function drawMode(dt) {
   });
 
   g.save(); g.globalAlpha = 0.55 + Math.sin(modeT * 4.5) * 0.45;
-  outText('ПРОБЕЛ — ПОЕХАЛИ!', W / 2, H * 0.80, 40 * S, '#fff', '#e0691f');
+  outText(KEYW('ПОЕХАЛИ!'), W / 2, H * 0.80, 40 * S, '#fff', '#e0691f');
   g.restore();
 
   var pulse = 1 + Math.sin(modeT * 5) * 0.08;
@@ -3291,7 +3358,7 @@ function drawMicBubble(cx, cy, title, word, listening) {
     g.fillStyle = 'rgba(0,0,0,.12)'; roundRect(cx - lw / 2, cy + h * 0.36, lw, 10 * S, 5 * S); g.fill();
     g.fillStyle = dead ? '#ff8f8f' : '#4ade80';
     roundRect(cx - lw / 2, cy + h * 0.36, Math.max(6 * S, lw * lv), 10 * S, 5 * S); g.fill();
-    if (dead) outText('нет сигнала с микрофона', cx, cy + h * 0.66, 17 * S, '#c0392b', '#fff');
+    if (dead) outText('нет сигнала с микрофона', cx, cy + h * 0.66, Math.max(13, 17 * S), '#c0392b', '#fff');
   }
   g.restore();
 }
@@ -3379,7 +3446,7 @@ function drawName() {
 var cam = { z: 1, tz: 1, fx: 0, fy: 0, t: 0 };
 
 function camTo(fx, fy, z) { cam.fx = fx; cam.fy = fy; cam.tz = z || 1.75; cam.z = 1.02; cam.t = 0; }
-function camStep(dt) { cam.t += dt; cam.z += (cam.tz - cam.z) * Math.min(1, dt * 2.0); }
+function camStep(dt) { cam.t += dt; cam.z += (cam.tz - cam.z) * Math.min(1, dt * 1.1); }   // ~1,5 с: рывок камеры для 2–4 лет резок
 
 function withCam(fn) {
   var dx = Math.sin(cam.t * 0.55) * 16 * S, dy = Math.cos(cam.t * 0.42) * 9 * S;
@@ -3459,12 +3526,12 @@ var les = { key: '', got: 0, said: 0, phase: '', t: 0, obj: null, from: 'play' }
 function toLesson(key, obj) {
   EV('lesson', key); les.from = state; state = 'lesson'; les.key = key; les.got = 0; les.said = 0; les.phase = 'ask'; les.t = 0; les.obj = obj || null;
   var f = lessonFocus(key);
-  camTo(f[0], f[1], key === 'one' || key === 'two' || key === 'three' ? 1.5 : 1.8);
+  camTo(f[0], f[1], key === 'one' || key === 'two' || key === 'three' ? 1.5 : key === 'el_robot' ? 1.35 : 1.8);   // робот и так у левого края — сильный зум выносит его за кадр
   Mic.disarm(); Mic.cancel();
   A.engine(0, 1, false);
   A.clunk();
   var LA = LESSONS[key];
-  A.say(LA.keySay ? [LA.ask, LA.keySay] : LA.ask);
+  A.say(LA.keySay && !TOUCH ? [LA.ask, LA.keySay] : LA.ask);   // «нажми пробел» на планшете — совет в пустоту
   setPad();
 }
 
@@ -3475,20 +3542,26 @@ function lessonHeard(sample) {
 }
 
 function lessonStep(good) {
-  les.got++; les.phase = 'good'; les.t = 0;
+  les.got++; les.phase = 'good'; les.t = 0; les.ok = !!good;
   if (good) {
     A.coin(les.got * 3);
     for (var i = 0; i < 20; i++)
-      P({ x: W / 2 + rnd(-160, 160) * S, y: H * 0.5 + rnd(-40, 40) * S, vx: rnd(-140, 140) * S,
+      /* Частицы живут в мировых координатах (y вверх от GY), а сцену урока камера
+         поднимает к H*0.44 — искры улетали к верхней кромке мимо предмета. */
+      P({ x: W / 2 + rnd(-160, 160) * S, y: GY - H * 0.44 + rnd(-40, 40) * S, vx: rnd(-140, 140) * S,
           vy: rnd(60, 260) * S, r: rnd(6, 14) * S, c: pick(['#ffd93d', '#fff', '#7bd66b']),
           kind: 'spark', life: rnd(0.5, 1.0), ay: 300 * S, vr: rnd(-8, 8) });
   }
   if (les.got >= repsFor(les.key)) {
     var L2 = LESSONS[les.key];
-    A.say(L2.tip ? ['Молодец! Ты выучил слово ' + L2.say + '!', L2.tip]
-                 : 'Молодец! Ты выучил слово ' + L2.say + '!');
+    /* «Ты выучил слово» — только тому, кто это слово произнёс. Молчуну игра
+       не врёт: повторяет подсказку и позже предложит слово снова. */
+    if (les.said) A.say(L2.tip ? ['Молодец! Ты выучил слово ' + L2.say + '!', L2.tip]
+                               : 'Молодец! Ты выучил слово ' + L2.say + '!');
+    else if (L2.tip) A.say(L2.tip);
   }
-  else A.say(les.got === 1 ? 'Ещё раз!' : 'И ещё разок!');
+  else A.say(good ? [pick(JUMP_PRAISE), les.got === 1 ? 'Ещё раз!' : 'И ещё разок!']
+                  : (les.got === 1 ? 'Ещё раз!' : 'И ещё разок!'));
 }
 
 function updateLesson(dt) {
@@ -3497,13 +3570,20 @@ function updateLesson(dt) {
   for (var i = 0; i < objs.length; i++) objs[i].ph = (objs[i].ph || 0) + dt * 0.7;   // мир чуть дышит
   if (les.phase === 'ask') {
     if (les.t > 0.15 && !A.talking()) {
-      les.phase = 'listen'; les.t = 0;
+      les.phase = 'listen'; les.t = 0; les.hint = 0;
       if (Mic.ready()) {
-        if (les.said === 1) Mic.record({ word: LESSONS[les.key].word, key: les.key });   // вторая попытка со звуком — пишем для родителя
+        /* Вторая попытка — по счёту повторов, а не по числу удачных: у застенчивого
+           ребёнка первая попытка часто пустая, и запись не сохранялась вовсе.
+           Пустую попытку выбросит сам recDone(!!sample). */
+        if (les.got === 1) Mic.record({ word: LESSONS[les.key].word, key: les.key });
         Mic.listen(7, lessonHeard);
       }
     }
   } else if (les.phase === 'listen') {
+    /* Молчание до 20 секунд без единого слова — ребёнок решает, что игра зависла.
+       Один раз за попытку переспрашиваем; таймер слушания при этом не тратится
+       (Mic.step замораживает его, пока диктор говорит). */
+    if (!les.hint && les.t > 3.5 && !A.talking() && Mic.ready() && Voice.on) { les.hint = 1; A.say(LESSONS[les.key].ask); }
     if ((!Mic.ready() || !Voice.on) && les.t > 1.0) lessonStep(false);   // микрофон выключили посреди урока — не ждём вечно
   } else if (les.phase === 'good') {
     if (les.t > (les.got >= repsFor(les.key) ? 1.6 : 0.35) && !A.talking()) {
@@ -3517,9 +3597,16 @@ function updateLesson(dt) {
 function applyLesson() {
   var key = les.key, L = LESSONS[key];
   learned[key] = true; lastWord = L.word;
-  Stats.bump(L.word);
+  if (les.said) Stats.bump(L.word);   // в родительской панели — только реально сказанные слова
+  /* Обещание игры — «сказал слово, и что-то произошло». У 52 предметных уроков своего
+     чуда нет, поэтому отдача общая и на языке, который ребёнок уже понимает: звёзды. */
+  if (les.said) {
+    stars += 2; A.coin(6);
+    popText(L.word + '!', carX + 200 * S, 240 * S, '#ffd93d');
+    burst((les.obj && les.obj.x != null) ? les.obj.x : carX, 120 * S, 22, ['#ffd93d', '#fff', '#7bd66b'], 300 * S, 'spark');
+  }
   wordArmed = false; rollWord(); EV('learned', key);   // следующее слово — через wordMin..wordMax c езды
-  flash = 0.35;
+  flash = 0.12;                                   // полноэкранная вспышка для 2–4 лет запрещена: оставляем еле заметный отблеск
   A.fanfare();
   if (les.from === 'lane') { state = 'lane'; setPad(); return; }   // «чудо» урока к «рулю» не относится
   if (L.after) L.after();
@@ -3639,22 +3726,28 @@ function drawLesson() {
       g.restore();
     }
   });
-  spotlight(1);
+  spotlight(clamp(cam.t * 2.2, 0, 1));   // виньетка набирается за ~0,45 с, а не включается рывком
 
-  outText(L.icon + '  ' + L.word + '  ' + L.icon, W / 2, H * 0.19, 78 * S, '#ffd93d', '#7a4b00');
+  /* У большинства уроков есть собственный нарисованный спрайт предмета — он и должен
+     стоять в заголовке. Эмодзи остаётся откатом: spr возвращает 0, если картинки нет. */
+  var sn = les.key.indexOf('el_') === 0 ? les.key.slice(3) : '';
+  var sw = sn ? spr(sn, W / 2 - (L.word.length * 22 + 60) * S, H * 0.19 + 34 * S, 76 * S) : 0;
+  outText(sw > 0 ? L.word : L.icon + '  ' + L.word + '  ' + L.icon, W / 2, H * 0.19, 78 * S, '#ffd93d', '#7a4b00');
 
   if (L.key) drawKeyHint(L.key, W * 0.82, H * 0.40);   // кнопка картинкой, в стороне от машинки
 
   drawMicBubble(W / 2, H * 0.79,
-    les.phase === 'listen' ? '🎤 ГОВОРИ!' : les.phase === 'good' ? 'МОЛОДЕЦ!' : 'СЛУШАЙ…',
+    les.phase === 'listen' ? '🎤 ГОВОРИ!' : les.phase === 'good' ? (les.ok ? 'МОЛОДЕЦ!' : 'СЛУШАЙ…') : 'СЛУШАЙ…',
     L.key ? '' : L.word, les.phase === 'listen');   // на уроках клавиш слово уже крупно стоит сверху
 
   var need = repsFor(les.key);
   for (var i = 0; i < need; i++) {
-    var x = W / 2 + (i - (need - 1) / 2) * 62 * S, y = H * 0.93;
+    /* Ряд «сколько раз ещё сказать» стоял под HTML-кнопкой «▶ СКАЗАЛ» и микрофонным пузырём —
+       единственный индикатор прогресса урока ребёнок просто не видел. Поднимаем над пузырём. */
+    var x = W / 2 + (i - (need - 1) / 2) * 62 * S, y = H * 0.79 - 82 * S;
     g.save();
     g.fillStyle = i < les.got ? '#4ade80' : 'rgba(255,255,255,.45)';
-    g.beginPath(); g.arc(x, y, 20 * S, 0, TAU); g.fill();
+    g.beginPath(); g.arc(x, y, 24 * S, 0, TAU); g.fill();
     g.lineWidth = 4 * S; g.strokeStyle = '#fff'; g.stroke();
     g.restore();
   }
@@ -3744,7 +3837,7 @@ function drawResult() {
   outText(String(score), px + pw - 50 * S, py + ph - 46 * S, 34 * S, '#2b6cb0', '#fff', 'right');
 
   g.save(); g.globalAlpha = 0.5 + Math.sin(T * 4.5) * 0.5;
-  outText('ПРОБЕЛ — ДАЛЬШЕ', W / 2, py + ph + 60 * S, 34 * S, '#fff', '#e0691f');
+  outText(KEYW('ДАЛЬШЕ'), W / 2, py + ph + 60 * S, 34 * S, '#fff', '#e0691f');
   g.restore();
 }
 
@@ -3872,7 +3965,7 @@ function drawOver() {
     g.restore();
   });
   g.save(); g.globalAlpha = 0.5 + Math.sin(T * 4) * 0.35;
-  outText('◀ ▶ выбрать · ПРОБЕЛ — поехали', W / 2, byy + bh2 + 40 * S, 24 * S, '#fff', '#2b6cb0');
+  outText('◀ ▶ выбрать · ' + (TOUCH ? 'кнопка' : 'ПРОБЕЛ') + ' — поехали', W / 2, byy + bh2 + 40 * S, 24 * S, '#fff', '#2b6cb0');
   g.restore();
 }
 
@@ -4023,7 +4116,7 @@ function drawIntro() {
   g.restore();
 
   g.save(); g.globalAlpha = 0.4 + Math.sin(T * 5) * 0.4;
-  outText('ПРОБЕЛ — ПОЕХАЛИ!', W / 2, py + ph + 70 * S, 32 * S, '#fff', '#e0691f');
+  outText(KEYW('ПОЕХАЛИ!'), W / 2, py + ph + 70 * S, 32 * S, '#fff', '#e0691f');
   g.restore();
 }
 
@@ -4475,6 +4568,10 @@ function drawRepair() {
 
   drawParts(false);
 
+  /* На уроке эту сцену рисует drawLesson внутри камеры с наплывом: подписи мастерской
+     растягивались вместе с камерой и наезжали на слово урока. Тексты — только в мастерской. */
+  if (state === 'lesson') return;
+
   if (rep.phase === 'intro') {
     outText('ОЙ! МАШИНКА СЛОМАЛАСЬ!', W / 2, 80 * S, 48 * S, '#fff', '#c0392b');
     outText('колёса упали…', W / 2, 140 * S, 28 * S, '#ffd93d', '#7a4b00');
@@ -4484,7 +4581,7 @@ function drawRepair() {
       drawMicBubble(W / 2, 190 * S, rep.listening ? '🎤 ГОВОРИ!' : 'СЕЙЧАС СПРОШУ…',
                     'СКОЛЬКО?', rep.listening);
     else
-      outText('ПРОБЕЛ — ОТВЕТИТЬ', W / 2, 160 * S, 30 * S, '#fff', '#e0691f');
+      outText(KEYW('ОТВЕТИТЬ'), W / 2, 160 * S, 30 * S, '#fff', '#e0691f');
   } else if (rep.phase === 'answer') {
     var k = 1 + rep.numT * 0.35;
     outText('ПРАВИЛЬНО!', W / 2, 76 * S, 40 * S, '#fff', '#2f9e50');
@@ -4493,13 +4590,21 @@ function drawRepair() {
   } else if (rep.phase === 'fix') {
     outText('СТАВИМ КОЛЁСА!', W / 2, 76 * S, 44 * S, '#fff', '#2b6cb0');
     if (rep.echoPhase)
-      drawMicBubble(W / 2, H * 0.62,
+      drawMicBubble(W / 2, 320 * S,
                     rep.echoPhase === 'listen' ? '🎤 ГОВОРИ!' : Mic.ready() ? 'СЛУШАЙ…' : 'ВКЛЮЧАЮ МИКРОФОН…',
                     (rep.echoWord || '').toUpperCase(), rep.echoPhase === 'listen');
-    var k2 = 1 + rep.numT * 0.5;
-    outText(rep.fixed + ' / ' + rep.n, W / 2, 168 * S, 66 * S * k2, '#ffd93d', '#7a4b00');
+    /* Было «2 / 4» — дробь. Ребёнок 2–4 лет не читает и дробей не знает: показываем
+       ряд колёс, поставленные яркие, оставшиеся полупрозрачные. */
+    var iw2 = 52 * S, ix0 = W / 2 - (rep.n - 1) * iw2 * 0.5;
+    for (var wi = 0; wi < rep.n; wi++) {
+      g.save();
+      g.globalAlpha = wi < rep.fixed ? 1 : 0.28;
+      var wp = (wi === rep.fixed - 1) ? 1 + rep.numT * 0.45 : 1;
+      spr('wheel', ix0 + wi * iw2, 168 * S + 22 * S, 46 * S * wp, {});
+      g.restore();
+    }
     g.save(); g.globalAlpha = 0.5 + Math.sin(T * 5) * 0.5;
-    outText('НАЖИМАЙ ПРОБЕЛ!', W / 2, 236 * S, 30 * S, '#fff', '#e0691f');
+    outText(TOUCH ? 'НАЖИМАЙ КНОПКУ!' : 'НАЖИМАЙ ПРОБЕЛ!', W / 2, 236 * S, 30 * S, '#fff', '#e0691f');
     g.restore();
   } else {
     outText('МОЛОДЕЦ! ПОЧИНИЛИ!', W / 2, 84 * S, 54 * S, '#fff', '#ff8f1f');
@@ -4535,12 +4640,12 @@ function drawGameMode(dt) {
     roundRect(0, 0, cw, chh, 28 * S); g.stroke();
     outText(m.icon, cw / 2, 62 * S, 52 * S, isSel ? '#e0691f' : '#8a94a6', '#fff');
     outText(m.title, cw / 2, 128 * S, 34 * S, isSel ? '#e0691f' : '#5a6472', '#fff');
-    outText(m.sub, cw / 2, 172 * S, 20 * S, '#5a6472', 'rgba(255,255,255,.9)');
+    outText(m.sub, cw / 2, 172 * S, Math.max(14, 20 * S), '#5a6472', 'rgba(255,255,255,.9)');
     g.restore();
   });
 
   g.save(); g.globalAlpha = 0.55 + Math.sin(gmT * 4.5) * 0.45;
-  outText('ПРОБЕЛ — ДАЛЬШЕ', W / 2, H * 0.80, 36 * S, '#fff', '#e0691f');
+  outText(KEYW('ДАЛЬШЕ'), W / 2, H * 0.80, 36 * S, '#fff', '#e0691f');
   g.restore();
   var pulse = 1 + Math.sin(gmT * 5) * 0.08;
   g.save(); g.globalAlpha = 0.85;
@@ -4952,12 +5057,15 @@ var Lane = {
   draw: function (dt) {
     Lane.scene();
     texts.forEach(function (t) {
-      g.save(); g.globalAlpha = clamp(t.life != null ? t.life : 1, 0, 1);
-      outText(t.t, t.x, t.y, 34 * S, t.c || t.col || '#fff', '#2b2140'); g.restore();
+      g.save(); g.globalAlpha = clamp((t.life || 0) / (t.max || 1.1), 0, 1);
+      /* Общий обновлятор двигает тексты в МИРОВЫХ координатах (вверх = плюс), а здесь
+         координаты экранные, и «+1» уползало вниз. Вычитаем накопленное и добавляем подъём. */
+      outText(t.t, t.x, t.y - ((t.max || 1.1) - t.life) * 120 * S, 34 * S, t.c || t.col || '#fff', '#2b2140');
+      g.restore();
     });
-    outText('⭐ ' + stars, 24 * S, 30 * S, 34 * S, '#fff', '#2b6cb0', 'left');
-    if (ln.best > 0) { g.save(); g.globalAlpha = 0.75; outText('рекорд ' + ln.best, 24 * S, 60 * S, 20 * S, '#fff', '#2b6cb0', 'left'); g.restore(); }
-    if (!Pult.on && !REC && ln.t < 8) { g.save(); g.globalAlpha = 0.8; outText('📱 телефон-руль — кнопка справа внизу', W / 2, H * 0.06, 20 * S, '#fff', '#2b6cb0'); g.restore(); }
+    drawStarCount();
+    if (ln.best > 0) drawBest(ln.best, HUDTOP());
+    if (!Pult.on && !REC && ln.t < 8) { g.save(); g.globalAlpha = 0.8; outText('📱 телефон-руль — кнопка 📱 ' + (W <= 1000 ? 'вверху справа' : 'внизу справа'), W / 2, H * 0.06, Math.max(14, 20 * S), '#fff', '#2b6cb0'); g.restore(); }
     if (celebrate > 0) { g.save(); g.globalAlpha = Math.min(1, celebrate); outText('УРА!', W / 2, H * 0.3, 90 * S, '#ffd93d', '#e0691f'); g.restore(); }
   },
   auto: function () {                        // автоигра: полоса без препятствий, лучше со звездой
@@ -5302,6 +5410,9 @@ var TG = {
 /* ═══════════════ 18. ПЕРЕХОДЫ ═══════════════ */
 function setPad() {
   var big = document.getElementById('kS').querySelector('.big');
+  var cap = document.getElementById('kSCap');
+  if (cap && TOUCH) cap.textContent = '';        // подпись «ПРОБЕЛ» на планшете указывает в пустоту
+  if (TOUCH) { var ph = document.getElementById('pgHint'); if (ph) ph.style.display = 'none'; }
   var arrows = state === 'garage' || state === 'mode' || state === 'gamemode' || state === 'lane' || (state === 'play' && !easy);
   document.getElementById('kL').classList.toggle('hidden', !arrows);
   document.getElementById('kR').classList.toggle('hidden', !arrows);
@@ -5322,7 +5433,7 @@ function setPad() {
                   : state === 'ask'    ? '✓ ДА'
                   : state === 'paint'  ? '▶ ДАЛЬШЕ'
                   : state === 'result' ? '▶ ДАЛЬШЕ'
-                  : state === 'lane'   ? '📣 БИ-БИ'
+                  : state === 'lane'   ? '⬆ ПРЫЖОК'
                   : state === 'intro'  ? '▶ ПОЕХАЛИ'
                   : state === 'over'   ? (over.sel === 1 ? '🚗 ДРУГАЯ МАШИНКА' : '↻ ЕЩЁ РАЗ')
                   : state === 'crash'  ? '…' 
@@ -5497,6 +5608,8 @@ setMicIcon();
 
 (function () {                                   // страница выученных слов
   var box = document.getElementById('stats'), body = document.getElementById('statsBody');
+  var WICON = {};
+  for (var lk in LESSONS) if (LESSONS[lk].word) WICON[LESSONS[lk].word] = LESSONS[lk].icon || '';
   function render() {
     var l = Stats.list();
     if (!l.length) {
@@ -5504,13 +5617,22 @@ setMicIcon();
       renderRecs();
       return;
     }
-    body.innerHTML = l.map(function (r) {
-      var full = Math.min(r.n, Stats.need);
-      var dots = new Array(full + 1).join('●') + new Array(Stats.need - full + 1).join('○');
-      return '<div class="w"><span>' + r.w + '</span><span class="dots">' + dots + '</span>' +
-             '<span class="' + (r.n >= Stats.need ? 'done' : '') + '">' +
-             (r.n >= Stats.need ? 'выучено' : r.n + '&nbsp;раз') + '</span></div>';
-    }).join('');
+    /* Иконку слова берём из самой таблицы уроков — тогда страницу можно показать
+       и ребёнку: он узнаёт слово по картинке, а не читает список. */
+    var done = 0;
+    for (var q = 0; q < l.length; q++) if (l[q].n >= Stats.need) done++;
+    var pc = Math.round(done / Math.max(1, l.length) * 100);
+    body.innerHTML =
+      '<div class="sum">выучено <b>' + done + '</b> из ' + l.length +
+      '<div class="bar"><i style="width:' + pc + '%"></i></div></div>' +
+      l.map(function (r) {
+        var full = Math.min(r.n, Stats.need);
+        var dots = new Array(full + 1).join('●') + new Array(Stats.need - full + 1).join('○');
+        return '<div class="w' + (r.n >= Stats.need ? ' fin' : '') + '"><span>' +
+               (WICON[r.w] ? WICON[r.w] + ' ' : '') + r.w + '</span><span class="dots">' + dots + '</span>' +
+               '<span class="' + (r.n >= Stats.need ? 'done' : '') + '">' +
+               (r.n >= Stats.need ? 'выучено' : r.n + '&nbsp;раз') + '</span></div>';
+      }).join('');
     renderRecs();
   }
   var cache = [], player = null;
