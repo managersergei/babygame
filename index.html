@@ -5564,6 +5564,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
       var n = 0; for (var k in IMG) if (ok(IMG[k])) n++;
       return { state: state, stage: stage, stars: stars, objs: objs.length, imgs: n, lane: Lane.dbg(), talking: A.talking(), voice: Voice.on,
                gm: gmSel, gmId: (GAMEMODES[gmSel] || {}).id, ctl: (MODES[modeSel] || {}).id, voiceCtl: voiceCtl, story: story,
+               pult: +Pult.steer.toFixed(2), pultFresh: Pult.fresh(), pultOn: Pult.on,
                tg: TG.dbg(), T: +T.toFixed(1), known: Stats.list().filter(function (r) { return r.n >= Stats.need; }).length,
                said: les.said, recs: Rec.count(), rec: Mic.recording(),
                word: { t: +wordT.toFixed(1), due: +wordDue.toFixed(1), want: wantEl, armed: wordArmed, next: nextLessonKey(), met: Object.keys(metEl).length },

@@ -30,5 +30,48 @@ await game.waitForTimeout(1500);
 await pult.evaluate(() => { const b = document.getElementById("L"); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })); });
 const x1 = (await game.evaluate(() => window.__bg())).lane.x;
 console.log("steer via phone: x " + x0 + " → " + x1, x1 < x0 - 0.4 ? "OK" : "FAIL");
+
+// ── ландшафт: кнопки в ряд и все влезают (пункт 9)
+await pult.setViewportSize({ width: 844, height: 390 });
+await pult.waitForTimeout(400);
+const box = await pult.evaluate(() => {
+  const R = id => { const r = document.getElementById(id).getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), bot: Math.round(r.bottom) }; };
+  return { L: R("L"), S: R("S"), R: R("R"), h: window.innerHeight, over: document.documentElement.scrollWidth > window.innerWidth + 1 };
+});
+const inRow = box.L.x < box.S.x && box.S.x < box.R.x;
+const fits = box.L.bot <= box.h && box.S.bot <= box.h && box.R.bot <= box.h;
+console.log("landscape: кнопки в ряд " + (inRow ? "OK" : "FAIL") + ", влезают " + (fits ? "OK" : "FAIL") +
+            ", боковой прокрутки " + (box.over ? "ЕСТЬ FAIL" : "нет OK"));
+
+// ── руль по наклону (пункт 14)
+await pult.evaluate(() => document.getElementById("tilt").click());
+await pult.waitForTimeout(300);
+const wheelOn = await pult.evaluate(() => document.getElementById("wheel").classList.contains("on") &&
+                                          document.getElementById("wrap").classList.contains("tilt") &&
+                                          getComputedStyle(document.getElementById("L")).display === "none");
+console.log("руль вместо кнопок:", wheelOn ? "OK" : "FAIL");
+async function tiltTo(beta, gamma) {
+  await pult.evaluate(([b, g]) => {
+    let e;
+    try { e = new DeviceOrientationEvent("deviceorientation", { alpha: 0, beta: b, gamma: g, absolute: false }); }
+    catch (err) { e = new Event("deviceorientation"); Object.defineProperty(e, "beta", { value: b }); Object.defineProperty(e, "gamma", { value: g }); }
+    window.dispatchEvent(e);
+  }, [beta, gamma]);
+}
+await tiltTo(0, -80);                       // ноль калибровки: телефон «как руль», экран к лицу
+await pult.waitForTimeout(150);
+for (let i = 0; i < 14; i++) { await tiltTo(-26, -76); await pult.waitForTimeout(60); }
+await game.waitForTimeout(500);
+const steer = await game.evaluate(() => window.__bg().pult || null);
+const rot = await pult.evaluate(() => document.getElementById("wheel").style.transform);
+const x2 = (await game.evaluate(() => window.__bg())).lane.x;
+console.log("наклон рулит: x " + x1 + " → " + x2.toFixed(2) + " " + (Math.abs(x2 - x1) > 0.15 ? "OK" : "FAIL") + " | руль повёрнут: " + rot);
+
+// ── выключили наклон: управление сразу возвращается кнопкам (баг «1,5 секунды прямо»)
+await pult.evaluate(() => document.getElementById("tilt").click());
+await game.waitForTimeout(250);
+const freshOff = await game.evaluate(() => window.__bg().pultFresh);
+console.log("после выключения наклона руль не залипает:", freshOff === false ? "OK" : "FAIL (" + freshOff + ")");
+
 if (errs.length) console.log("errors:", errs.join(" | "));
 await browser.close();
