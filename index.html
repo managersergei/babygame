@@ -2607,7 +2607,7 @@ function drawProps() {
     spr(frameOf(nm, i), x + 90 * S, pb, (PROP_H[nm] || 150) * 0.86 * S,           // дальний ряд мельче ближнего
         withMove(nm, i, (PROP_H[nm] || 150) * 0.86 * S, { alpha: 0.92 }));
   });
-  layer(0.8, 260 * S, function (x, i) { if (i % 2 === 0) spr('bush', x + 40 * S, roadTop() + 14 * S, 66 * S); });
+  layer(0.8, 260 * S, function (x, i) { if (i % 2 === 0) spr('bush', x + 40 * S, roadTop() + 14 * S, 66 * S, withMove('bush', i, 66 * S, {})); });
 }
 function drawClouds() {
   layer(0.12, 560 * S, function (x, i) {
@@ -2752,7 +2752,7 @@ function drawObjs() {
     } else if (o.t === 'plane') {
       spr('plane', sx, o.y + Math.sin((o.ph || 0) * 1.6) * 7 * S, 96 * S, { mid: true, sx: -1 });
     } else if (o.t === 'flower') {
-      spr('flower', sx, roadTop() + 8 * S, 60 * S, { rot: Math.sin((o.ph || 0) + T) * 0.05 });
+      spr(frameOf('flower', o.ph), sx, roadTop() + 8 * S, 60 * S, withMove('flower', o.ph, 60 * S, {}));
     } else if (o.t === 'apple') {
       var ab = Math.sin((o.ph || 0) * 2.4 + T * 2) * 8 * S;
       spr('apple', sx, GY - o.y + 30 * S - ab, 58 * S);
@@ -2987,7 +2987,7 @@ function drawGarage(dt) {
 
   drawSky(); drawClouds(); drawFar();
   layer(0.5, 620 * S, function (x, i) {
-    if ((i & 1) === 0) spr('tree', x + 100 * S, GY - 16 * S, 200 * S);
+    if ((i & 1) === 0) spr('tree', x + 100 * S, GY - 16 * S, 200 * S, withMove('tree', i, 200 * S, {}));
     else spr('house', x + 90 * S, GY - 18 * S, 165 * S);
   });
   drawRoad();
