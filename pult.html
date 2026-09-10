@@ -66,6 +66,16 @@
   #thumbs.on { display:flex; }
   #thumbs .round { pointer-events:auto; width:min(30vh,150px); height:min(30vh,150px); border-radius:50%;
     font-size:min(5.5vh,30px); display:flex; align-items:center; justify-content:center; }
+  /* Защита от лишних касаний: ребёнок держит телефон двумя руками и ладонями
+     задевает всё подряд. В защите живут только газ, прыжок и маленький замок. */
+  body.guard #top, body.guard #st, body.guard #pad, body.guard #turnHint { pointer-events:none; opacity:.16; }
+  body.guard #wheel { opacity:.5; }
+  #guard { position:fixed; z-index:9; top:max(8px,env(safe-area-inset-top)); left:max(8px,env(safe-area-inset-left));
+    width:46px; height:46px; border-radius:50%; border:none; cursor:pointer; padding:0;
+    font-size:20px; line-height:46px; text-align:center; background:rgba(255,255,255,.82);
+    box-shadow:0 4px 0 #9aa8bd, 0 8px 16px rgba(0,0,0,.22); }
+  body.guard #guard { background:linear-gradient(#ffd6d6,#ff9f9f); box-shadow:0 4px 0 #c96a6a; }
+  #full { padding:10px 16px; font-size:16px; }
   #G { background:linear-gradient(#c8f5b8,#7bd66b); box-shadow:0 8px 0 #4f9f40, 0 14px 24px rgba(0,0,0,.25); }
   #J { background:linear-gradient(#fff2a8,#ffcf3d); box-shadow:0 8px 0 #d9a52a, 0 14px 24px rgba(0,0,0,.25); }
 </style>
@@ -77,6 +87,7 @@
     <button class="btn" id="connect">ПОДКЛЮЧИТЬ</button>
     <button class="btn" id="tilt">📐 НАКЛОН — РУЛЬ</button>
     <button class="btn" id="mic">🎤 МИКРОФОН</button>
+    <button class="btn" id="full">⛶ ВЕСЬ ЭКРАН</button>
   </div>
   <div id="st">Введи код с экрана игры</div>
   <div id="pad">
@@ -85,6 +96,7 @@
     <button class="btn" id="S">⬆ ПРЫЖОК</button>
   </div>
 </div>
+<button id="guard" title="Защита от лишних касаний">🔓</button>
 <div id="thumbs">
   <button class="btn round" id="G">ГАЗ</button>
   <button class="btn round" id="J">⬆</button>
@@ -274,7 +286,7 @@ function setTilt(on) {
   document.getElementById('tilt').classList.toggle('on', on);
   wheelEl.classList.toggle('on', on);
   wrapEl.classList.toggle('tilt', on);
-  document.getElementById('thumbs').classList.toggle('on', on);   // газ и прыжок под большие пальцы
+  document.getElementById('thumbs').classList.toggle('on', on || guardOn);   // газ и прыжок под большие пальцы
   releaseAll();
   if (on) { roll0 = null; smooth = 0; }
   else {
@@ -294,6 +306,35 @@ function goLandscape() {
     })['catch'](function () {});
   } catch (e) {}
 }
+/* Полный экран отдельной кнопкой: раньше он включался только вместе с наклоном,
+   и при игре кнопками адресная строка съедала треть экрана. */
+function goFull() {
+  var el = document.documentElement;
+  var rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  var ex = document.exitFullscreen || document.webkitExitFullscreen;
+  var isFull = document.fullscreenElement || document.webkitFullscreenElement;
+  try {
+    if (isFull) { if (ex) ex.call(document); return; }
+    if (!rq) return;
+    var pr = rq.call(el, { navigationUI: 'hide' });
+    if (pr && pr.then) pr['catch'](function () {});
+  } catch (e) {}
+}
+document.getElementById('full').addEventListener('click', goFull);
+
+/* Защита от лишних касаний. Ребёнок держит телефон двумя руками, ладони ложатся на
+   экран — и он переподключается, включает микрофон, гасит наклон. В защите отвечают
+   только газ, прыжок и сам замок. */
+var guardOn = false;
+function setGuard(on) {
+  guardOn = on;
+  document.body.classList.toggle('guard', on);
+  document.getElementById('guard').textContent = on ? '🔒' : '🔓';
+  if (on) { releaseAll(); document.getElementById('thumbs').classList.add('on'); }
+  else if (!tiltOn) document.getElementById('thumbs').classList.remove('on');
+}
+document.getElementById('guard').addEventListener('click', function () { setGuard(!guardOn); });
+
 document.getElementById('tilt').addEventListener('click', function () {
   if (tiltOn) { setTilt(false); return; }
   goLandscape();                                            // тот же жест: полноэкранный режим и лок ориентации

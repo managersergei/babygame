@@ -35,6 +35,15 @@
   .key.wide { padding:14px 38px 12px; background:linear-gradient(#fff2a8,#ffcf3d); }
   .key.down { transform:translateY(7px); box-shadow:0 0 0 #9aa8bd, 0 4px 10px rgba(0,0,0,.25); }
   .key.hidden { display:none; }
+  /* Замок тачпада: на ноутбуке ладонь задевает панель и ребёнок случайно жмёт кнопки.
+     Tab выключает все экранные кнопки, клавиатура продолжает работать. */
+  body.padlock .key, body.padlock .tool { pointer-events:none; }
+  body.padlock #pad, body.padlock #tools { opacity:.45; }
+  #lockNote { position:fixed; z-index:9; left:50%; transform:translateX(-50%);
+    bottom:max(12px,env(safe-area-inset-bottom)); display:none;
+    background:rgba(43,33,64,.86); color:#fff; font-weight:900; font-size:13px;
+    letter-spacing:.04em; padding:7px 14px; border-radius:12px; pointer-events:none; }
+  body.padlock #lockNote { display:block; }
 
   #tools { position:fixed; bottom:max(14px,env(safe-area-inset-bottom)); right:14px; z-index:6; display:flex; gap:8px; }
   /* На узких экранах ряд из восьми кнопок накрывал игровые кнопки внизу — уводим его наверх и уменьшаем. */
@@ -141,6 +150,7 @@
 <script src="assets/voice/list.js"></script>
 <script src="assets/paths.js"></script>
 
+<div id="lockNote">🔒 ЭКРАННЫЕ КНОПКИ ВЫКЛЮЧЕНЫ · TAB — ВКЛЮЧИТЬ</div>
 <div id="tools">
   <button class="tool" id="bHome" title="Гараж">🏠</button>
   <button class="tool" id="bStats" title="Выученные слова">📊</button>
@@ -5889,12 +5899,18 @@ var Pult = {
     else if (m.t === 'gas') this.gas = !!m.d;
     else if (m.t === 'key') { if (m.d) keyDown(m.k); else keyUp(m.k); }
   },
-  url: function () { return (location.protocol === 'file:' ? '(нужен сайт по https)' : location.origin + location.pathname.replace(/[^\/]*$/, '') + 'pult.html'); },
+  url: function () {
+    /* С file:// и с локального сервера свой адрес телефону бесполезен — он до него не
+       дотянется. Отдаём боевой адрес: страница пульта там та же, а связь идёт через
+       брокер PeerJS, так что подключение работает и со скачанной копии. */
+    if (LOCAL_COPY) return SITE_URL + 'pult.html';
+    return location.origin + location.pathname.replace(/[^\/]*$/, '') + 'pult.html';
+  },
   render: function () {
     document.getElementById('pultCode').textContent = this.code || '····';
     document.getElementById('pultUrl').textContent = this.url().replace(/^https?:\/\//, '');
     var cvq = document.getElementById('pultQr'), link = this.url() + '?c=' + this.code;
-    if (!this.code || location.protocol === 'file:') return;
+    if (!this.code) return;
     if (window.qrcode) {
       try {
         var q = window.qrcode(0, 'M'); q.addData(link); q.make();
@@ -5961,6 +5977,12 @@ document.getElementById('tgCopy').addEventListener('click', function () {
    Код — 10 знаков в localStorage; родитель привязывает его по https://t.me/<бот>?start=<код>
    (QR или ссылка на экране «Родителям»). Частота: не чаще 1 сообщения в TG_MIN минут, сводка —
    при уходе со страницы и после TG_IDLE минут тишины. Уходят только код, слова, звёзды, машинка. */
+/* Боевой адрес игры. Нужен, когда её открыли с диска или с локального сервера:
+   телефон и телеграм-бот должны вести на место, до которого дотянется интернет. */
+var SITE_URL = 'https://managersergei.github.io/babygame/';
+var LOCAL_COPY = location.protocol === 'file:' ||
+                 /^(localhost|127\.|0\.0\.0\.0|\[?::1\]?$)/.test(location.hostname);
+
 var TG_BOT  = 'big_drive_bot';              // username бота без @; '' — функция выключена (как YM_ID = 0).
                                // Как включить: tg/README.md (BotFather → Cloudflare Worker → сюда username и адрес реле)
 var TG_API  = 'https://babygame-tg.bigdrive.workers.dev';              // адрес реле, напр. 'https://babygame-tg.<аккаунт>.workers.dev'
@@ -5999,8 +6021,8 @@ var TG = {
   init: function () {
     var tq = /[?&]test=1/.test(location.search) && (location.search.match(/[?&]tg=([^&]+)/) || [])[1];
     if (tq) { TG_API = decodeURIComponent(tq); TG_BOT = TG_BOT || 'test_bot'; }   // автопроверка: реле-заглушка
-    var local = location.protocol === 'file:' || /^(localhost|127\.|0\.0\.0\.0|\[?::1\]?$)/.test(location.hostname);
-    if (!TG_BOT || !TG_API || REC || (local && !tq)) return;       // реле пускает только боевой адрес игры — с локального не зовём
+    this.localOnly = LOCAL_COPY && !tq;      // код и QR показываем всегда, прогресс с локальной копии не шлём
+    if (!TG_BOT || !TG_API || REC) return;
     try {
       this.code = localStorage.getItem('babygame.tg') || '';
       if (!/^[A-Z2-9]{10}$/.test(this.code)) { this.code = this.mkCode(); localStorage.setItem('babygame.tg', this.code); }
@@ -6008,10 +6030,12 @@ var TG = {
     } catch (e) { this.code = ''; return; }
     this.t0 = Date.now();
     var self = this;
-    setInterval(function () { self.tick(); }, 15000);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') self.flush(true); });
-    window.addEventListener('pagehide', function () { self.flush(true); });
-    if (this.on) this.status();                                    // вдруг родитель нажал /stop
+    if (!this.localOnly) {
+      setInterval(function () { self.tick(); }, 15000);
+      document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') self.flush(true); });
+      window.addEventListener('pagehide', function () { self.flush(true); });
+      if (this.on) this.status();                                  // вдруг родитель нажал /stop
+    }
     this.hint();
   },
   mkCode: function () {
@@ -6082,6 +6106,9 @@ var TG = {
     a.href = link; a.textContent = link.replace(/^https:\/\//, '');
     this.setOn(this.on);
     qrInto(document.getElementById('tgQr'), link, 6);
+    var st = document.getElementById('tgState');
+    if (this.localOnly && st) st.textContent = 'Привязать можно, но отчёты пойдут, когда игру откроют с сайта';
+    if (this.localOnly) return;                                    // реле не принимает локальный адрес — опрашивать нечего
     this.polls = 0; this.poll(++this.pollId);
   },
   hint: function () {                                               // строка «Отчёты в Telegram» на экране «Родителям»
@@ -6093,12 +6120,7 @@ var TG = {
       el.style.cursor = 'pointer'; el.style.textDecoration = 'underline'; el.style.color = '#2b6cb0';
       return;
     }
-    /* Кода нет — значит бот на этом адресе не работает. Раньше строка просто
-       исчезала, и это читалось как «QR пропал». Говорим, в чём дело. */
-    var local = location.protocol === 'file:' ||
-                /^(localhost|127\.|0\.0\.0\.0|\[?::1\]?$)/.test(location.hostname);
-    el.textContent = local ? '📲 Телеграм-бот работает только на сайте игры, не на локальной копии'
-                           : '📲 Телеграм-бот сейчас недоступен';
+    el.textContent = '📲 Телеграм-бот сейчас недоступен';
     el.style.cursor = 'default'; el.style.textDecoration = 'none'; el.style.color = '#8a94a6';
   },
   poll: function (id) {                                             // пока экран открыт и не привязано — спрашиваем реле раз в 5 с, до 2 минут
@@ -6293,6 +6315,7 @@ window.addEventListener('keydown', function (e) {
   else if (e.code === 'ArrowRight') { e.preventDefault(); if (!e.repeat) keyDown('right'); }
   else if (e.code === 'Escape' || e.code === 'Backspace') { e.preventDefault(); toGarage(); }
   else if (e.code === 'KeyM') { setSoundIcon(A.toggle()); }
+  else if (e.code === 'Tab') { e.preventDefault(); togglePadLock(); }
 });
 window.addEventListener('keyup', function (e) {
   if (e.code === 'ArrowUp') K.gas = false;
@@ -6314,6 +6337,19 @@ bindKey(document.getElementById('kL'), 'left');
 bindKey(document.getElementById('kR'), 'right');
 bindKey(document.getElementById('kS'), 'space');
 bindKey(document.getElementById('kG'), 'gas');
+
+/* Замок экранных кнопок. На ноутбуке ребёнок ведёт ладонью по тачпаду и попадает
+   по ◀ ⬆ ▶ и по кнопкам взрослого. Tab выключает их все разом; клавиатура работает,
+   поэтому играть можно дальше. На тачскрине замок не даём: там Tab не нажать, и
+   ребёнок остался бы без управления. */
+var padLock = false;
+function togglePadLock() {
+  if (TOUCH) return;
+  padLock = !padLock;
+  document.body.classList.toggle('padlock', padLock);
+  if (padLock) { K.left = K.right = K.gas = false; }   // не залипаем на том, что было нажато
+  A.click();
+}
 
 function setSoundIcon(m) { document.getElementById('bSound').textContent = m ? '🔇' : '🔊'; }
 document.getElementById('bSound').addEventListener('click', function () { A.init(); setSoundIcon(A.toggle()); });
