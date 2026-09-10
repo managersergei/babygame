@@ -406,6 +406,7 @@ function assetPath(n) {
 }
 
 ASSETS.push('monster_body', 'monster_tire',        // части ригованной машинки
+            'car_red',                            // попутная машина, вид строго сбоку
             'bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
             'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies',
             'flower', 'ball', 'butterfly', 'hedgehog', 'apple', 'launchpad', 'train', 'crossing',
@@ -1451,6 +1452,7 @@ var ELEM_WORDS = [
   ['loc_rock','КАМЕНЬ','камень','камень','🪨','Он большой и тяжёлый!'],
   ['loc_fir','ЁЛКА','ёлка','ёлка','🎄','Она растёт в лесу!'],
   ['loc_snowman','СНЕГОВИК','снеговик','снеговик','⛄','Его слепили из снега!'],
+  ['car_red','МАШИНА','машина','машинка','🚗','Она едет по дороге!'],
   ['master','МАСТЕР','мастер','мастер','👷','Он чинит и красит машинки!']
 ];
 var CMD_ELEMS = {};        // три повтора — только у ПРЫЖОК и ГАЗ (см. el_jump0 / el_gas0)
@@ -1937,9 +1939,10 @@ function spawnEndless(x) {
     else if (it.t === 'prop')      o = { t:'prop', x:px2, ph: rnd(0, TAU),
                                          kind: wantEl && PROP_KIND[wantEl] ? wantEl : pick((TH().props || ['tree','house','bush']).concat(TH().extra || [])) };
     else if (it.t === 'traffic') {
-      var tk = (TH().extra || []).filter(function (n) { return TRAFFIC_KIND[n]; });
-      o = tk.length ? { t:'traffic', x:px2, ph: rnd(0, TAU), kind: pick(tk),
-                        sp: rnd(0.42, 0.62), passed: 0 } : null;
+      /* car_red нарисована строго сбоку и уместна в любой локации; остальные —
+         из реквизита темы, если он там есть. */
+      var tk = ['car_red'].concat((TH().extra || []).filter(function (n) { return TRAFFIC_KIND[n]; }));
+      o = { t:'traffic', x:px2, ph: rnd(0, TAU), kind: pick(tk), sp: rnd(0.42, 0.62), passed: 0 };
     }
     else if (it.t === 'flower')    o = { t:'flower', x:px2 };
     else if (it.t === 'apple')     o = { t:'apple', x:px2, y: 95 * S, ph: rnd(0, TAU) };
@@ -2968,8 +2971,8 @@ function drawHills() {
 /* Высоты сведены к одной шкале: дом = 132. Раньше курица была ростом в половину коровы,
    ромашки — почти с курицу, а забор выше коровьей спины. */
 /* Кто может ехать по дороге навстречу обгону, а кто только стоит на обочине. */
-var TRAFFIC_KIND = { bus:1, ambulance:1, tractor:1, garbage:1, tow:1, excavator:1 };
-var PROP_H = { cow:84, horse:92, chicken:34, fence:46, haystack:70, windmill:210, daisies:26,
+var TRAFFIC_KIND = { car_red:1, bus:1, ambulance:1, tractor:1, garbage:1, tow:1, excavator:1 };
+var PROP_H = { car_red:76, cow:84, horse:92, chicken:34, fence:46, haystack:70, windmill:210, daisies:26,
                house:132, tree:168, bush:56, loc_tower:230, loc_shop:150, loc_palm:196,
                loc_umbrella:104, loc_jungle:200, loc_monkey:78, loc_rock:86, loc_rocket:170,
                loc_fir:180, loc_snowman:96,
@@ -3436,6 +3439,7 @@ function drawObjs() {
       tufts(sx, pby, sprW(o.kind, phh) * 0.36, o.ph || 2);
     } else if (o.t === 'traffic') {
       var tby = roadTop() + 30 * S, thh = (PROP_H[o.kind] || 118) * S * 0.9;
+      if (!ok(imgOf(o.kind))) { lazyImg(o.kind); return; }   // ещё не загрузилось — не рисуем одну тень
       ground(sx, tby - 1 * S, sprW(o.kind, thh) * 0.42);
       spr(frameOf(o.kind, o.ph), sx, tby + Math.sin(T * 6 + (o.ph || 0)) * 1.6 * S, thh,
           withMove(o.kind, o.ph, thh, {}));
