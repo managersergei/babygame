@@ -155,6 +155,20 @@ if (sawLesson) {
 }
 await p.close();
 
+console.log("6) газ с тачскрина");
+{
+  const pg = await open("?s=lane&test=1", ALL_KNOWN);
+  const vis = await pg.evaluate(() => { const e = document.getElementById("kG"); return !!e && !e.classList.contains("hidden"); });
+  ck("кнопка ГАЗ есть в «руле»", vis, String(vis));
+  const s0 = (await lane(pg)).spd;
+  await pg.evaluate(() => document.getElementById("kG").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  await pg.waitForTimeout(2600);
+  const s1 = (await lane(pg)).spd;
+  await pg.evaluate(() => document.getElementById("kG").dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+  ck("кнопка ГАЗ разгоняет", s1 > s0 * 1.12, `${s0} → ${s1}`);
+  await pg.close();
+}
+
 if (errs.length) { console.log("ошибки страницы:", errs.slice(0, 3).join(" | ")); fail += errs.length; }
 await browser.close();
 console.log(fail ? `\nПРОВАЛОВ: ${fail}` : "\nВСЁ ОК");
