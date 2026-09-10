@@ -253,11 +253,21 @@ var TAU   = Math.PI * 2;
 
 /* ═══════════════ 1. ХОЛСТ ═══════════════ */
 var cv = document.getElementById('cv');
-var g  = cv.getContext('2d');
+var g  = cv.getContext('2d', { alpha: false });   // кадр всегда закрашивается целиком — альфа-канал холста только добавляет смешение
 var W = 0, H = 0, S = 1, GY = 0, DPR = 1;
 
+/* Запас по производительности. Если кадры стабильно тяжелее 26 мс, опускаем
+   плотность пикселей на ступень: на слабом телефоне лучше чуть мягче, чем рывками.
+   Обратно не поднимаем — качели между режимами заметнее, чем сама мягкость. */
+var dprCap = 2, slowN = 0;
+function perfStep(dt) {
+  if (dprCap <= 1 || state === 'load') return;
+  if (dt > 0.026) { if (++slowN >= 90) { dprCap = 1; slowN = 0; fit(); } }
+  else if (slowN > 0) slowN--;
+}
+
 function fit() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
+  DPR = Math.min(dprCap, window.devicePixelRatio || 1);
   W = window.innerWidth; H = window.innerHeight;
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
@@ -323,22 +333,26 @@ var MOVE = {
   flower:     { rot: 0.034, sp: 1.7 }
 };
 /* Параметры для spr(): подмешиваются к тем, что уже передаёт вызывающий код. */
-function moveFx(name, ph, h) {
+/* Результат живёт ровно до вызова spr() и никем не хранится — пишем в один рабочий
+   объект. Раньше на каждый анимированный спрайт в кадре создавалось по два. */
+var mvOut = { rot: 0, sy: 0, sx: 0, dy: 0, mid: 0, alpha: 0 };
+var mvTmp = { rot: 0, sy: 0, sx: 0, dy: 0 };   // результат живёт один вызов, дальше spr() его читает и забывает
+function moveFx(name, ph, h, o) {
   var m = MOVE[name];
   if (!m) return null;
   var t = T * (m.sp || 1) + (ph || 0) * 1.7;
   var w = Math.sin(t), w2 = Math.sin(t * 2);
-  var o = {};
-  if (m.rot) o.rot = w * m.rot + (m.bias ? Math.max(0, w2) * m.rot * m.bias : 0);
-  if (m.sy)  o.sy = 1 + w2 * m.sy;
-  if (m.sx)  o.sx = 1 - Math.abs(w) * m.sx;
-  if (m.d && h) o.dy = -Math.abs(w) * m.d * h;     // подпрыгивает
+  o.rot = m.rot ? w * m.rot + (m.bias ? Math.max(0, w2) * m.rot * m.bias : 0) : null;
+  o.sy  = m.sy  ? 1 + w2 * m.sy : null;
+  o.sx  = m.sx  ? 1 - Math.abs(w) * m.sx : null;
+  o.dy  = (m.d && h) ? -Math.abs(w) * m.d * h : null;     // подпрыгивает
   return o;
 }
 function withMove(name, ph, h, opt) {              // объединяем «своё» движение с уже заданным
-  var m = moveFx(name, ph, h);
-  if (!m) return opt || {};
-  var out = {}, k;
+  if (!MOVE[name]) return opt || {};
+  var out = mvOut, k;
+  out.rot = null; out.sy = null; out.sx = null; out.dy = null; out.mid = null; out.alpha = null;
+  var m = moveFx(name, ph, h, mvTmp);
   for (k in (opt || {})) out[k] = opt[k];
   if (m.rot != null) out.rot = (out.rot || 0) + m.rot;
   if (m.sy != null)  out.sy = (out.sy || 1) * m.sy;
@@ -490,6 +504,12 @@ function spr(name, x, y, h, o) {
   var im = imgOf(name); if (!ok(im)) return 0;
   o = o || {};
   var k = h / ih(im), w = iw(im) * k;
+  /* Быстрый путь: когда ни поворота, ни масштаба, ни прозрачности, ни подскока,
+     save/translate/restore — чистая трата. Таких вызовов в кадре большинство. */
+  if (!o.rot && !o.sx && !o.sy && o.alpha == null && !o.dy) {
+    g.drawImage(im, x - w / 2, o.mid ? y - h / 2 : y - h, w, h);
+    return w;
+  }
   g.save();
   g.translate(x, y + (o.dy || 0));                  // dy — подскок (процедурная анимация)
   if (o.rot) g.rotate(o.rot);
@@ -600,12 +620,18 @@ var A = (function () {
     engine: function (spd, maxSpd, on) {
       if (!ac || !eng) return;
       var r = clamp(spd / maxSpd, 0, 1);
+      /* Ставим автоматизации, только когда что-то заметно изменилось: раньше это были
+         пять событий КАЖДЫЙ кадр — три сотни в секунду на аудиопоток, при том что
+         setTargetAtTime и так тянет значение плавно. */
+      var mute = muted || !on || this.ducked;
+      if (Math.abs(r - (this.engR == null ? -9 : this.engR)) < 0.012 && mute === this.engMute) return;
+      this.engR = r; this.engMute = mute;
       var base = 48 + r * 105;
       eng.forEach(function (e) { e.o.frequency.setTargetAtTime(base * e.m, ac.currentTime, 0.08); });
       engFilt.frequency.setTargetAtTime(420 + r * 1500, ac.currentTime, 0.1);
-      engGain.gain.setTargetAtTime(muted || !on || this.ducked ? 0 : 0.035 + r * 0.05, ac.currentTime, 0.12);
+      engGain.gain.setTargetAtTime(mute ? 0 : 0.035 + r * 0.05, ac.currentTime, 0.12);
       if (roadG) {                                 // r*r — на малой скорости шума почти нет
-        roadG.gain.setTargetAtTime(muted || !on || this.ducked ? 0 : r * r * 0.045, ac.currentTime, 0.15);
+        roadG.gain.setTargetAtTime(mute ? 0 : r * r * 0.045, ac.currentTime, 0.15);
         roadF.frequency.setTargetAtTime(280 + r * 1500, ac.currentTime, 0.15);
       }
     },
@@ -733,7 +759,7 @@ var A = (function () {
       var m = document.getElementById('bgm');
       if (m) m.volume = muted ? 0 : this.vol.mus;
     },
-    ducked: false, sayDuck: false,
+    ducked: false, sayDuck: false, engR: null, engMute: null,
     /* Два источника приглушения. Жёсткое (0,06) — когда слушаем ребёнка: там важна тишина.
        Мягкое (0,25) — пока говорит диктор: речь это главный канал игры, ребёнок текст не
        читает, и она не должна конкурировать с музыкой, мотором и эффектами. */
@@ -745,6 +771,7 @@ var A = (function () {
       if (master) master.gain.setTargetAtTime(muted ? 0 : this.vol.sfx * (d ? k : 1),
                                               ac ? ac.currentTime : 0, 0.08);
       if (engGain && ac) engGain.gain.setTargetAtTime(d ? (this.ducked ? 0 : 0.012) : 0.05, ac.currentTime, 0.08);
+      this.engR = null;      // сбрасываем кеш мотора: следующий кадр вернёт громкость по скорости
     },
     tracks: ['loop.mp3', 'loop2.mp3', 'loop3.mp3', 'loop4.mp3', 'loop5.mp3'],
     /* Напряжение музыкой. Ускорение темпа — самый дешёвый и самый читаемый приём:
@@ -1478,10 +1505,13 @@ function tune() {
 }
 
 /* ═══════════════ 6. ЧАСТИЦЫ И НАДПИСИ ═══════════════ */
+var partHead = 0;                    // куда писать следующую частицу, когда пул заполнен
 function P(o) {
-  if (parts.length > 420) parts.shift();
   o.life = o.life || 0.7; o.max = o.life; o.rot = o.rot || 0; o.vr = o.vr || 0;
   o.ay = o.ay == null ? 900 * S : o.ay;
+  /* Раньше на переполнении звался shift() — сдвиг 420-элементного массива на КАЖДУЮ
+     новую частицу. Переписываем самую старую по кругу: та же ёмкость, без сдвигов. */
+  if (parts.length >= 420) { parts[partHead] = o; partHead = (partHead + 1) % 420; return; }
   parts.push(o);
 }
 function popText(txt, x, y, col) { texts.push({ t: txt, x: x, y: y, c: col || '#fff', life: 1.1, max: 1.1 }); }
@@ -2605,10 +2635,25 @@ function TH() {
   return thCache;
 }
 
+/* Кеш градиентов. Небо, трава и асфальт зависят только от палитры и размера окна,
+   а пересоздавались каждый кадр — по три объекта CanvasGradient на кадр в мусор.
+   Ключ включает фазу смены локации: она квантуется до 1/24, так что за всю смену
+   градиент пересобирается двадцать четыре раза, а не сто. */
+var GRD = {}, grdKey = '';
+function grd(name, make) {
+  var t = TH();
+  var key = W + 'x' + H + '|' + themeIx + '>' + themeFrom + '@' + Math.round(themeK * 24);
+  if (key !== grdKey) { GRD = {}; grdKey = key; }
+  return GRD[name] || (GRD[name] = make(t));
+}
+
 function drawSky() {
   var t = TH();
-  var sky = g.createLinearGradient(0, 0, 0, roadTop());
-  sky.addColorStop(0, t.sky[0]); sky.addColorStop(0.55, t.sky[1]); sky.addColorStop(1, t.sky[2]);
+  var sky = grd('sky', function (th) {
+    var q = g.createLinearGradient(0, 0, 0, roadTop());
+    q.addColorStop(0, th.sky[0]); q.addColorStop(0.55, th.sky[1]); q.addColorStop(1, th.sky[2]);
+    return q;
+  });
   g.fillStyle = sky; g.fillRect(0, 0, W, roadTop() + 2 * S);
   if (t.sun) spr('sun', W * 0.87, 160 * S + Math.sin(T * 0.7) * 6 * S, 118 * S, { mid: true });
   else {
@@ -2979,15 +3024,24 @@ function grassTop() { return roadTop() - (GRASS_H - 2) * S; }
 
 function drawRoad() {
   var top = roadTop(), t = TH(), gt = grassTop();
-  var gg = g.createLinearGradient(0, gt, 0, top + 2 * S);                  // трава светлее у горизонта
-  gg.addColorStop(0, mix(t.grass, t.sky[2], 0.30)); gg.addColorStop(1, t.grass);
-  g.fillStyle = gg; g.fillRect(0, gt, W, top - gt + 2 * S);               // обочина
-  var hz = g.createLinearGradient(0, gt - 10 * S, 0, gt + 26 * S);        // мягкая дымка вместо белой линейки
-  hz.addColorStop(0, 'rgba(255,255,255,.30)'); hz.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = hz; g.fillRect(0, gt - 10 * S, W, 36 * S);
-  var road = g.createLinearGradient(0, top, 0, H);
-  road.addColorStop(0, t.road[0]); road.addColorStop(1, t.road[1]);
-  g.fillStyle = road; g.fillRect(0, top, W, H - top);
+  g.fillStyle = grd('grass', function (th) {                               // трава светлее у горизонта
+    var q = g.createLinearGradient(0, gt, 0, top + 2 * S);
+    q.addColorStop(0, mix(th.grass, th.sky[2], 0.30)); q.addColorStop(1, th.grass);
+    return q;
+  });
+  g.fillRect(0, gt, W, top - gt + 2 * S);                                 // обочина
+  g.fillStyle = grd('haze', function () {                                 // мягкая дымка вместо белой линейки
+    var q = g.createLinearGradient(0, gt - 10 * S, 0, gt + 26 * S);
+    q.addColorStop(0, 'rgba(255,255,255,.30)'); q.addColorStop(1, 'rgba(255,255,255,0)');
+    return q;
+  });
+  g.fillRect(0, gt - 10 * S, W, 36 * S);
+  g.fillStyle = grd('road', function (th) {
+    var q = g.createLinearGradient(0, top, 0, H);
+    q.addColorStop(0, th.road[0]); q.addColorStop(1, th.road[1]);
+    return q;
+  });
+  g.fillRect(0, top, W, H - top);
   g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(0, top, W, 3 * S);
   g.fillStyle = 'rgba(255,255,255,.85)';
   var per = 150 * S, off = carX % per;
@@ -3054,12 +3108,13 @@ function tufts(x, y, w, seed) {
   var th = TH();
   if (th.snow || th.name === 'космос') return;   // на снегу и на Луне трава не растёт
   g.save(); g.strokeStyle = mix(th.grass, '#000000', 0.28); g.lineWidth = 2.2 * S; g.lineCap = 'round';
+  g.beginPath();                                  // все пять травинок одним путём: было пять обводок на вызов
   for (var i = 0; i < 5; i++) {
     var r = h1r(seed * 3.1 + i), tx = x + (r - 0.5) * w * 1.7, hh = (5 + r * 7) * S;
-    g.beginPath(); g.moveTo(tx, y + 1 * S);
+    g.moveTo(tx, y + 1 * S);
     g.quadraticCurveTo(tx + (r - 0.5) * 5 * S, y - hh * 0.6, tx + (r - 0.5) * 9 * S, y - hh);
-    g.stroke();
   }
+  g.stroke();
   g.restore();
 }
 /* Забор пролётом, а не одной секцией: одиночная доска у дороги выглядела случайной. */
@@ -3079,8 +3134,11 @@ function zOrder(a, b) { return zOf(a) - zOf(b) || a.x - b.x; }
    Иначе рядом со словом «ПРЫЖОК» стоит яркая канистра и ребёнок смотрит на неё. */
 var LESSON_HIDE = { fuel:1, star:1, coin:1, balloon:1, apple:1, bucket:1, chest:1, ball:1,
                     arch:1, mon:1, cone:1, puddle:1, pit:1, ramp:1, plat:1, rocket:1, tlight:1, traffic:1 };
+var zBuf = [];                       // переиспользуемый буфер сортировки: slice() каждый кадр давал лишний массив
 function drawObjs() {
-  objs.slice().sort(zOrder).forEach(function (o) {
+  zBuf.length = 0;
+  for (var zi = 0; zi < objs.length; zi++) zBuf.push(objs[zi]);
+  zBuf.sort(zOrder).forEach(function (o) {
     var sx = (o.x - carX) + CARX;
     if (sx < -500 * S || sx > W + 600 * S) return;
     if (state === 'lesson' && o !== les.obj && LESSON_HIDE[o.t]) return;
@@ -5261,7 +5319,10 @@ function curveAt(wz) {
 /* ЕДИНСТВЕННЫЙ источник правды о геометрии. Рельеф встроен ВНУТРЬ проекции и вычитает
    высоту под самой машинкой — поэтому при z = 0 смещение всегда ноль, и вся арифметика
    столкновений остаётся ровно такой же, как без холмов. */
-function laneProj(z) {
+/* Проекция глубины в экранные координаты. Вариант с out нужен горячим циклам:
+   без него разметка и объекты создавали по две с лишним сотни объектов за кадр —
+   это десятки килобайт мусора в секунду и работа сборщику на слабом телефоне. */
+function laneProjTo(z, out) {
   var hy = roadTop() - LN.camUp * S, by = H * LN.carY;
   var p = Math.pow(clamp(1 - z, 0, LN.zMax), LN.pow);
   var half = LN.hzHalf * S + (W * LN.nearHalf - LN.hzHalf * S) * p;
@@ -5271,9 +5332,12 @@ function laneProj(z) {
      Отсюда zc*zc — та же квадратичная накачка, что и в классических псевдо-3D-гонках. */
   var zc = clamp(z, 0, 1);
   var dx = (curveAt(ln.wz + zc) - curveAt(ln.wz)) * zc * zc;
-  return { p: p, y: hy + (by - hy) * p - dy, half: half, k: 0.12 + 0.88 * p,
-           hy: hy, by: by, dy: dy, cx: W / 2 + dx };
+  out.p = p; out.y = hy + (by - hy) * p - dy; out.half = half; out.k = 0.12 + 0.88 * p;
+  out.hy = hy; out.by = by; out.dy = dy; out.cx = W / 2 + dx;
+  return out;
 }
+function laneProj(z) { return laneProjTo(z, {}); }
+var lpA = {}, lpB = {}, lpC = {};        // рабочие проекции для горячих циклов
 function laneH(o, k) { return o.h * S * k * 1.6; }        // экранная высота объекта
 
 var Lane = {
@@ -5388,7 +5452,7 @@ var Lane = {
         o.fx = (o.fx || 0) + o.fvx * dt; o.fy = (o.fy || 0) + o.fvy * dt;
         o.fvy -= 900 * S * dt; o.frotA = (o.frotA || 0) + o.frot * dt;
       }
-      var q = laneProj(o.z);
+      var q = laneProjTo(o.z, lpC);
       if (q.y - laneH(o, q.k) > H + 40 * S || o.z < -1.2) ln.objs.splice(i, 1);
     }
   },
@@ -5560,7 +5624,10 @@ var Lane = {
        Фаза привязана к ln.dash — тому же счётчику, что и пунктир. */
     for (i = 0; i < SEG; i++) {
       var ra = PR[i], rb = PR[i + 1];
+      /* Дальние сегменты у точки схода занимают доли пикселя — рисовать их незачем.
+         Отсекаем по экранной высоте отрезка: это снимает примерно треть заливок. */
       if (ra.p <= 0.001 && rb.p <= 0.001) continue;
+      if (rb.y - ra.y < 0.7) continue;
       g.fillStyle = ((i + Math.floor(ln.dash)) % 2) ? '#e8402f' : '#f7f2ea';
       for (var sd = -1; sd <= 1; sd += 2) {
         g.beginPath();
@@ -5574,14 +5641,23 @@ var Lane = {
 
     /* Кромка сужается к горизонту, как и всё остальное: постоянные 6*S у точки схода
        выходили толще самой полосы. Рисуем отрезками, каждый со своей толщиной. */
+    /* Кромка сужается к горизонту, но обводить каждый из сорока отрезков отдельно
+       дорого. Группируем в четыре ступени толщины: на глаз это та же плавность,
+       а вызовов stroke() восемь вместо восьмидесяти. */
     g.strokeStyle = '#f2f6fb'; g.lineCap = 'round';
     for (var side = -1; side <= 1; side += 2) {
-      for (i = 0; i < SEG; i++) {
-        var c = PR[i], c2 = PR[i + 1];
-        g.lineWidth = Math.max(1.2 * S, 6 * S * (c.k + c2.k) * 0.5);
+      for (var step = 0; step < 4; step++) {
+        g.lineWidth = Math.max(1.2 * S, 6 * S * (0.14 + step * 0.29));
         g.beginPath();
-        g.moveTo(c.cx + side * c.half, c.y);
-        g.lineTo(c2.cx + side * c2.half, c2.y);
+        var open = false;
+        for (i = 0; i <= SEG; i++) {
+          var c = PR[i];
+          var bucket = Math.min(3, Math.max(0, Math.floor(c.k * 4)));
+          if (bucket !== step) { open = false; continue; }
+          if (!open) { g.moveTo(c.cx + side * c.half, c.y); open = true; }
+          else g.lineTo(c.cx + side * c.half, c.y);
+          if (i > 0 && Math.min(3, Math.max(0, Math.floor(PR[i - 1].k * 4))) === step) { /* уже соединено */ }
+        }
         g.stroke();
       }
     }
@@ -5589,10 +5665,12 @@ var Lane = {
     g.fillStyle = 'rgba(255,255,255,.85)';
     for (i = 0; i < 16; i++) {
       var z0 = (((i - ln.dash) % 16) + 16) % 16 / 16, z1 = Math.min(1, z0 + 0.035);
+      laneProjTo(z1, lpA); laneProjTo(z0, lpB);
       for (var j = 0; j < 2; j++) {
-        var l = j ? 0.5 : -0.5, aa = Lane.pos(z1, l), bb = Lane.pos(z0, l);
-        g.beginPath(); g.moveTo(aa.x - 3 * S * aa.k, aa.y); g.lineTo(aa.x + 3 * S * aa.k, aa.y);
-        g.lineTo(bb.x + 4 * S * bb.k, bb.y); g.lineTo(bb.x - 4 * S * bb.k, bb.y); g.closePath(); g.fill();
+        var l = j ? 0.5 : -0.5;
+        var ax = lpA.cx + l * lpA.half * LN.laneK, bx2 = lpB.cx + l * lpB.half * LN.laneK;
+        g.beginPath(); g.moveTo(ax - 3 * S * lpA.k, lpA.y); g.lineTo(ax + 3 * S * lpA.k, lpA.y);
+        g.lineTo(bx2 + 4 * S * lpB.k, lpB.y); g.lineTo(bx2 - 4 * S * lpB.k, lpB.y); g.closePath(); g.fill();
       }
     }
     // массив уже упорядочен по спавну: дальние впереди, ближние в конце — сортировать не нужно
@@ -5630,7 +5708,7 @@ var Lane = {
       g.save(); g.globalAlpha = (r0 - 0.35) * 0.5; g.strokeStyle = '#ffffff'; g.lineWidth = 2.5 * S;
       for (var q3 = 0; q3 < 8; q3++) {
         var ph3 = ((ln.t * (0.9 + r0) + q3 * 0.125) % 1), zz = 1 - ph3;
-        var pa = laneProj(zz), pb2 = laneProj(Math.max(-0.2, zz - 0.06));
+        var pa = laneProjTo(zz, lpA), pb2 = laneProjTo(Math.max(-0.2, zz - 0.06), lpB);
         var lx = (q3 % 2 ? 1 : -1) * (0.86 + (q3 % 3) * 0.06);
         g.beginPath(); g.moveTo(pa.cx + lx * pa.half, pa.y); g.lineTo(pb2.cx + lx * pb2.half, pb2.y); g.stroke();
       }
@@ -6406,6 +6484,7 @@ function frame(ts) {
   requestAnimationFrame(frame);
   var dt = last ? Math.min(0.05, (ts - last) / 1000) : 0.016;
   last = ts; T += dt;
+  perfStep(dt);                                    // на слабом устройстве опускаем плотность пикселей
   if (state === 'load') return;
   if (state !== 'play') {                          // эффекты гаснут на любом экране
     if (shake > 0) shake = Math.max(0, shake - dt * 30 * S);
