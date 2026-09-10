@@ -426,7 +426,7 @@ function iw(im) { return im.naturalWidth || im.width; }
 function ih(im) { return im.naturalHeight || im.height; }
 
 /* Скины машинки — настоящие картинки: цвет и три степени повреждений. */
-var PAINTED = {}, carPaint = null, damage = 0, noWheels = false, missWheels = 1;
+var carPaint = null, damage = 0, noWheels = false, missWheels = 1;
 var dmgT = 0;                                  // сколько ещё показывать вмятины поверх покраски
 var paintRevT = 0;                             // сколько ещё заливать новую краску сверху вниз
 
@@ -444,48 +444,10 @@ function carSkin(id) {
   return id;
 }
 
-function paintedCanvas(id, p) {
-  var col = p.c, mode = p.m || 'dark', key = id + '|' + col + '|' + mode;
-  if (PAINTED[key]) return PAINTED[key];
-  var im = IMG[id];
-  if (!ok(im)) return im;
-  var c = document.createElement('canvas');
-  c.width = iw(im); c.height = ih(im);
-  var x = c.getContext('2d');
-  x.drawImage(im, 0, 0);
-  if (mode === 'color') {                       // цветная краска: светотень сохраняется
-    x.globalCompositeOperation = 'color';
-    if (x.globalCompositeOperation !== 'color') { x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.6; }
-    x.fillStyle = col; x.fillRect(0, 0, c.width, c.height);
-    x.globalAlpha = 1;
-    x.globalCompositeOperation = 'destination-in'; x.drawImage(im, 0, 0);
-    PAINTED[key] = c; return c;
-  }
-  x.globalCompositeOperation = 'saturation';            // убираем цвет
-  if (x.globalCompositeOperation === 'saturation') {
-    x.fillStyle = '#808080'; x.fillRect(0, 0, c.width, c.height);
-  }
-  x.globalCompositeOperation = 'multiply';               // затемняем
-  x.globalAlpha = 0.85; x.fillStyle = col; x.fillRect(0, 0, c.width, c.height);
-  x.globalAlpha = 1;
-  x.globalCompositeOperation = 'destination-in'; x.drawImage(im, 0, 0);
-  x.globalCompositeOperation = 'source-over';
-  try {
-    var src = document.createElement('canvas');
-    src.width = c.width; src.height = c.height;
-    var sx = src.getContext('2d');
-    sx.drawImage(im, 0, 0);
-    var d = sx.getImageData(0, 0, c.width, c.height), p = d.data;
-    for (var i = 0; i < p.length; i += 4) {
-      var lum = p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11;
-      if (lum < 205 || p[i + 3] < 200) p[i + 3] = 0;
-    }
-    sx.putImageData(d, 0, 0);
-    x.drawImage(src, 0, 0);
-  } catch (e) {}
-  PAINTED[key] = c;
-  return c;
-}
+/* Здесь была paintedCanvas — красила спрайт кодом через composite-режимы канваса.
+   Не вызывалась ниоткуда и врала контрактом: ждала объект {c, m}, а carPaint во всём
+   живом коде — строка ('black' / 'red' / 'yellow'). Покраска давно делается готовыми
+   скинами <id>_<цвет>, см. carSkin. Удалено 40 строк вместе с кешем PAINTED. */
 
 /* Снимаем n задних колёс: вырезаем их из спрайта и рисуем голую ось. */
 /* Здесь была brokenCanvas — вырезала колёса из спрайта кодом. Она опиралась на карту
@@ -1262,12 +1224,14 @@ var CARS = [
   { id:'police',  name:'ПОЛИЦИЯ',         say:'Полицейская машина', h:120, fx:'lights', siren:true }
 ];
 
-/* Колёса вырезаны из самого спрайта машинки и рисуются отдельно —
-   координаты те же, поэтому всё совпадает идеально. */
+/* Ширина машинки — по спрайту текущего скина: у повреждённого и у покрашенного
+   она может отличаться от базового. */
 function vehW(id, h) { return sprW(id, h); }
 
-/* Машинка рисуется цельным спрайтом нужного скина. Поломка показывается
-   отдельным скином без колёс (<id>_w0), сами колёса лежат на дороге. */
+/* Машинка рисуется цельным спрайтом нужного скина. Поломка показывается скинами
+   <id>_w1…<id>_w4 — по числу упавших колёс, сами колёса лежат на дороге и едут к
+   кузову в мастерской. Это единственная точка входа: 15 вызовов по всем экранам,
+   и риг (кузов + колёса отдельно) встраивается сюда, не трогая ни одного из них. */
 function drawVehicle(id, x, y, h, o) { spr(id, x, y, h, o || {}); }
 
 /* Скрытые пункты меню остаются в коде: ?all=1 показывает их снова (владелец, 09.09.2026). */
