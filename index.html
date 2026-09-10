@@ -405,7 +405,8 @@ function assetPath(n) {
   return 'assets/' + (m || ((CARFILES[n] ? 'cars/' : 'world/') + n)) + '.webp';
 }
 
-ASSETS.push('bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
+ASSETS.push('monster_body', 'monster_tire',        // части ригованной машинки
+            'bird', 'plane', 'fuel_empty', 'coin', 'chest', 'restart',
             'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies',
             'flower', 'ball', 'butterfly', 'hedgehog', 'apple', 'launchpad', 'train', 'crossing',
             'loc_tower', 'loc_shop', 'loc_palm', 'loc_umbrella', 'loc_jungle', 'loc_monkey',
@@ -1236,7 +1237,11 @@ var Rec = (function () {
 /* ═══════════════ 4. МАШИНКИ И РЕЖИМЫ ═══════════════ */
 /* Пока три машинки: под каждую нужны «сломанные» варианты и покраска. */
 var CARS = [
-  { id:'monster', name:'МОНСТР-ТРАК',     say:'Монстр трак',     h:146, fx:'dust',  jump:1.14 },
+  /* rig: кузов и колёса — РАЗНЫЕ спрайты. Нужно для физики: колесо должно крутиться
+     вокруг своего центра, а в три четверти оно эллипс и «плывёт». Доли — от ширины
+     кузова (замерены по самому файлу), tire — доля ширины кузова на диаметр колеса. */
+  { id:'monster', name:'МОНСТР-ТРАК',     say:'Монстр трак',     h:146, fx:'dust',  jump:1.14,
+    rig: { body:'monster_body', tire:'monster_tire', at:[0.22, 0.78], tire2:0.30, lift:0.42 } },
   { id:'fire',    name:'ПОЖАРНАЯ МАШИНА', say:'Пожарная машина', h:140, fx:'water', siren:true },
   { id:'race',    name:'МОЛНИЯ',          say:'Молния',          h:108, fx:'boost', top:1.18 },
   { id:'police',  name:'ПОЛИЦИЯ',         say:'Полицейская машина', h:120, fx:'lights', siren:true }
@@ -1244,7 +1249,12 @@ var CARS = [
 
 /* Ширина машинки — по спрайту текущего скина: у повреждённого и у покрашенного
    она может отличаться от базового. */
-function vehW(id, h) { return sprW(id, h); }
+function vehW(id, h) {
+  /* У ригованной машинки ширину задаёт кузов, а не старый цельный спрайт: иначе
+     хитбокс не совпадёт с картинкой. */
+  if (car && car.id === id && car.rig) { var z = rigSize(car, h); if (z) return z.bw; }
+  return sprW(id, h);
+}
 
 /* Единственная точка входа для машинки: 15 вызовов по всем экранам идут через неё,
    и риг (кузов + колёса отдельно) встроится сюда, не трогая ни одного из них.
@@ -1252,7 +1262,53 @@ function vehW(id, h) { return sprW(id, h); }
    Поломка: колёса лежат на дороге отдельными спрайтами, а сам кузов садится на оси —
    опускаем его на высоту колёсной полосы и обрезаем по кромке дороги. Так не нужны
    скины _w1.._w4, у которых стирание колёс оставило вертикальные щели. */
+/* Угол колеса. Формула отраслевая и без свободных параметров: путь делить на радиус.
+   Копится по пройденному пути, поэтому колесо физически не может проскальзывать. */
+var wheelA = 0;
+
+/* Сборка машинки из частей. Колёса рисуются ПЕРЕД кузовом: у настоящего бокового
+   вида арки перекрывают шину сверху, и порядок это показывает. */
+/* Размеры сборки. Общая высота обязана равняться h — иначе ригованная машинка
+   вырастет относительно остальных и разъедется с хитбоксом.
+     bh + d*lift = h,  d = bw*tire2,  bw = bh*AR   ⇒   bh = h / (1 + AR*tire2*lift) */
+function rigSize(car0, h) {
+  var R = car0.rig, im = lazyImg(R.body);
+  if (!ok(im)) { lazyImg(R.tire); return null; }   // ещё грузится — рисуем как раньше
+  var ar = iw(im) / ih(im);
+  var bh = h / (1 + ar * R.tire2 * R.lift);
+  var bw = bh * ar;
+  return { bw: bw, bh: bh, d: bw * R.tire2, im: im };
+}
+
+function drawRig(car0, x, y, h, o, miss) {
+  var z = rigSize(car0, h);
+  if (!z) return false;
+  var R = car0.rig, bw = z.bw, bh = z.bh, d = z.d;
+  var by = y - d * R.lift;                           // кузов приподнят над осями
+  var rot = (o && o.rot) || 0;
+  g.save();
+  g.translate(x, y);
+  if (rot) g.rotate(rot);
+  if (o && o.alpha != null) g.globalAlpha = o.alpha;
+  for (var i = 0; i < R.at.length; i++) {
+    if (miss && i < miss) continue;                  // это колесо сейчас лежит на дороге
+    var wx = (R.at[i] - 0.5) * bw;
+    g.save();
+    g.translate(wx, by - y);
+    g.rotate(wheelA);
+    spr(R.tire, 0, d / 2, d, { mid: false });
+    g.restore();
+  }
+  spr(R.body, 0, by - y, bh, {});
+  g.restore();
+  return true;
+}
+
 function drawVehicle(id, x, y, h, o) {
+  /* Ригованная машинка собирается из частей — так у неё крутятся колёса. */
+  if (car && car.id === id && car.rig && !carPaint && damage === 0) {
+    if (drawRig(car, x, y, h, o, noWheels ? Math.min(2, missWheels) : 0)) return;
+  }
   if (!noWheels) { spr(id, x, y, h, o || {}); return; }
   var band = (WHEEL_BAND[id] || 0.2) * h * (Math.min(4, Math.max(1, missWheels)) / 4);
   g.save();
@@ -2122,6 +2178,10 @@ function updatePlay(dt) {
     if (K.left && spd < CRUISE * 0.55 && RNG() < dt * 3) A.skid();   // clunk означает поломку — торможение так звучать не должно
   }
   carX += spd * dt;
+  if (car.rig) {                                  // угол колеса = путь / радиус, без подгонки
+    var rr = vehW(car.id, car.h * S) * car.rig.tire2 * 0.5;
+    if (rr > 1) wheelA += (spd * dt) / rr;
+  }
 
   /* --- расход бензина --- */
   var scripted = story && curStage().t === 'fuelrun' && stageSub >= 1 && stageSub <= 3;
@@ -6865,6 +6925,9 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
                mons: objs.filter(function (o) { return o.t === 'mon'; }).length,
                S: S, spd: Math.round(spd / S), damage: damage, breakN: breakN,
                tilt: +tilt.toFixed(4), gh: Math.round(groundProbe(carX, carY) / S), grounded: grounded,   // тест: честный наклон по уклону
+               wheelA: +wheelA.toFixed(3), carXw: Math.round(carX / S),   // тест: вращение колеса
+               rigW: car ? Math.round(vehW(car.id, car.h * S) / S) : 0,
+               rigOn: !!(car && car.rig && rigSize(car, car.h * S)),   // машинка выбирается позже — до гаража car ещё null
                carY: Math.round(carY / S), best: best, total: total, tank: +tankMul.toFixed(2),
                fuelPicks: fuelPicks, overSel: over.sel,
                rep: { n: rep.n, fixed: rep.fixed, phase: rep.phase },
