@@ -1908,6 +1908,23 @@ function spawnEndless(x) {
   return x + len + rnd(pt.rest[0], pt.rest[1]) * S;   // связка, потом отдых
 }
 
+/* Высота земли под точкой — БЕЗ побочных эффектов. Нужна отдельно, потому что
+   колёса щупают землю по два раза за кадр, а «настоящий» groundHeightAt заодно
+   ставит ghRamp и хвалит за посадку на платформу: пробе это делать нельзя. */
+function groundProbe(x, y) {
+  var h = 0;
+  for (var i = 0; i < objs.length; i++) {
+    var o = objs[i];
+    if (o.t === 'ramp' && x > o.x && x < o.x + o.w) {
+      var rh = o.h * clamp((x - o.x) / o.w, 0, 1);
+      if (rh > h) h = rh;
+    } else if (o.t === 'plat' && x > o.x - 6 * S && x < o.x + o.w + 6 * S && y >= o.h - 14 * S) {
+      if (o.h > h) h = o.h;
+    }
+  }
+  return h;
+}
+
 function groundHeightAt(x, y) {
   var h = 0; ghRamp = false;
   for (var i = 0; i < objs.length; i++) {
@@ -2166,7 +2183,14 @@ function updatePlay(dt) {
   var rel = clamp(spd / VMAX, 0, 1.3);
   wobble += dt * (7 + rel * 26);
   squash += (0 - squash) * Math.min(1, dt * 8);
-  var wantTilt = grounded ? Math.sin(wobble) * 0.012 * rel : clamp(-vy / (3000 * S), -0.3, 0.3);
+  /* Наклон на земле теперь берётся из уклона ПОД КОЛЁСАМИ, а не из синусоиды:
+     на трамплине нос честно задирается, на съезде опускается. Синусоида осталась
+     мелкой дрожью поверх — это «работа мотора», а не рельеф. */
+  var halfBase = cw * 0.34;
+  var hFront = groundProbe(carX + halfBase, carY), hRear = groundProbe(carX - halfBase, carY);
+  var slope = Math.atan2(hRear - hFront, halfBase * 2);
+  var wantTilt = grounded ? clamp(slope, -0.32, 0.32) + Math.sin(wobble) * 0.010 * rel   // 18°: замер давал 25° и это читалось как опрокидывание
+                          : clamp(-vy / (3000 * S), -0.3, 0.3);
   tilt = lerp(tilt, wantTilt, Math.min(1, dt * 10));
 
   if (grounded && rel > 0.45 && RNG() < dt * 26)
@@ -6718,6 +6742,8 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
+    window.__put = function (o) { objs.push(o); return objs.length; };   // тест: положить объект прямо перед машинкой
+    window.__car = function () { return { x: carX, y: carY, w: vehW(car.id, car.h * S), S: S }; };
     /* Тест: режим «руль» изнутри. quiet() глушит очередь слов — иначе урок,
        начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
     window.__th = function () { return { ix: themeIx, from: themeFrom, k: +themeK.toFixed(3), sky: TH().sky.slice(), grass: TH().grass, set: setTheme }; };   // тест: смена палитры
@@ -6737,6 +6763,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
                chase: { on: robot.on, flee: robot.flee, n: chaseN, t: +robotT.toFixed(1), due: +robotDue.toFixed(1) },
                mons: objs.filter(function (o) { return o.t === 'mon'; }).length,
                S: S, spd: Math.round(spd / S), damage: damage, breakN: breakN,
+               tilt: +tilt.toFixed(4), gh: Math.round(groundProbe(carX, carY) / S), grounded: grounded,   // тест: честный наклон по уклону
                carY: Math.round(carY / S), best: best, total: total, tank: +tankMul.toFixed(2),
                fuelPicks: fuelPicks, overSel: over.sel,
                rep: { n: rep.n, fixed: rep.fixed, phase: rep.phase },
