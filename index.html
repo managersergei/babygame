@@ -299,17 +299,20 @@ window.addEventListener('resize', checkTurn);
    Кадр ещё не загрузился — возвращаем базовое имя, игра при этом не ломается.
    ОСТОРОЖНО с новыми именами: monster_b и monster_c в assets/world/ — это отдельные
    монстрики фона, а не кадры. Имя, у которого <имя>_b уже занято, в таблицу не добавлять. */
+/* ПОЧЕМУ ЗДЕСЬ ТАК МАЛО КАДРОВ. Сгенерированные кадры b/c проверены контактным листом
+   10.09.2026 и почти все оказались браком: у курицы и обезьяны проволочные артефакты
+   на голове, у ежа жёлтая клякса поперёк тела, у мельницы вместо крыльев два леденца,
+   у монеты вместо решки золотой слиток, у лошади три РАЗНЫХ лошади. Игра мигала ими —
+   со стороны это и читалось как «анимация сломана».
+
+   Правило: в seq попадает только кадр, который отличается от 'a' ПОЗОЙ и совпадает с ним
+   ПО ОБЪЕКТУ. Всё остальное движение делает MOVE — преобразованием одного чистого кадра.
+   Так идентичность не плавает по определению. Новый кадр — только после контактного листа
+   (tools/anim_sheet.py). */
 var ANIM = {
-  cow:        { seq: 'bbbbbbbbabbbbbbbbac', fps: 1.6 },   // подолгу пасётся, изредка поднимает голову и мычит
-  horse:      { seq: 'abac', fps: 2 },
-  chicken:    { seq: 'abcb', fps: 3 },
-  sheep:      { seq: 'abac', fps: 2 },
-  hedgehog:   { seq: 'abcb', fps: 6 },
-  loc_monkey: { seq: 'abcb', fps: 2 },
-  windmill:   { seq: 'abc',  fps: 6 },
-  butterfly:  { seq: 'abcb', fps: 8 },
-  bird:       { seq: 'abcb', fps: 7 },
-  coin:       { seq: 'abc',  fps: 6 }
+  cow:        { seq: 'bbbbbbbbabbbbbbbbac', fps: 1.6 },   // подолгу пасётся, изредка поднимает голову
+  hedgehog:   { seq: 'abab', fps: 6 },                    // кадр c — жёлтая клякса, выброшен
+  windmill:   { seq: 'ab',   fps: 5 }                     // кадр c — леденцы вместо крыльев, выброшен
 };
 /* Живое движение без новых картинок: маленькие сдвиги самого спрайта. Читается как анимация,
    идентичность и палитра сохраняются идеально (сгенерированные кадры теряли и то, и другое).
@@ -317,16 +320,16 @@ var ANIM = {
    d — доля высоты спрайта для подъёма; всё считается от общего времени T и фазы объекта.  */
 var MOVE = {
   cow:        { rot: 0.020, sy: 0.030, sp: 1.1, bias: 0.65 },     // качка вниз-и-обратно, как при щипании травы
-  horse:      { rot: 0.026, sy: 0.026, sp: 1.0 },
-  sheep:      { rot: 0.018, sy: 0.034, sp: 1.3 },
+  horse:      { rot: 0.030, sy: 0.030, sp: 1.0 },
+  sheep:      { rot: 0.022, sy: 0.040, sp: 1.3 },
   chicken:    { rot: 0.075, sy: 0.020, sp: 2.4, bias: 0.6 },      // клюёт: наклон вперёд и назад
   hedgehog:   { rot: 0.030, sy: 0.040, d: 0.030, sp: 5.0 },       // семенит
   star:       { sx: 0.42, d: 0.055, sp: 3.2 },                    // подпрыгивает и поворачивается, как монетка
-  loc_monkey: { rot: 0.090, sy: 0.010, sp: 1.4 },                 // раскачивается
   windmill:   { rot: 0.012, sy: 0.008, sp: 0.9 },                 // тяжело покачивается на ветру
-  butterfly:  { sx: 0.34, d: 0.030, sp: 7.5 },                    // машет крыльями
-  bird:       { sx: 0.26, d: 0.020, sp: 6.0 },
-  coin:       { sx: 0.75, sp: 3.0 },                              // крутится
+  butterfly:  { sx: 0.46, d: 0.040, sp: 8.0 },                    // взмах — сжатием по ширине, кадры были браком
+  bird:       { sx: 0.34, d: 0.030, sp: 6.5 },
+  coin:       { sx: 0.88, sp: 3.4 },                              // оборот — сжатие почти в ноль и обратно
+  loc_monkey: { rot: 0.090, sy: 0.010, sp: 1.4 },
   tree:       { rot: 0.022, sp: 0.8 },                            // качается от ветра
   loc_palm:   { rot: 0.030, sp: 0.7 },
   loc_fir:    { rot: 0.016, sp: 0.9 },
@@ -3109,7 +3112,18 @@ function tufts(x, y, w, seed) {
 }
 /* Забор пролётом, а не одной секцией: одиночная доска у дороги выглядела случайной. */
 function fenceRun(x, y, h, n) {
-  var w = sprW('fence', h) * 0.94;
+  /* Перекладина в спрайте обрывается, не доходя до краёв (замер: 390 столбцов из 640),
+     и составленные встык копии читались как отдельные колья. Прогоняем две сквозные
+     перекладины по всей длине — цвет и высоты взяты из самого спрайта. */
+  var w = sprW('fence', h) * 0.94, x0 = x - (n - 1) / 2 * w - w * 0.5, len = n * w;
+  g.save();
+  g.fillStyle = '#d5ccc4';
+  g.fillRect(x0, y - h * 0.63, len, h * 0.13);
+  g.fillRect(x0, y - h * 0.27, len, h * 0.12);
+  g.fillStyle = 'rgba(120,104,92,.22)';                      // тень под каждой перекладиной
+  g.fillRect(x0, y - h * 0.51, len, h * 0.02);
+  g.fillRect(x0, y - h * 0.16, len, h * 0.02);
+  g.restore();
   for (var i = 0; i < n; i++) spr('fence', x + (i - (n - 1) / 2) * w, y, h, { alpha: 0.98 });
 }
 /* Порядок по РЕАЛЬНОЙ глубине основания. Раньше светофор (стоит на асфальте,
@@ -3143,10 +3157,15 @@ function drawObjs() {
       g.restore();
     } else if (o.t === 'fuel') {
       var fy = o.y + Math.sin(o.ph * 2.2) * 8 * S;
-      g.save();
-      g.globalAlpha = 0.25;
-      g.fillStyle = '#ffd93d';
-      g.beginPath(); g.arc(sx, GY - fy + 20 * S, 62 * S + Math.sin(o.ph * 3) * 5 * S, 0, TAU); g.fill();
+      /* Было плоское жёлтое пятно на 25 % — на светлом небе оно читалось как грязный
+         бежевый круг, а не как свечение. Свет — это градиент, гаснущий к краю. */
+      var frr = 66 * S + Math.sin(o.ph * 3) * 5 * S;
+      var fgr = g.createRadialGradient(sx, GY - fy + 20 * S, 0, sx, GY - fy + 20 * S, frr);
+      fgr.addColorStop(0, 'rgba(255,236,150,.55)');
+      fgr.addColorStop(0.45, 'rgba(255,217,61,.22)');
+      fgr.addColorStop(1, 'rgba(255,217,61,0)');
+      g.save(); g.fillStyle = fgr;
+      g.beginPath(); g.arc(sx, GY - fy + 20 * S, frr, 0, TAU); g.fill();
       g.restore();
       spr('fuel', sx, GY - fy + 48 * S, 90 * S, { rot: Math.sin(o.ph * 1.4) * 0.08 });
     } else if (o.t === 'balloon') {
@@ -3487,11 +3506,13 @@ function drawHUD() {
 
   /* Ряд «сколько звёзд до уровня». Подложка нужна, чтобы ряд не терялся на светлом небе;
      ширина = 10 шагов по 40*S от левого края 34*S плюс поля — при смене шага пересчитать. */
-  g.save(); g.globalAlpha = 0.22; g.fillStyle = '#2b2140';
-  roundRect(10 * S, 126 * S, 408 * S, 44 * S, 22 * S); g.fill(); g.restore();
+  g.save(); g.globalAlpha = 0.30; g.fillStyle = '#ffffff';
+  roundRect(10 * S, 126 * S, 408 * S, 44 * S, 22 * S); g.fill();
+  g.globalAlpha = 0.35; g.lineWidth = 2 * S; g.strokeStyle = '#2b2140';
+  roundRect(10 * S, 126 * S, 408 * S, 44 * S, 22 * S); g.stroke(); g.restore();
   for (var i = 0; i < 10; i++) {
     var x = 34 * S + i * 40 * S, y = 148 * S;
-    g.save(); g.globalAlpha = i < row ? 1 : 0.28;
+    g.save(); g.globalAlpha = i < row ? 1 : 0.5;   // 0,28 на подложке давало серое пятно вместо ряда
     var im = IMG.star;
     var isNew = (i === row - 1);                   // только что полученная — подпрыгивает
     if (ok(im)) { var h = (i < row ? 40 * S : 32 * S) * (isNew ? 1 + 0.25 * Math.max(0, 1 - (T - starPopT) * 5) : 1),
@@ -5913,7 +5934,7 @@ function parentOk() {
 /* Окно с QR телеграм-бота — отдельное, чтобы не путалось с QR телефона-руля. */
 function showBot() { document.getElementById('bot').style.display = 'flex'; TG.render(); checkTurn(); }
 function hideBot() { document.getElementById('bot').style.display = 'none'; TG.pollId++; checkTurn(); }
-document.getElementById('tgOpen').addEventListener('click', showBot);
+document.getElementById('tgOpen').addEventListener('click', function () { if (TG.code) showBot(); });   // без кода окно пустое — не открываем
 ['click', 'pointerup'].forEach(function (ev) { document.getElementById('botClose').addEventListener(ev, hideBot); });
 document.getElementById('tgCopy').addEventListener('click', function () {
   var b = this, link = TG.link(), done = function () { b.textContent = 'скопировано ✓'; setTimeout(function () { b.textContent = 'копировать'; }, 1600); };
@@ -6061,7 +6082,20 @@ var TG = {
   },
   hint: function () {                                               // строка «Отчёты в Telegram» на экране «Родителям»
     var el = document.getElementById('tgOpen');
-    if (el) el.style.display = this.code ? '' : 'none';
+    if (!el) return;
+    el.style.display = '';
+    if (this.code) {
+      el.textContent = '📲 Отчёты о прогрессе в Telegram';
+      el.style.cursor = 'pointer'; el.style.textDecoration = 'underline'; el.style.color = '#2b6cb0';
+      return;
+    }
+    /* Кода нет — значит бот на этом адресе не работает. Раньше строка просто
+       исчезала, и это читалось как «QR пропал». Говорим, в чём дело. */
+    var local = location.protocol === 'file:' ||
+                /^(localhost|127\.|0\.0\.0\.0|\[?::1\]?$)/.test(location.hostname);
+    el.textContent = local ? '📲 Телеграм-бот работает только на сайте игры, не на локальной копии'
+                           : '📲 Телеграм-бот сейчас недоступен';
+    el.style.cursor = 'default'; el.style.textDecoration = 'none'; el.style.color = '#8a94a6';
   },
   poll: function (id) {                                             // пока экран открыт и не привязано — спрашиваем реле раз в 5 с, до 2 минут
     var self = this;
