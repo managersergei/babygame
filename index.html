@@ -437,8 +437,13 @@ function lazyImg(name) {                       // варианты подгру�
   if (!IMG[name]) { var im = new Image(); im.src = assetPath(name); IMG[name] = im; }
   return IMG[name];
 }
+/* Доля высоты спрайта, которую занимают колёса. Замерено по самим файлам: считаем
+   в каждом столбце, сколько тёмных пикселей идёт снизу вверх, и берём медиану. */
+var WHEEL_BAND = { monster: 0.25, fire: 0.09, race: 0.30, police: 0.09 };
+
 function carSkin(id) {
-  if (noWheels) return id + '_w' + Math.min(4, Math.max(1, missWheels));   // сколько колёс упало
+  /* Скины <id>_w1..w4 не используем: стирание колёс оставило в них вертикальные щели,
+     и машинка выглядела перечёркнутой. Вместо скина — посадка на оси, см. drawVehicle. */
   /* Покрашенных повреждённых скинов не бывает, и раньше первый же удар навсегда
      стирал покраску — награда исчезала без объяснения. Теперь вмятины показываются
      полторы секунды после удара, а дальше кузов снова свой, крашеный. */
@@ -1231,11 +1236,20 @@ var CARS = [
    она может отличаться от базового. */
 function vehW(id, h) { return sprW(id, h); }
 
-/* Машинка рисуется цельным спрайтом нужного скина. Поломка показывается скинами
-   <id>_w1…<id>_w4 — по числу упавших колёс, сами колёса лежат на дороге и едут к
-   кузову в мастерской. Это единственная точка входа: 15 вызовов по всем экранам,
-   и риг (кузов + колёса отдельно) встраивается сюда, не трогая ни одного из них. */
-function drawVehicle(id, x, y, h, o) { spr(id, x, y, h, o || {}); }
+/* Единственная точка входа для машинки: 15 вызовов по всем экранам идут через неё,
+   и риг (кузов + колёса отдельно) встроится сюда, не трогая ни одного из них.
+
+   Поломка: колёса лежат на дороге отдельными спрайтами, а сам кузов садится на оси —
+   опускаем его на высоту колёсной полосы и обрезаем по кромке дороги. Так не нужны
+   скины _w1.._w4, у которых стирание колёс оставило вертикальные щели. */
+function drawVehicle(id, x, y, h, o) {
+  if (!noWheels) { spr(id, x, y, h, o || {}); return; }
+  var band = (WHEEL_BAND[id] || 0.2) * h * (Math.min(4, Math.max(1, missWheels)) / 4);
+  g.save();
+  g.beginPath(); g.rect(x - h * 2, y - h * 3, h * 4, h * 3 + band * 0.35); g.clip();
+  spr(id, x, y + band, h, o || {});
+  g.restore();
+}
 
 /* Скрытые пункты меню остаются в коде: ?all=1 показывает их снова (владелец, 09.09.2026). */
 var SHOW_ALL = /[?&]all=1/.test(location.search);
@@ -5040,31 +5054,18 @@ function updateRepair(dt) {
   }
 }
 
-/* Навес мастерской. Своего спрайта нет и он не нужен: три заливки, столбы и
-   вывеска с гаечным ключом читаются как «мастерская» с первого взгляда. */
-function repairShed(x, base, w, h) {
+/* Мастерская — это готовый дом из игры плюс табличка с ключом. Рисовать её коробкой
+   в коде было ошибкой: рядом с настоящими спрайтами самоделка сразу видна. */
+function repairShed(x, base, h) {
+  ground(x, base + 2 * S, sprW('house', h) * 0.40);
+  spr('house', x, base, h);
+  var sw = 76 * S, sh = 34 * S, sy = base - h * 0.86;
   g.save();
-  g.fillStyle = 'rgba(0,0,0,.16)';
-  g.beginPath(); g.ellipse(x, base + 8 * S, w * 0.55, 14 * S, 0, 0, TAU); g.fill();
-  g.fillStyle = '#e6d9c0';                                   // задняя стенка
-  roundRect(x - w * 0.5, base - h, w, h, 10 * S); g.fill();
-  g.fillStyle = 'rgba(0,0,0,.10)';                           // пол в тени навеса
-  g.fillRect(x - w * 0.5, base - h * 0.22, w, h * 0.22);
-  g.fillStyle = '#c0553f';                                   // крыша
-  g.beginPath();
-  g.moveTo(x - w * 0.58, base - h);
-  g.lineTo(x + w * 0.58, base - h);
-  g.lineTo(x + w * 0.5, base - h - 26 * S);
-  g.lineTo(x - w * 0.5, base - h - 26 * S);
-  g.closePath(); g.fill();
-  g.fillStyle = '#8a6b4f';                                   // столбы
-  g.fillRect(x - w * 0.5 - 6 * S, base - h, 9 * S, h);
-  g.fillRect(x + w * 0.5 - 3 * S, base - h, 9 * S, h);
-  g.fillStyle = '#f7f2ea';                                   // вывеска
-  roundRect(x - 34 * S, base - h - 18 * S, 68 * S, 30 * S, 8 * S); g.fill();
-  g.lineWidth = 3 * S; g.strokeStyle = '#2b2140'; g.stroke();
+  g.fillStyle = 'rgba(0,0,0,.18)'; roundRect(x - sw / 2 + 3 * S, sy - sh / 2 + 4 * S, sw, sh, 10 * S); g.fill();
+  g.fillStyle = '#f7f2ea';         roundRect(x - sw / 2, sy - sh / 2, sw, sh, 10 * S); g.fill();
+  g.lineWidth = 3 * S; g.strokeStyle = '#2b2140'; roundRect(x - sw / 2, sy - sh / 2, sw, sh, 10 * S); g.stroke();
   g.restore();
-  outText('🔧', x, base - h + 6 * S, 24 * S, '#2b2140', '#fff');
+  outText('🔧', x, sy + 11 * S, 24 * S, '#2b2140', '#fff');
 }
 
 function drawRepair() {
@@ -5074,12 +5075,15 @@ function drawRepair() {
 
   /* Обстановка: навес, мастер и кусты. Раньше «мастерская» была участком пустой
      обочины — ребёнок не понимал, куда приехал. */
-  var shx = W * 0.74, shb = roadTop() + 4 * S;
-  repairShed(shx, shb, 210 * S, 150 * S);
-  spr('bush', shx - 190 * S, shb + 2 * S, 66 * S, withMove('bush', 3, 66 * S, {}));
-  spr('bush', shx + 165 * S, shb + 2 * S, 58 * S, withMove('bush', 7, 58 * S, {}));
-  ground(shx + 96 * S, GY + 2 * S, 34 * S);
-  spr('master', shx + 96 * S, GY + 4 * S, 168 * S, { rot: Math.sin(T * 1.5) * 0.025 });
+  /* Мастер стоял на W*0.74+96*S — ровно внутри полосы, где лежат колёса
+     (W*0.70 ± 262*S при четырёх), и они рисуются позже, поэтому его было не видно.
+     Разводим по-честному: колёса в середине, мастерская и мастер — у правого края. */
+  var shx = Math.min(W * 0.86, W - 130 * S), shb = roadTop() + 4 * S;
+  repairShed(shx, shb, 190 * S);
+  spr('bush', shx - 150 * S, shb + 2 * S, 62 * S, withMove('bush', 3, 62 * S, {}));
+  var mx = Math.min(W * 0.90, W - 74 * S);
+  ground(mx, GY + 2 * S, 34 * S);
+  spr('master', mx, GY + 4 * S, 168 * S, { rot: Math.sin(T * 1.5) * 0.025 });
 
   g.save();
   g.globalAlpha = 0.4; g.fillStyle = shColor();
@@ -5096,7 +5100,7 @@ function drawRepair() {
 
   rep.wheels.forEach(function (w) {
     if (w.gone) return;
-    var sz = 118 * S, wx = W * 0.70 + w.dx, wy = GY + 4 * S - sz * 0.5 - w.y, rot = w.rot;
+    var sz = 118 * S, wx = W * 0.56 + w.dx, wy = GY + 4 * S - sz * 0.5 - w.y, rot = w.rot;   // сдвинуты левее: раньше крайнее колесо закрывало мастера
     if (w.fly > 0) {
       var k = clamp(w.fly, 0, 1);
       wx = lerp(wx, cx + vehW(car.id, hh) * 0.1, k);
