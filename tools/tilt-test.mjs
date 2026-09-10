@@ -28,12 +28,14 @@ const flatRaw = await p.evaluate(() => new Promise(res => {
 const r = await p.evaluate(() => new Promise(res => {
   const out = []; let n = 0;
   const c0 = window.__car();
-  const ramp = { t: "ramp", x: c0.x + 260 * c0.S, w: 132 * c0.S, h: 76 * c0.S };
+  // урок слова замораживает мир: кладём трамплин заново, пока он не окажется под колёсами
+  let ramp = { t: "ramp", x: c0.x + 260 * c0.S, w: 132 * c0.S, h: 76 * c0.S };
   window.__put(ramp);
+  let re = 0;
   function step() {
     const d = window.__bg();
     out.push({ t: d.tilt, gh: d.gh, g: d.grounded });
-    if (++n < 400) requestAnimationFrame(step); else res(out);
+    if (++n < 900) requestAnimationFrame(step); else res(out);
   }
   requestAnimationFrame(step);
 }));
