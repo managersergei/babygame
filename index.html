@@ -2867,9 +2867,10 @@ function drawFar() {
 /* Холмы: раньше колбэк игнорировал индекс, и через каждые 520*S шла одна и та же дуга —
    идеальная периодичность и читалась как «геометрично». Теперь форма и высота гуляют,
    а дальние слои выцветают в небо. */
-function hill(rate, period, base, amp, col, k) {
+function hill(rate, period, base, amp, col, k, rim) {
   var hb = grassTop() + 6 * S;
-  g.fillStyle = haze(col, k);
+  var body = haze(col, k);
+  g.fillStyle = body;
   layer(rate, period, function (x, i) {
     var r = h1r(i * 3.7), r2 = h1r(i * 8.1);
     var w = (base + r * base * 0.45) * S, h = (amp * (0.62 + r2 * 0.62)) * S;
@@ -2877,12 +2878,32 @@ function hill(rate, period, base, amp, col, k) {
     g.quadraticCurveTo(x + w * 0.42 + (r - 0.5) * 120 * S, hb - h, x + w, hb);
     g.lineTo(x + w, hb + 8 * S); g.lineTo(x - 60 * S, hb + 8 * S); g.closePath(); g.fill();
   });
+  /* Светлая кромка по гребню. Без неё слои холмов сливаются в одно зелёное пятно:
+     воздушная перспектива даёт разницу в тоне, но форму читает именно кант. */
+  if (!rim) return;
+  g.save();
+  g.strokeStyle = mix(body, '#ffffff', rim);
+  g.lineWidth = 3 * S; g.lineCap = 'round';
+  layer(rate, period, function (x, i) {
+    var r = h1r(i * 3.7), r2 = h1r(i * 8.1);
+    var w = (base + r * base * 0.45) * S, h = (amp * (0.62 + r2 * 0.62)) * S;
+    g.beginPath(); g.moveTo(x - 60 * S, hb);
+    g.quadraticCurveTo(x + w * 0.42 + (r - 0.5) * 120 * S, hb - h, x + w, hb);
+    g.stroke();
+  });
+  g.restore();
 }
 function drawHills() {
-  var t = TH();
-  hill(0.14, 640 * S, 470, 250, t.h1, 0.55);        // самый дальний — почти цвета неба
-  hill(0.22, 520 * S, 380, 210, t.h1, 0.28);
-  hill(0.34, 430 * S, 300, 150, t.h2, 0.10);
+  var t = TH(), hb = grassTop() + 6 * S;
+  /* Свечение у горизонта: дальний план не должен упираться в небо ровной кромкой. */
+  var gl = g.createLinearGradient(0, hb - 190 * S, 0, hb + 10 * S);
+  gl.addColorStop(0, 'rgba(255,255,255,0)');
+  gl.addColorStop(1, 'rgba(255,255,255,.28)');
+  g.save(); g.fillStyle = gl; g.fillRect(0, hb - 190 * S, W, 200 * S); g.restore();
+
+  hill(0.14, 640 * S, 470, 250, t.h1, 0.62, 0.22);   // самый дальний — почти цвета неба
+  hill(0.22, 520 * S, 380, 210, t.h1, 0.34, 0.26);
+  hill(0.34, 430 * S, 300, 150, t.h2, 0.06, 0.30);
 }
 /* Высоты сведены к одной шкале: дом = 132. Раньше курица была ростом в половину коровы,
    ромашки — почти с курицу, а забор выше коровьей спины. */
@@ -2994,16 +3015,32 @@ function drawTrain(near) {          // near=false — дальняя полов�
   }
 }
 
+/* Занято ли место у обочины предметом, который прилетел со спавном. Фоновый ряд
+   про них не знает, и корова вставала прямо на куст — на скриншоте это первое, что
+   бросается в глаза. */
+function propBusy(cx) {
+  for (var i = 0; i < objs.length; i++) {
+    var o = objs[i];
+    if (o.t !== 'prop' && o.t !== 'traffic') continue;
+    if (Math.abs(((o.x - carX) + CARX) - cx) < 150 * S) return true;
+  }
+  return false;
+}
+
+var farSpots = [];                          // экранныеx дальнего ряда: ближний ряд не должен на них лезть
 function drawProps() {
   var pr = TH().props || ['house', 'tree'], pb = grassTop() + 46 * S;   // дальний ряд — по верхней трети травы
   var still = (state !== 'play');            // на экранах без движения дом не заслоняет машинку
+  farSpots.length = 0;
   layer(0.55, 430 * S, function (x, i) {
     var nm = pr[(i % pr.length + pr.length) % pr.length];
     var cx = x + 90 * S;
     /* На неподвижных экранах машинка стоит то на CARX, то по центру — оберегаем оба места. */
     if (still && (Math.abs(cx - CARX) < 150 * S || Math.abs(cx - W / 2) < 210 * S)) return;
+    if (propBusy(cx)) return;                 // здесь уже стоит предмет со спавна
     var hh = (PROP_H[nm] || 150) * 0.86 * S, ww = sprW(nm, hh) * 0.5;
     if (nm === 'fence') return;                                   // забор ставим только у дома, ниже
+    farSpots.push(cx);
     ground(cx, pb - 1 * S, ww * 0.9);
     spr(frameOf(nm, i), cx, pb, hh, withMove(nm, i, hh, { alpha: 0.94 }));
     if (nm === 'house') fenceRun(cx, pb + 14 * S, 52 * S, 6);      // у дома — палисадник перед ним
@@ -3014,6 +3051,11 @@ function drawProps() {
   layer(0.8, 260 * S, function (x, i) {
     if (i % 2) return;
     var cx = x + 40 * S;
+    if (propBusy(cx)) return;                 // не ставим куст туда, где уже стоит предмет
+    /* Ряды идут с разной скоростью и наезжают друг на друга: корова вставала на куст.
+       И машинка всегда на CARX — куст не должен расти у неё из крыши. */
+    if (Math.abs(cx - CARX) < 130 * S) return;
+    for (var q = 0; q < farSpots.length; q++) if (Math.abs(cx - farSpots[q]) < 120 * S) return;
     ground(cx, bb - 1 * S, 22 * S);
     spr('bush', cx, bb, 66 * S, withMove('bush', i, 66 * S, {}));
     tufts(cx, bb, 20 * S, i * 1.7);
@@ -3047,6 +3089,17 @@ function drawRoad() {
     return q;
   });
   g.fillRect(0, gt, W, top - gt + 2 * S);                                 // обочина
+  /* Мягкие пятна на траве вместо ровной плиты. Прямоугольные полосы пробовал —
+     читаются как блоки, стало хуже; овалы с низким контрастом дают только глубину. */
+  g.save();
+  g.globalAlpha = 0.25; g.fillStyle = mix(t.grass, '#ffffff', 0.16);
+  layer(0.42, 300 * S, function (x, i) {
+    var r = h1r(i * 4.3);
+    g.beginPath();
+    g.ellipse(x + 90 * S, gt + (top - gt) * (0.35 + r * 0.4), (70 + r * 90) * S, (10 + r * 12) * S, 0, 0, TAU);
+    g.fill();
+  });
+  g.restore();
   g.fillStyle = grd('haze', function () {                                 // мягкая дымка вместо белой линейки
     var q = g.createLinearGradient(0, gt - 10 * S, 0, gt + 26 * S);
     q.addColorStop(0, 'rgba(255,255,255,.30)'); q.addColorStop(1, 'rgba(255,255,255,0)');
@@ -3060,6 +3113,16 @@ function drawRoad() {
   });
   g.fillRect(0, top, W, H - top);
   g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(0, top, W, 3 * S);
+  /* Тень от обочины на асфальт: без неё дорога начиналась ровной линией и читалась
+     как приклеенная плита. */
+  var edge = g.createLinearGradient(0, top, 0, top + 26 * S);
+  edge.addColorStop(0, 'rgba(0,0,0,.20)'); edge.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = edge; g.fillRect(0, top, W, 26 * S);
+  /* Накатанные колеи: две широкие светлые полосы вдоль движения. */
+  g.save(); g.globalAlpha = 0.055; g.fillStyle = '#ffffff';
+  g.fillRect(0, top + (H - top) * 0.30, W, (H - top) * 0.13);
+  g.fillRect(0, top + (H - top) * 0.62, W, (H - top) * 0.15);
+  g.restore();
   g.fillStyle = 'rgba(255,255,255,.85)';
   var per = 150 * S, off = carX % per;
   for (var x = -per; x < W + per; x += per) g.fillRect(x - off, GY + 62 * S, 76 * S, 9 * S);
