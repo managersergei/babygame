@@ -143,12 +143,39 @@
   #bot button.mini { padding:6px 14px; font-size:14px; box-shadow:0 3px 0 #d9a52a; }
   #turn { flex-direction:column; font-size:28px; font-weight:900; color:#fff; text-align:center; z-index:30;
     pointer-events:none; background:rgba(43,33,64,.85); }
+/* Админка настроек (?admin=1 или Ctrl+Shift+A). Полупрозрачная — чтобы видеть игру под ней. */
+#admin{position:fixed;top:0;right:0;width:min(400px,100vw);height:100%;z-index:60;display:none;
+  flex-direction:column;background:rgba(18,22,30,.94);color:#e8eef7;font:13px/1.35 system-ui,sans-serif;
+  box-shadow:-8px 0 30px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
+#admin .ahead{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+  border-bottom:1px solid rgba(255,255,255,.12);font-size:15px}
+#admin .ax{background:none;border:0;color:#9fb0c6;font-size:26px;line-height:1;cursor:pointer;padding:0 4px}
+#admin .ax:hover{color:#fff}
+#admin .abody{flex:1;overflow:auto;padding:6px 12px 14px}
+#admin .agrp{margin:10px 0;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:6px 8px}
+#admin .agrp>summary{cursor:pointer;font-weight:600;color:#8fd3ff;padding:2px 0}
+#admin .arow{display:grid;grid-template-columns:1fr 96px 62px;gap:8px;align-items:center;padding:3px 0}
+#admin .arow .alab{color:#b9c6d6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#admin .arow.chg .alab{color:#ffd479}
+#admin .arow.chg .alab::after{content:" •";color:#ffd479}
+#admin .asld{width:100%}
+#admin .anum{width:100%;background:#0e1219;border:1px solid rgba(255,255,255,.18);color:#e8eef7;
+  border-radius:5px;padding:3px 5px;font:12px system-ui,sans-serif}
+#admin .arow:not(:has(.asld)) .anum{grid-column:2/4}
+#admin .afoot{display:flex;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.12)}
+#admin .afoot button{flex:1;padding:9px;border-radius:7px;border:1px solid rgba(255,255,255,.2);
+  background:#222a36;color:#e8eef7;cursor:pointer;font:13px system-ui,sans-serif}
+#admin .afoot button:hover{background:#2c3644}
+#admin .afoot .aprim{background:#2b6cb0;border-color:#3a82cf}
+#admin .afoot .aprim:hover{background:#3479c2}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
 <script src="assets/voice/list.js"></script>
 <script src="assets/paths.js"></script>
+<!-- Настройки, выгруженные админкой. Файл может быть пустым — игра возьмёт заводские значения. -->
+<script src="tune.js"></script>
 
 <div id="lockNote">🔒 ЭКРАННЫЕ КНОПКИ ВЫКЛЮЧЕНЫ · TAB — ВКЛЮЧИТЬ</div>
 <div id="tools">
@@ -249,6 +276,105 @@ window.addEventListener('error', function (e) {
 (function () {
 'use strict';
 
+/* ═══════════════ 0b. НАСТРОЙКИ ═══════════════ */
+/* Единственное место, откуда игра берёт числа, влияющие на игру.
+   Правило отрасли простое: ни одного такого числа в коде — иначе баланс правит
+   программист, а каждая правка требует выкладки. Здесь собран механизм, а сами
+   значения по-прежнему объявлены рядом со своим кодом (TUNE, LN, PHYS…) и сюда
+   только регистрируются: так не нужно таскать 200 чисел через весь файл.
+
+   Три слоя, каждый следующий перекрывает предыдущий:
+     1) заводские значения — то, что написано в коде;
+     2) tune.js в репозитории — общий для всех детей, его кладёт админка кнопкой «выгрузить»;
+     3) localStorage — правки ЭТОГО устройства из панели внутри игры (Shift+пробел трижды).
+
+   Слой 3 никуда не уезжает и виден только здесь: подбирать на ходу можно смело,
+   пока не нажата «выгрузить», чужая игра не меняется. */
+var CFG = (function () {
+  var GROUPS = {};      // имя → { obj, schema }
+  var DEF    = {};      // имя → заводские значения (снимок ДО правок)
+  var over   = {};      // что перекрываем
+
+  function merge(dst, src) {
+    if (!src) return dst;
+    for (var gk in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, gk)) continue;
+      dst[gk] = dst[gk] || {};
+      for (var k in src[gk]) if (Object.prototype.hasOwnProperty.call(src[gk], k)) dst[gk][k] = src[gk][k];
+    }
+    return dst;
+  }
+
+  try { merge(over, window.TUNE_OVERRIDES); } catch (e) {}
+  try { merge(over, JSON.parse(localStorage.getItem('babygame.tune') || 'null')); } catch (e) {}
+
+  function clone(o) { try { return JSON.parse(JSON.stringify(o)); } catch (e) { return {}; } }
+
+  /* Регистрируем объект настроек. Возвращает его же — чтобы писать
+     `var TUNE = CFG.reg('TUNE', { ... }, { ... });` одной строкой.
+     schema[k] = [мин, макс, шаг, 'подпись'] — из этого админка рисует ползунок.
+     Ключ без схемы не пропадает: панель покажет его полем ввода. */
+  function reg(name, obj, schema) {
+    DEF[name] = clone(obj);                        // снимок обязателен ДО правок, иначе «сбросить» вернёт не туда
+    GROUPS[name] = { obj: obj, schema: schema || {} };
+    var o = over[name];
+    if (o) for (var k in o) {
+      if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
+      /* Молча берём только то, что уже есть в объекте и того же типа: устаревший
+         ключ из старого tune.js не должен подсовывать игре строку вместо числа. */
+      if (Object.prototype.hasOwnProperty.call(obj, k) && typeof o[k] === typeof obj[k]) obj[k] = o[k];
+    }
+    return obj;
+  }
+
+  function set(name, key, val) {
+    var G = GROUPS[name]; if (!G || !Object.prototype.hasOwnProperty.call(G.obj, key)) return false;
+    var s = G.schema[key];
+    if (typeof G.obj[key] === 'number') {
+      val = +val; if (!isFinite(val)) return false;
+      if (s) val = Math.max(s[0], Math.min(s[1], val));
+    }
+    G.obj[key] = val;
+    over[name] = over[name] || {}; over[name][key] = val;
+    try { localStorage.setItem('babygame.tune', JSON.stringify(over)); } catch (e) {}
+    if (typeof tune === 'function') tune();         // производные величины пересчитываем сразу
+    return true;
+  }
+
+  function reset() {
+    for (var name in GROUPS) {
+      var d = DEF[name], obj = GROUPS[name].obj;
+      for (var k in d) if (Object.prototype.hasOwnProperty.call(d, k)) obj[k] = d[k];
+    }
+    over = {};
+    try { localStorage.removeItem('babygame.tune'); } catch (e) {}
+    if (typeof tune === 'function') tune();
+  }
+
+  /* Текст файла tune.js — его кладут в репозиторий рядом с index.html.
+     Пишем только отличия от заводских: так видно, что именно подкрутили. */
+  function exportJs() {
+    var diff = {};
+    for (var name in GROUPS) {
+      var obj = GROUPS[name].obj, d = DEF[name], g = null;
+      for (var k in obj) {
+        if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+        if (obj[k] !== d[k]) { g = g || {}; g[k] = obj[k]; }
+      }
+      if (g) diff[name] = g;
+    }
+    return '/* Настройки игры. Файл создан админкой ' + new Date().toISOString().slice(0, 10) +
+           '.\n   Правится ползунками, а не руками: панель внутри игры → «выгрузить». */\n' +
+           'window.TUNE_OVERRIDES = ' + JSON.stringify(diff, null, 2) + ';\n';
+  }
+
+  return {
+    reg: reg, set: set, reset: reset, exportJs: exportJs,
+    groups: function () { return GROUPS; },
+    def: function (name) { return DEF[name]; },
+    changed: function (name, key) { return DEF[name] && GROUPS[name].obj[key] !== DEF[name][key]; }
+  };
+})();
 /* ═══════════════ 0. УТИЛИТЫ ═══════════════ */
 var clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
 /* Случайность: обычно Math.random, а с ?seed=N — повторяемая (запись роликов, тесты). */
@@ -1383,6 +1509,36 @@ var TUNE = {
 
 var WEIGHT = { star: 34, balloon: 15, cone: 12, puddle: 10, ramp: 11, plat: 9, pit: 7, mon: 9, prop: 7 };
 
+/* Отдаём оба набора в CFG: с этого момента их правит админка, а не редактор кода.
+   [мин, макс, шаг, подпись] — из этого рисуется ползунок. */
+CFG.reg('TUNE', TUNE, {
+  fuelEvery:     [ 400, 3000, 50,   'px между канистрами'],
+  praiseEvery:   [   3,   30,  1,   'звёзд до похвалы с конфетти'],
+  themeEvery:    [   5,  100,  1,   'звёзд до смены локации'],
+  hits:          [   1,   10,  1,   'ударов до поломки машинки'],
+  fourEvery:     [   1,   10,  1,   'каждая N-я поломка — все четыре колеса'],
+  robotMin:      [   5,  180,  1,   'с до погони: мин'],
+  robotMax:      [  10,  300,  1,   'с до погони: макс'],
+  robotLife:     [   3,   40,  1,   'с длится погоня'],
+  robotStart:    [ 200, 2000, 10,   'px позади появляется робот'],
+  robotSpeed:    [   1,  1.6, 0.01, 'во сколько раз робот быстрее крейсерской'],
+  monSpeed:      [  20,  400,  5,   'px/с монстрик навстречу'],
+  minGap:        [ 150, 1200, 10,   'px минимум между элементами'],
+  trainPass:     [   2,   12, 0.1,  'с поезд идёт от горизонта до низа'],
+  trainCars:     [   1,    8,  1,   'вагонов за локомотивом'],
+  trainSeg:      [ 0.2,    1, 0.01, 'шаг между вагонами'],
+  trainLead:     [   0,    3, 0.05, 'с голова выходит на полотно заранее'],
+  wordMin:       [   5,   90,  1,   'с между новыми словами: мин'],
+  wordMax:       [  10,  180,  1,   'с между новыми словами: макс'],
+  wordLead:      [   1,   20, 0.5,  'с предмет заказываем заранее'],
+  robotIdle:     [   1,    5, 0.1,  'во сколько раз реже робот, пока есть чему учить'],
+  monQuiet:      [   0,   20, 0.5,  'с тишины перед погоней'],
+  monFreeChases: [   0,   10,  1,   'первых погонь без монстриков']
+});
+CFG.reg('WEIGHT', WEIGHT, (function () {
+  var s = {}; for (var k in WEIGHT) s[k] = [0, 100, 1, 'как часто выпадает: ' + k]; return s;
+})());
+
 /* Уроки слов: одно новое слово за этап. bg — что рисуем фоном урока. */
 var LESSONS = {
   jump:  { reps: REPS_CMD, key:'⎵', word:'ПРЫЖОК', say:'прыжок', icon:'⬆',  tip:'Скажешь прыжок — и машинка перепрыгнет яму!', ask:'Ой! Яма! Скажи слово: прыжок!' },
@@ -1543,16 +1699,41 @@ function KEYW(t) { return (TOUCH ? '⬆ ' : 'ПРОБЕЛ — ') + t; }   // н�
 var CARX = 0;
 var CRUISE, VMAX, ACC, BRK, GRAV, JUMP1, JUMP2, FUELDIST, EASYSPD;
 
+/* Физика платформера. Раньше эти девять чисел стояли прямо в tune() и правились
+   только в редакторе кода; теперь это обычный набор настроек, доступный админке.
+   Значения ровно те же, что были, — поведение не меняется. */
+var PHYS = CFG.reg('PHYS', {
+  cruise:   235,   // крейсерская скорость, к которой машинка выходит сама
+  easySpd:  330,   // …она же в лёгком режиме
+  vmax:     720,   // потолок скорости (умножается на «резвость» машинки)
+  acc:      520,   // разгон
+  brk:      950,   // торможение
+  grav:    2100,   // притяжение
+  jump1:    830,   // первый прыжок
+  jump2:    690,   // второй прыжок в воздухе
+  fuelDist:3600    // на сколько метров хватает полного бака
+}, {
+  cruise:  [ 80,  600, 5, 'крейсерская скорость'],
+  easySpd: [ 80,  800, 5, 'крейсерская в лёгком режиме'],
+  vmax:    [200, 1600, 10,'потолок скорости'],
+  acc:     [100, 1500, 10,'разгон'],
+  brk:     [200, 2500, 10,'торможение'],
+  grav:    [800, 5000, 50,'притяжение'],
+  jump1:   [300, 1800, 10,'сила первого прыжка'],
+  jump2:   [200, 1600, 10,'сила второго прыжка'],
+  fuelDist:[800, 12000,100,'на сколько хватает бака']
+});
+
 function tune() {
-  CRUISE  = 235 * S;
-  EASYSPD = 330 * S;
-  VMAX    = 720 * S * (car && car.top ? car.top : 1);
-  ACC     = 520 * S;
-  BRK     = 950 * S;
-  GRAV    = 2100 * S;
-  JUMP1   = 830 * S * (car && car.jump ? car.jump : 1);
-  JUMP2   = 690 * S * (car && car.jump ? car.jump : 1);
-  FUELDIST= 3600 * S * tankMul;    // на сколько метров хватает полного бака (растёт от собранного бензина)
+  CRUISE  = PHYS.cruise  * S;
+  EASYSPD = PHYS.easySpd * S;
+  VMAX    = PHYS.vmax    * S * (car && car.top ? car.top : 1);
+  ACC     = PHYS.acc     * S;
+  BRK     = PHYS.brk     * S;
+  GRAV    = PHYS.grav    * S;
+  JUMP1   = PHYS.jump1   * S * (car && car.jump ? car.jump : 1);
+  JUMP2   = PHYS.jump2   * S * (car && car.jump ? car.jump : 1);
+  FUELDIST= PHYS.fuelDist* S * tankMul;    // растёт от собранного бензина
 }
 
 /* ═══════════════ 6. ЧАСТИЦЫ И НАДПИСИ ═══════════════ */
@@ -5377,6 +5558,31 @@ var LN = {
   curvAmp: 620, curvA: 0.55, curvB: 0.27,     // изгибы дороги: тот же приём, что и рельеф, но по горизонтали
   decorGap: [0.45, 0.95], skyGap: [2.6, 5.0]   // обочина вдвое плотнее: пустая обочина не даёт ощущения движения
 };
+CFG.reg('LN', LN, {
+  laneK:    [ 0.3,    1.2, 0.01, 'насколько ряды расходятся к краям'],
+  spd0:     [ 0.1,    0.6, 0.01, 'глубина в секунду на старте'],
+  spdMax:   [ 0.3,    1.5, 0.01, 'потолок скорости'],
+  spdK:     [ 0.2,      4, 0.05, 'как быстро выходим на цель'],
+  gasK:     [   0,      2, 0.01, 'прибавка от газа'],
+  wzGain:   [   0, 0.0100, 0.0001, 'рост базовой скорости от пути'],
+  wzCap:    [   0,    0.5, 0.01, 'потолок этого роста'],
+  gapMin:   [ 0.2,      2, 0.01, 'зазор между объектами по глубине: мин'],
+  gapMax:   [ 0.3,      3, 0.01, '…макс'],
+  pStar:    [   0,      1, 0.01, 'доля выпадения звезды'],
+  pFuel:    [   0,      1, 0.01, 'доля выпадения бензина'],
+  forgive:  [ 0.3,    1.5, 0.01, 'зона препятствия (меньше — легче)'],
+  greedy:   [ 0.8,      2, 0.01, 'зона бонуса (больше — щедрее)'],
+  jumpV:    [ 400,   2000, 10,   'сила прыжка'],
+  grav:     [1000,   5000, 50,   'притяжение'],
+  overK:    [ 0.2,      1, 0.01, 'с какой доли высоты объект считается перепрыгнутым'],
+  carW:     [  80,    320,  2,   'ширина машинки'],
+  carH:     [  40,    200,  2,   'высота машинки'],
+  carY:     [ 0.6,   0.99, 0.01, 'как низко стоит машинка'],
+  camUp:    [   0,    240,  2,   'подъём камеры'],
+  hillAmp:  [   0,    400,  5,   'высота холмов'],
+  curvAmp:  [   0,   1500, 10,   'сила изгибов дороги']
+});
+
 var ln = { x: 0, y: 0, vy: 0, spd: 0, gas: 0, brake: 0, boost: 0, kick: 0, recShown: 0, dash: 0, run: 0, wz: 0, slope: 0,
            objs: [], spawnZ: 0, decorZ: 0, skyZ: 0,
            t: 0, hitT: 0, jumps: 0, autoT: 0, best: 0 };
@@ -6431,6 +6637,13 @@ function topOverlay() {
   return null;
 }
 window.addEventListener('keydown', function (e) {
+  /* Админка: Ctrl+Shift+A открывает и закрывает. Пока она открыта, игра клавиши
+     не перехватывает — иначе пробел и стрелки не дошли бы до полей ввода. */
+  /* Через typeof: если модуль админки почему-то не выполнился, обработчик клавиш
+     обязан продолжать работать — иначе игра остаётся вообще без управления. */
+  var adm = typeof Admin !== 'undefined' ? Admin : null;
+  if (adm && e.ctrlKey && e.shiftKey && e.code === 'KeyA') { e.preventDefault(); adm.toggle(); return; }
+  if (adm && adm.open()) { if (e.code === 'Escape') { e.preventDefault(); adm.hide(); } return; }
   var ov = topOverlay();
   if (ov) {
     if (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') { e.preventDefault(); ov.ok(); }
@@ -6630,8 +6843,137 @@ document.getElementById('bFull').addEventListener('click', function () {
   } else if (document.exitFullscreen) document.exitFullscreen();
 });
 
+/* ═══════════════ 19b. АДМИНКА НАСТРОЕК ═══════════════ */
+/* Панель поверх игры: ползунки правят CFG на лету, игра при этом продолжает идти —
+   так баланс подбирается глазами, а не пересборками.
+   Открыть: ?admin=1 в адресе или Ctrl+Shift+A. Закрыть: × или Esc.
+   Комбинацию ребёнок не наберёт: на планшете её просто нечем нажать.
+
+   Два слоя правок (см. CFG): ползунки меняют только ЭТО устройство, а кнопка
+   «выгрузить tune.js» отдаёт файл, который кладут в репозиторий рядом с index.html —
+   вот тогда правки уезжают всем. */
+var Admin = (function () {
+  var box = null, built = false;
+
+  function el(tag, cls, txt) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt != null) e.textContent = txt;
+    return e;
+  }
+
+  function row(name, key, val, schema) {
+    var r = el('div', 'arow');
+    var lab = el('label', 'alab', (schema && schema[3]) || key);
+    lab.title = name + '.' + key;
+    r.appendChild(lab);
+
+    var num = el('input', 'anum');
+    num.type = 'number';
+    var slider = null;
+
+    if (typeof val === 'number' && schema) {
+      slider = el('input', 'asld');
+      slider.type = 'range';
+      slider.min = schema[0]; slider.max = schema[1]; slider.step = schema[2]; slider.value = val;
+      r.appendChild(slider);
+      num.min = schema[0]; num.max = schema[1];
+      num.step = schema[2];
+    }
+    num.value = val;
+    r.appendChild(num);
+
+    function mark() { r.classList.toggle('chg', CFG.changed(name, key)); }
+    function apply(v) {
+      if (!CFG.set(name, key, v)) return;
+      var now = CFG.groups()[name].obj[key];
+      num.value = now; if (slider) slider.value = now;
+      mark();
+    }
+    if (slider) slider.addEventListener('input', function () { apply(slider.value); });
+    num.addEventListener('change', function () { apply(num.value); });
+    mark();
+    r.refresh = function () {
+      var now = CFG.groups()[name].obj[key];
+      num.value = now; if (slider) slider.value = now;
+      mark();
+    };
+    return r;
+  }
+
+  var rows = [];
+
+  function build() {
+    box = el('div', null); box.id = 'admin';
+    var head = el('div', 'ahead');
+    head.appendChild(el('b', null, 'Настройки игры'));
+    var x = el('button', 'ax', '×'); x.title = 'Закрыть (Esc)';
+    x.addEventListener('click', hide);
+    head.appendChild(x);
+    box.appendChild(head);
+
+    var body = el('div', 'abody');
+    var G = CFG.groups();
+    Object.keys(G).forEach(function (name) {
+      var sec = el('details', 'agrp');
+      sec.open = true;
+      sec.appendChild(el('summary', null, name));
+      var obj = G[name].obj, sch = G[name].schema;
+      Object.keys(obj).forEach(function (k) {
+        var v = obj[k];
+        if (typeof v !== 'number' && typeof v !== 'string') return;   // массивы и вложенное панелью не правим
+        var r = row(name, k, v, sch[k]);
+        rows.push(r); sec.appendChild(r);
+      });
+      body.appendChild(sec);
+    });
+    box.appendChild(body);
+
+    var foot = el('div', 'afoot');
+    var bReset = el('button', null, 'Сбросить всё');
+    bReset.addEventListener('click', function () {
+      if (!window.confirm('Вернуть все настройки к заводским?')) return;
+      CFG.reset(); rows.forEach(function (r) { r.refresh(); });
+    });
+    var bSave = el('button', 'aprim', 'Выгрузить tune.js');
+    bSave.title = 'Скачать файл настроек — положить его рядом с index.html и закоммитить';
+    bSave.addEventListener('click', function () {
+      var blob = new Blob([CFG.exportJs()], { type: 'text/javascript' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'tune.js';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    });
+    foot.appendChild(bReset); foot.appendChild(bSave);
+    box.appendChild(foot);
+
+    document.body.appendChild(box);
+    built = true;
+  }
+
+  function show() { if (!built) build(); rows.forEach(function (r) { r.refresh(); }); box.style.display = 'flex'; }
+  function hide() { if (box) box.style.display = 'none'; }
+  function open() { return !!box && box.style.display !== 'none'; }
+
+  return {
+    show: show, hide: hide, open: open,
+    toggle: function () { open() ? hide() : show(); }
+  };
+})();
+
+if (/[?&]admin=1/.test(location.search)) try { Admin.show(); } catch (e) {}
 /* ═══════════════ 20. ГЛАВНЫЙ ЦИКЛ ═══════════════ */
 var last = 0;
+
+/* Шаг симуляции фиксирован. Раньше в updatePlay и Lane.update уходил сырой dt кадра,
+   поэтому на слабом телефоне машинка вела себя иначе, чем на быстром, и повторить
+   прогон было нельзя — половина ощущения «физика ненастоящая» отсюда.
+   1/120, а не 1/60: при экране 60 Гц на кадр приходится ровно два шага, и симуляция
+   не дёргается между «ноль шагов» и «два». Рисуем по-прежнему как успевает железо. */
+var SIM = CFG.reg('SIM', { hz: 120 }, { hz: [30, 240, 10, 'шагов физики в секунду'] });
+var SIM_STEP = 1 / SIM.hz;
+var SIM_MAXF = 1800;                 // потолок шагов за кадр: и защита от «спирали смерти», и запас для ?fast=300
+var simAcc = 0;
 
 var FAST = Math.min(300, +((location.search.match(/[?&]fast=(\d+)/) || [])[1]) || 1);
 var TRACE = [];
@@ -6699,15 +7041,21 @@ function frame(ts) {
   }
 
   if (state !== 'garage' && state !== 'mode' && state !== 'gamemode') {
-    for (var it = 0; it < FAST; it++) {
+    /* ?fast=N ускоряет игровое время в N раз — накапливаем столько же, сколько
+       накручивал прежний цикл из N вызовов, но выдаём симуляции ровными шагами. */
+    SIM_STEP = 1 / SIM.hz;                    // админка могла поменять частоту прямо сейчас
+    simAcc = Math.min(simAcc + dt * FAST, SIM_MAXF * SIM_STEP);
+    while (simAcc >= SIM_STEP) {
+      simAcc -= SIM_STEP;
       var was = state, wasStage = stage;
-      stepState(dt);
+      stepState(SIM_STEP);
       if (state !== was || stage !== wasStage) {
         if (DBG) { TRACE.push(state + (state === 'play' ? '#' + stage : '')); if (TRACE.length > 9) TRACE.shift(); }
-        break;                                // экран сменился — не проскакиваем
+        simAcc = 0;                           // экран сменился — не проскакиваем
+        break;
       }
     }
-  }
+  } else simAcc = 0;                          // в меню симуляция стоит: иначе вход в игру начнётся рывком
 
   g.fillStyle = TH().sky[1];                                 // фон-подложка: без неё видны хвосты кадра
   g.fillRect(0, 0, W, H);
@@ -6904,6 +7252,8 @@ fit();
 setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подстраховка
 
   if (DBG || REC || /[?&]test=1/.test(location.search)) {
+    window.__cfg = CFG;                                          // тест: настройки и админка
+    window.__sim = function () { return { hz: SIM.hz, step: SIM_STEP, acc: simAcc, cruise: CRUISE, phys: PHYS.cruise }; };   // тест: фиксированный шаг
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__move = moveFx;                                      // тест: параметры процедурной анимации

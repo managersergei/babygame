@@ -16,3 +16,4 @@ tg/node_modules/
 tg/.secrets*
 tg/.dev.vars
 .venv/
+src/js/*.js.bak

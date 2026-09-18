@@ -1,6 +1,11 @@
+# Публикация игры. С 18.09.2026 деплой идёт ТОЛЬКО после зелёных тестов:
+# раньше любой плохой пуш моментально ломал игру у ребёнка.
+# Аварийная публикация в обход проверок — вкладка Actions → pages → Run workflow.
 name: pages
 on:
-  push:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 permissions:
@@ -12,6 +17,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -1,0 +1,16 @@
+{
+  "name": "babygame",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Игра-словарь для детей 2–4 лет. Исходники — src/, index.html собирается из них (npm run build).",
+  "scripts": {
+    "test": "node tools/run-tests.mjs",
+    "serve": "python3 -m http.server 8765",
+    "test:quick": "node tools/run-tests.mjs --quick",
+    "build": "node tools/build.mjs",
+    "build:check": "node tools/build.mjs --check"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}

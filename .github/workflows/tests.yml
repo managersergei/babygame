@@ -1,0 +1,32 @@
+name: tests
+# На пуш — быстрый набор (около 3 минут). Полный, включая четыре теста, которые
+# моделируют минуты реальной игры, — ночью и по кнопке Run workflow.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Полный набор (долго, ~25 минут)'
+        type: boolean
+        default: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci || npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      # Игра раздаётся как собранный index.html. Если он разошёлся с src/ — значит,
+      # кто-то правил собранный файл руками, и правка потеряется при следующей сборке.
+      - name: Сборка совпадает с index.html
+        run: node tools/build.mjs --check
+      - name: Прогон проверок
+        run: node tools/run-tests.mjs ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '--quick' || '' }}
