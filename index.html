@@ -268,7 +268,7 @@
 </div>
 
 <script>
-var BUILD_ID = 'src-31a5b66cee';                    // tools/build.mjs: хеш исходников
+var BUILD_ID = 'src-c368f3bc40';                    // tools/build.mjs: хеш исходников
 /* dev: сообщаем родителю о падениях, чтобы ловить их автопроверкой */
 window.addEventListener('error', function (e) {
   try { parent.postMessage({ err: (e.message || '?') + ' @' + (e.lineno || 0) }, '*'); } catch (x) {}
@@ -2443,7 +2443,7 @@ function updatePlay(dt) {
       if (hard) shake = 5 * S;
       for (var i = 0; i < (hard ? 20 : 9); i++)
         P({ x: carX + rnd(-cw*0.4, cw*0.4), y: gh + 4*S, vx: rnd(-300,300)*S, vy: rnd(60,260)*S,
-            r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff',
+            r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff', land: 1,   // land — в 3D не рисуется: там своя пыль
             life: rnd(0.35,0.75), ay: -40*S });
       coyoteT = 0;
       if (jumpBufT > 0) jumpGo(cw);           // нажали чуть раньше посадки — прыгаем сразу, как коснулись
@@ -2873,7 +2873,9 @@ function updateParts(dt) {
 }
 
 function drawParts(worldSpace) {
+  var p3 = typeof Plat3D !== 'undefined' && Plat3D.on();
   parts.forEach(function (p) {
+    if (p3 && p.land) return;                     // пыль посадки в 3D рисует сама сцена — без двойной
     var a = clamp(p.life / p.max, 0, 1);
     var sx = worldSpace ? (p.x - carX) + CARX : p.x;
     var sy = GY - p.y;
@@ -3949,7 +3951,7 @@ var R3D = (function () {
 var P3 = {
   on: 0,                                    // 1 — платформер в 3D (включает ?3d=1 или админка)
   fov: 32,                                  // вертикальный угол обзора, градусы (дальняя штанга)
-  pitch: 0.17,                              // наклон камеры вниз, рад: видно полотно дороги
+  pitch: 0.21,                              // наклон камеры вниз, рад: видно полотно дороги, срез земли — тонкая полоса
   camK: 6,                                  // скорость догоняния камеры по вертикали: 1−exp(−k·dt)
   camY: 0.7,                                // доля высоты платформы, на которую поднимается камера
   hemi: 1.7, sun: 2.3,                      // свет: небо/земля и солнце сбоку-сверху
@@ -4059,6 +4061,27 @@ var Plat3D = (function () {
       c.fillStyle = red ? '#24422c' : '#34c759'; c.beginPath(); c.arc(32, 73, 17, 0, TAU); c.fill();
     };
   }
+  /* ореол солнца: мягкий градиент, гаснущий к краю (плоский диск на небе читается пятном) */
+  function haloTex(c, w) {
+    var gr = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+    gr.addColorStop(0, 'rgba(255,248,200,.9)'); gr.addColorStop(0.3, 'rgba(255,240,170,.45)');
+    gr.addColorStop(0.65, 'rgba(255,236,160,.14)'); gr.addColorStop(1, 'rgba(255,236,160,0)');
+    c.fillStyle = gr; c.fillRect(0, 0, w, w);
+  }
+  /* яма сверху: верх текстуры — дальний край. Видна дальняя стенка (земля темнеет вглубь),
+     боковые стенки, светлая кромка грунта по краю, в середине — темнота */
+  function pitTex(c, w, h) {
+    c.fillStyle = '#07080c'; c.fillRect(0, 0, w, h);
+    var gr = c.createLinearGradient(0, 0, 0, h * 0.16);
+    gr.addColorStop(0, '#8a5c36'); gr.addColorStop(0.45, '#4a2f1c'); gr.addColorStop(1, 'rgba(7,8,12,0)');
+    c.fillStyle = gr; c.fillRect(0, 0, w, h * 0.16);
+    for (var sd = 0; sd < 2; sd++) {
+      var gx = c.createLinearGradient(sd ? w : 0, 0, sd ? w * 0.8 : w * 0.2, 0);
+      gx.addColorStop(0, '#5a3b24'); gx.addColorStop(1, 'rgba(7,8,12,0)');
+      c.fillStyle = gx; c.fillRect(sd ? w * 0.8 : 0, 0, w * 0.2, h);
+    }
+    c.fillStyle = '#b07a48'; c.fillRect(0, 0, w, 5); c.fillRect(0, 0, 4, h); c.fillRect(w - 4, 0, 4, h);
+  }
   function discTex(c, w) {
     c.fillStyle = '#fff'; c.beginPath(); c.arc(w / 2, w / 2, w / 2 - 1, 0, TAU); c.fill();
   }
@@ -4074,7 +4097,9 @@ var Plat3D = (function () {
   }
 
   /* ════════ Постройка сцены (один раз) ════════ */
-  var ZB = -1.5, ZF = 2.6, ZC = 2.85, ZE = 3.4;     // дальний край асфальта, ближний, бордюр, срез земли
+  var ZB = -1.5, ZF = 2.6, ZC = 2.85, ZE = 5.4;     // дальний край асфальта, ближний, бордюр, срез земли
+  /* ZE — край ближней обочины. Широкая травяная полоса с цветами занимает низ кадра, а срез земли
+     внизу остаётся тонкой лентой (≤ 12 % высоты): пустой коричневой стены больше нет. */
   var XL = -40, XR = 90;                            // полотно от камеры назад/вперёд, единиц
   function build() {
     var T = TT;
@@ -4102,7 +4127,7 @@ var Plat3D = (function () {
     mats.star = new T.MeshLambertMaterial({ color: 0xffd23d, emissive: 0x8a5a00, emissiveIntensity: 0.9, flatShading: true });
     mats.blob = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false,
                                           polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    mats.pit = new T.MeshBasicMaterial({ color: 0x171a22, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    mats.pit = new T.MeshBasicMaterial({ color: 0x14161d, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     mats.puddleRim = new T.MeshBasicMaterial({ color: 0x14283c, transparent: true, opacity: 0.35, depthWrite: false,
                                                polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     mats.puddle = new T.MeshLambertMaterial({ color: 0x2f8cc4, emissive: 0x1c6ea4, emissiveIntensity: 0.35,
@@ -4116,6 +4141,9 @@ var Plat3D = (function () {
     ctex.eyes = canvasTex(128, 112, eyesTex(false)); ctex.eyesA = canvasTex(128, 112, eyesTex(true));
     ctex.tlR = canvasTex(64, 270, tlightTex(true)); ctex.tlG = canvasTex(64, 270, tlightTex(false));
     ctex.disc = canvasTex(64, 64, discTex);
+    ctex.halo = canvasTex(256, 256, haloTex); ctex.pit = canvasTex(128, 512, pitTex);
+    mats.pitIn = new T.MeshBasicMaterial({ map: ctex.pit, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    mats.halo = new T.MeshBasicMaterial({ map: ctex.halo, transparent: true, depthWrite: false, fog: false });
     ctex.sky = document.createElement('canvas'); ctex.sky.width = 2; ctex.sky.height = 256;
     ctex.skyT = new T.CanvasTexture(ctex.sky); ctex.skyT.colorSpace = T.SRGBColorSpace;
     scene.background = ctex.skyT;
@@ -4135,9 +4163,9 @@ var Plat3D = (function () {
     M.grassF = mesh(box(L, 0.36, ZE - ZC), mats.grassF, true); M.grassF.position.set(cx, -0.12, (ZE + ZC) / 2);
     /* Срез земли спереди — «торт в разрезе»: трава кромкой, потом слои грунта. */
     M.earth = mesh(merge([
-      part(box(L, 1.2, 0.2), '#a8703f', [cx, -1.08, ZE - 0.1]),
-      part(box(L, 1.4, 0.2), '#8d5a33', [cx, -2.38, ZE - 0.1]),
-      part(box(L, 6, 0.2), '#704428', [cx, -6.08, ZE - 0.1])]), mats.v);
+      part(box(L, 0.7, 0.2), '#a8703f', [cx, -0.83, ZE - 0.1]),
+      part(box(L, 0.8, 0.2), '#8d5a33', [cx, -1.58, ZE - 0.1]),
+      part(box(L, 6, 0.2), '#704428', [cx, -4.98, ZE - 0.1])]), mats.v);
     mats.lip = new TT.MeshLambertMaterial({ color: 0x5b9a3e });
     M.lip = mesh(box(L, 0.3, 0.22), mats.lip); M.lip.position.set(cx, -0.33, ZE - 0.1);   // кромка травы над срезом — цвет темы
     M.grassB = mesh(new TT.PlaneGeometry(L * 3, 160), mats.grass, true);
@@ -4147,8 +4175,8 @@ var Plat3D = (function () {
     var curb = merge([part(box(1, 1, 1), '#ffffff')]);
     M.curbF = inst(140, curb, mats.v, true); M.curbB = inst(140, curb, mats.v, true);
     M.dash = inst(70, merge([part(box(1, 1, 1), '#f4f4ee')]), mats.v, true);
-    M.stone = inst(40, merge([part(ico(0.5, 0), '#ffffff', null, null, [1, 0.6, 0.35])]), mats.flat);
-    M.tuft = inst(90, merge([part(cone(0.09, 0.32, 4), '#ffffff', [0, 0.16, 0]), part(cone(0.07, 0.24, 4), '#ffffff', [0.1, 0.12, 0.03], [0, 0, -0.4]),
+    M.stone = inst(80,merge([part(ico(0.5, 0), '#ffffff', null, null, [1, 0.6, 0.35])]), mats.flat);
+    M.tuft = inst(160, merge([part(cone(0.09, 0.32, 4), '#ffffff', [0, 0.16, 0]), part(cone(0.07, 0.24, 4), '#ffffff', [0.1, 0.12, 0.03], [0, 0, -0.4]),
                              part(cone(0.07, 0.24, 4), '#ffffff', [-0.1, 0.12, -0.02], [0, 0, 0.4])]), mats.v);
   }
 
@@ -4175,6 +4203,62 @@ var Plat3D = (function () {
     for (var k = 0; k < 5; k++) cl.push(part(ico(0.8 + hash(k) * 0.6, 1), '#ffffff', [(k - 2) * 0.9, (k % 2) * 0.35 + (k === 2 ? 0.4 : 0), hash(k + 9) * 0.4]));
     M.cloud = inst(12, merge(cl), mats.cloud);
     M.sun = mesh(new TT.PlaneGeometry(1, 1), mats.sun); M.sun.renderOrder = -1;
+    M.halo = mesh(new TT.PlaneGeometry(1, 1), mats.halo); M.halo.renderOrder = -2;
+    buildProps3();
+  }
+
+  /* ── объёмный реквизит обочины в стиле деревьев дальнего плана: дом, дерево, куст, стог,
+        забор, ромашки, ёлка. Каждый вид — один InstancedMesh (один вызов), модель стоит на y = 0,
+        BH — высота модели; масштаб экземпляра = нужная высота / BH. Спрайты остались у животных,
+        машин и предметов, у которых нет объёмной версии. ── */
+  var P3K = { house: 'house', tree: 'tree', bush: 'bush', haystack: 'hay', fence: 'fence', daisies: 'daisy', loc_fir: 'fir' };
+  var BH = { house: 1.12, tree: 1.02, bush: 0.44, hay: 0.7, fence: 0.6, daisy: 0.3, fir: 1.22 };
+  var P3N = { house: 16, tree: 30, bush: 40, hay: 16, fence: 48, daisy: 80, fir: 30 }, n3 = {};
+  function buildProps3() {
+    var T = TT, i, P = {};
+    P.tree = [part(cyl(0.05, 0.08, 0.44, 6), '#8a5a35', [0, 0.22, 0]),
+              part(ico(0.3, 0), '#5cb85c', [0, 0.62, 0]), part(ico(0.24, 0), '#6cc66a', [0.22, 0.52, 0.06]),
+              part(ico(0.24, 0), '#4ea84e', [-0.21, 0.54, -0.04]), part(ico(0.19, 0), '#79d073', [0.03, 0.84, 0.05])];
+    P.bush = [part(ico(0.25, 0), '#5cb85c', [0, 0.2, 0], null, [1.3, 0.9, 1]), part(ico(0.19, 0), '#6cc66a', [0.27, 0.15, 0.05]),
+              part(ico(0.18, 0), '#4ea84e', [-0.27, 0.14, -0.03]),
+              part(ico(0.035, 0), '#ff5d73', [0.1, 0.34, 0.18]), part(ico(0.035, 0), '#ff5d73', [-0.14, 0.27, 0.17]),
+              part(ico(0.035, 0), '#ff5d73', [0.3, 0.22, 0.17])];
+    var tri = new T.Shape(); tri.moveTo(-0.62, 0); tri.lineTo(0.62, 0); tri.lineTo(0, 0.5); tri.lineTo(-0.62, 0);
+    var roof = new T.ExtrudeGeometry(tri, { depth: 1, bevelEnabled: false }); roof.translate(0, 0, -0.5); roof.rotateY(Math.PI / 2);
+    P.house = [part(box(1, 0.62, 0.9), '#fff1d6', [0, 0.31, 0]), part(roof, '#e8553f', [0, 0.6, 0], null, [1, 1, 1.18]),
+               part(box(0.12, 0.24, 0.12), '#b5523f', [0.3, 0.92, -0.12]),
+               part(box(0.2, 0.34, 0.03), '#8a5a35', [0.2, 0.17, 0.455]), part(box(0.26, 0.22, 0.02), '#ffffff', [-0.2, 0.36, 0.452]),
+               part(box(0.2, 0.16, 0.03), '#8fd3ff', [-0.2, 0.36, 0.46]), part(box(1.04, 0.05, 0.94), '#d9c7a6', [0, 0.025, 0])];
+    P.hay = [part(cyl(0.48, 0.52, 0.42, 10), '#e9c46a', [0, 0.21, 0]), part(ico(0.49, 1), '#f2d27a', [0, 0.42, 0], null, [1, 0.58, 1]),
+             part(cyl(0.53, 0.53, 0.06, 10), '#c99a3a', [0, 0.3, 0])];
+    P.fence = [part(box(1.0, 0.07, 0.04), '#b97a45', [0, 0.16, -0.04]), part(box(1.0, 0.07, 0.04), '#b97a45', [0, 0.38, -0.04])];
+    for (i = 0; i < 4; i++) P.fence.push(part(box(0.1, 0.5, 0.05), '#e0a868', [-0.375 + i * 0.25, 0.25, 0]),
+                                         part(cone(0.072, 0.1, 4), '#e0a868', [-0.375 + i * 0.25, 0.55, 0], [0, Math.PI / 4, 0]));
+    P.daisy = [part(cone(0.13, 0.16, 5), '#4ea84e', [0, 0.08, 0])];
+    for (i = 0; i < 5; i++) {
+      var dx = (i - 2) * 0.09 + hash(i) * 0.03, dh = 0.17 + hash(i + 7) * 0.1, dz = hash(i + 2) * 0.08 - 0.04;
+      P.daisy.push(part(box(0.016, dh, 0.016), '#3f8f3f', [dx, dh / 2, dz]),
+                   part(cyl(0.06, 0.06, 0.016, 8), i % 3 === 1 ? '#ffd84d' : '#ffffff', [dx, dh, dz], [1.1, 0, 0]),
+                   part(cyl(0.024, 0.024, 0.02, 6), '#ffb703', [dx, dh + 0.006, dz + 0.008], [1.1, 0, 0]));
+    }
+    P.fir = [part(cyl(0.06, 0.08, 0.3, 5), '#7a4f35', [0, 0.15, 0]),
+             part(cone(0.44, 0.5, 7), '#2f6b4a', [0, 0.47, 0]), part(cone(0.34, 0.42, 7), '#357a52', [0, 0.74, 0]),
+             part(cone(0.24, 0.36, 7), '#3b8659', [0, 0.98, 0]), part(cone(0.13, 0.17, 7), '#ffffff', [0, 1.13, 0]),
+             part(cone(0.2, 0.08, 7), '#f4f8ff', [0, 0.84, 0]), part(cone(0.3, 0.08, 7), '#f4f8ff', [0, 0.6, 0])];
+    M.p3 = {};
+    for (var k in P) M.p3[k] = inst(P3N[k], merge(P[k]), mats.v, true);
+  }
+  /* поставить объёмный реквизит: kind — ключ модели, h — высота в единицах */
+  function p3(kind, x, z, h, sway, ry) {
+    var im = M.p3[kind]; if (!im || n3[kind] >= P3N[kind]) return 0;
+    var sc = h / BH[kind];
+    put(im, n3[kind]++, x, 0, z, sc, sc, sc, sway || 0, ry || 0);
+    return sc;
+  }
+  function p3done() { for (var k in M.p3) { done(M.p3[k], n3[k] || 0); n3[k] = 0; } }
+  function p3fence(x, z, h, n) {          // забор — сквозные секции встык, без щелей
+    var sc = h / BH.fence;
+    for (var k = 0; k < n; k++) p3('fence', x + (k - (n - 1) / 2) * sc * 0.99, z, h);
   }
 
   /* ── предметы на дороге: трамплины, платформы, звёзды, ямы, лужи, тени; пулы спрайтов ── */
@@ -4188,8 +4272,14 @@ var Plat3D = (function () {
       return Math.abs(z) > 0.49 ? '#e07b22' : x > 0.99 ? '#c96f1e' : y < 0.01 ? '#7a4a20' : '#ffb703'; })];
     for (var i = 1; i < 5; i++) rp.push(part(box(0.07, 0.012, 0.96), '#e63946', [i / 5, i / 5 + 0.006, 0], [0, 0, Math.PI / 4], [1.41, 1, 1]));
     M.ramp = inst(6, merge(rp), mats.v, true); M.ramp.castShadow = false;
-    M.plat = inst(6, merge([part(box(1, 1, 1), '#b9803f', null, null, null, function (x, y) { return y > 0.1 ? '#c58a45' : '#8a5a28'; }),
-                            part(box(1.02, 0.22, 1.04), '#78c850', [0, 0.52, 0], null, null, function (x, y) { return y > 0.55 ? '#86d45a' : '#5fae43'; })]), mats.v, true);
+    /* Платформа — цельный земляной блок от дороги до верха (верх ровно o.h): слои грунта,
+       камешки, травяная шапка с напуском и свесами. Модель 1×1×1, низ в 0, верх в 1. */
+    var pl = [part(box(1, 0.32, 1), '#7a4a2a', [0, 0.16, 0]), part(box(1, 0.3, 1), '#8d5a33', [0, 0.47, 0]),
+              part(box(1, 0.26, 1), '#a8703f', [0, 0.75, 0]),
+              part(box(1.05, 0.13, 1.06), '#78c850', [0, 0.935, 0], null, null, function (x, y) { return y > 0.99 ? '#8ad85e' : '#5fae43'; })];
+    for (i = 0; i < 7; i++) pl.push(part(box(0.06 + hash(i) * 0.06, 0.06 + hash(i + 3) * 0.05, 0.04), '#5fae43', [-0.44 + i * 0.145, 0.85, 0.52]));
+    for (i = 0; i < 6; i++) pl.push(part(ico(0.05, 0), i % 2 ? '#5e3a22' : '#c49061', [-0.4 + i * 0.16 + hash(i * 3) * 0.05, 0.12 + hash(i * 5) * 0.55, 0.5]));
+    M.plat = inst(6, merge(pl), mats.v, true);
     M.post = inst(24, merge([part(cyl(0.07, 0.08, 1, 6), '#8a5a28', [0, 0.5, 0])]), mats.v);
     /* Звезда — главная награда: настоящая объёмная, золотая, крутится. */
     var ss = new T.Shape();
@@ -4204,7 +4294,7 @@ var Plat3D = (function () {
     M.blob = inst(64, cg, mats.blob); M.blob.renderOrder = 1;
     M.pudRim = inst(6, cg, mats.puddleRim); M.pud = inst(6, cg, mats.puddle);
     var pq = new T.PlaneGeometry(1, 1); pq.rotateX(-Math.PI / 2);
-    M.pitTop = inst(6, pq, mats.pit); M.pitFace = inst(6, new T.PlaneGeometry(1, 1), mats.pit);
+    M.pitTop = inst(6, pq, mats.pitIn); M.pitFace = inst(6, new T.PlaneGeometry(1, 1), mats.pit);
     M.rail = inst(80, merge([part(box(1, 1, 1), '#ffffff')]), mats.v);
     bbGeoB = new T.PlaneGeometry(1, 1); bbGeoB.translate(0, 0.5, 0);
     bbGeoM = new T.PlaneGeometry(1, 1);
@@ -4309,14 +4399,8 @@ var Plat3D = (function () {
       } else if (t === 'plat') {
         /* Платформа целиком ЗА плоскостью игры: машинка под ней проезжает спереди, а не сквозь
            опоры (в 2D платформа тоже рисуется до машинки); на ней — стоит у самой кромки. */
-        var pw = o.w * u + 0.12 * 100 * S * u, ph = 0.42;
-        if (nP < 6) put(M.plat, nP++, x + o.w * u / 2, o.h * u - ph / 2, -0.82, pw, ph, 1.6);
-        var ph2 = Math.max(0.05, o.h * u - ph);
-        for (k = 1; k < 4 && nPo < 24; k++) {
-          put(M.post, nPo++, x + o.w * u * k / 4, 0, -0.3, 1, ph2, 1);
-          if (nPo < 24) put(M.post, nPo++, x + o.w * u * k / 4, 0, -1.35, 1, ph2, 1);
-        }
-        blob(x + o.w * u / 2, -0.82, o.w * u * 0.5, 0.75);
+        var pw = o.w * u + 0.12 * 100 * S * u;
+        if (nP < 6) put(M.plat, nP++, x + o.w * u / 2, 0, -0.82, pw, o.h * u, 1.6);
       } else if (t === 'star') {
         var sb = Math.sin(o.ph * 2.4) * 10 * S;
         if (nS < 28) put(M.star, nS++, x, (o.y + sb) * u, zO, 1.05 * S * u * 100, 1.05 * S * u * 100, 1.05 * S * u * 100,
@@ -4373,8 +4457,14 @@ var Plat3D = (function () {
         nRl = rail(o, x, nRl);
       } else if (t === 'prop') {
         var zp = Zd(roadTop() - 10 * S) - 0.2, phh = (PROP_H[o.kind] || 130) * S * u;
-        if (o.kind === 'fence') { var fw = sprW('fence', phh / u) * u; for (k = 0; k < 4; k++) bb('fence', x + (k - 1.5) * fw, 0, zp, phh, { alpha: 0.98 }); continue; }
-        var pw2 = bb(frameOf(o.kind, o.ph), x, 0, zp, phh, withMove(o.kind, o.ph, phh / u, { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.010 }));
+        if (o.kind === 'fence') { p3fence(x, zp, phh * 1.6, 4); continue; }
+        var k3d = P3K[o.kind];
+        if (k3d) {                                    // объёмная версия: крупнее спрайта, покачивается
+          var sc3 = p3(k3d, x, zp, phh * (k3d === 'daisy' ? 2.2 : 1.45), Math.sin(T * 1.3 + (o.ph || 0)) * (k3d === 'house' || k3d === 'hay' ? 0 : 0.025));
+          if (k3d !== 'daisy') blob(x, zp, BH[k3d] * sc3 * 0.45, 0.32);
+          continue;
+        }
+        var pw2 = bb(frameOf(o.kind, o.ph), x, 0, zp, phh * 1.2, withMove(o.kind, o.ph, phh * 1.2 / u, { sy: 1 + Math.sin(T * 1.3 + (o.ph || 0)) * 0.010 }));
         blob(x, zp, pw2 * 0.4, 0.25);
       } else if (t === 'traffic') {
         if (!ok(imgOf(o.kind))) { lazyImg(o.kind); continue; }
@@ -4515,22 +4605,37 @@ var Plat3D = (function () {
     }
     done(M.dash, n);
     n = 0;                                          // пучки травы на ближней и дальней обочине
-    for (i = Math.floor((xw - 30) / 0.9); i <= Math.floor((xw + 60) / 0.9) && n < 90; i++) {
+    for (i = Math.floor((xw - 30) / 0.6); i <= Math.floor((xw + 60) / 0.6) && n < 160; i++) {
       var hx = hash(i);
-      if (hx < 0.45) continue;
-      var tx = i * 0.9 - xw + hx * 0.5, front = hash(i * 1.7) > 0.5;
+      if (hx < 0.4) continue;
+      var tx = i * 0.6 - xw + hx * 0.4, front = hash(i * 1.7) > 0.5;
       if (front && inPit(tx)) continue;
       _c.set(thRef ? thRef.grass : '#6ab04c'); _c.multiplyScalar(0.8 + hx * 0.3);
       M.tuft.setColorAt(n, _c);
-      put(M.tuft, n++, tx, 0, front ? ZC + 0.2 + hash(i * 2.3) * 0.3 : ZB - 0.5 - hash(i * 2.3) * 1.2, 1 + hx, 1 + hx, 1, 0, hx * 3);
+      put(M.tuft, n++, tx, 0, front ? ZC + 0.2 + hash(i * 2.3) * (ZE - ZC - 0.5) : ZB - 0.5 - hash(i * 2.3) * 1.2, 1 + hx, 1 + hx, 1, 0, hx * 3);
     }
     done(M.tuft, n);
+    var pr0 = thRef && thRef.props || [], green = /^(house|tree|bush|daisies|fence)$/;   // цветы — только в зелёных темах
+    var flowers = pr0.some(function (k) { return green.test(k); });
+    if (flowers) for (i = Math.floor((xw - 20) / 1.1); i <= Math.floor((xw + 40) / 1.1); i++) {   // ромашки на ближней обочине
+      if (hash(i * 8.3) < 0.45) continue;
+      var vx = i * 1.1 - xw + hash(i * 1.9) * 0.7;
+      if (inPit(vx)) continue;
+      p3('daisy', vx, ZC + 1.6 + hash(i * 6.1) * (ZE - ZC - 1.9), 0.4 + hash(i) * 0.1, Math.sin(T * 1.6 + i) * 0.05, (hash(i) - 0.5) * 0.6);
+    }
     n = 0;                                          // камешки в срезе земли: без них торт плоский
     for (i = Math.floor((xw - 30) / 1.3); i <= Math.floor((xw + 50) / 1.3) && n < 40; i++) {
-      var sx = i * 1.3 - xw + hash(i * 3.3) * 0.8, sy = -0.75 - hash(i * 5.7) * 2.4, ss = 0.25 + hash(i * 1.1) * 0.35;
+      var sx = i * 1.3 - xw + hash(i * 3.3) * 0.8, sy = -0.7 - hash(i * 5.7) * 1.4, ss = 0.2 + hash(i * 1.1) * 0.25;
       if (inPit(sx)) continue;
-      _c.set(sy < -1.9 ? '#5e3a22' : '#93603a'); M.stone.setColorAt(n, _c);
+      _c.set(sy < -1.3 ? '#5e3a22' : '#93603a'); M.stone.setColorAt(n, _c);
       put(M.stone, n++, sx, sy, ZE + 0.02, ss * 1.4, ss, ss, hash(i) * 2);
+    }
+    if (!flowers) for (i = Math.floor((xw - 20) / 1.5); i <= Math.floor((xw + 40) / 1.5) && n < 80; i++) {   // без цветов (пляж, город, зима) — камушки и комья на обочине
+      if (hash(i * 9.7) < 0.35) continue;
+      var gx = i * 1.5 - xw + hash(i * 2.2) * 0.9, gs = 0.16 + hash(i * 4.9) * 0.22;
+      if (inPit(gx)) continue;
+      _c.set(mix(thRef ? thRef.grass : '#6ab04c', '#2a2018', 0.12 + hash(i) * 0.2)); M.stone.setColorAt(n, _c);
+      put(M.stone, n++, gx, 0.03, ZC + 0.8 + hash(i * 3.9) * (ZE - ZC - 1.1), gs * 1.3, gs * 0.8, gs * 3.2, 0, hash(i) * 3);
     }
     done(M.stone, n);
   }
@@ -4546,22 +4651,31 @@ var Plat3D = (function () {
 
   /* дальний ряд спрайтов-реквизита (дома, деревья, коровы) и кусты у обочины — те же картинки, что в 2D */
   function updProps(xw) {
-    var th = thRef, pr = th.props || ['house', 'tree'], i, sp = 4.6, zf = -5.2;
+    var th = thRef, pr = th.props || ['house', 'tree'], i, sp = 4.6, zf = -4.2;
+    /* высоты ряда в единицах: объёмные — в масштабе деревьев дальнего плана, спрайты — ×1,3 к 2D */
+    var H3 = { house: 2.1, tree: 2.7, bush: 0.85, hay: 1.15, fence: 0.75, daisy: 0.5, fir: 2.9 };
     for (i = Math.floor((xw - 34) / sp); i <= Math.floor((xw + 54) / sp); i++) {
       var nm = pr[((i % pr.length) + pr.length) % pr.length];
-      if (nm === 'fence') continue;
-      var x = i * sp - xw + hash(i) * 1.2, z = zf - hash(i * 1.3) * 1.6;
+      var x = i * sp - xw + hash(i) * 1.2, z = zf - hash(i * 1.3) * 1.4;
       if (propBusy3(x)) continue;
-      var hh = (PROP_H[nm] || 150) * 0.86 * 1.15 / 100;
+      var k3 = P3K[nm], hv = 0.9 + hash(i * 2.1) * 0.25;
+      if (nm === 'fence') { p3fence(x, z + 0.6, H3.fence, 3); continue; }
+      if (k3) {
+        var s3 = p3(k3, x, z, H3[k3] * hv, k3 === 'tree' || k3 === 'fir' ? Math.sin(T * 1.1 + i) * 0.02 : 0, k3 === 'house' ? (hash(i * 7) - 0.5) * 0.5 : hash(i) * 6);
+        if (k3 !== 'daisy') blob(x, z, BH[k3] * s3 * 0.5, 0.4);
+        continue;
+      }
+      var hh = (PROP_H[nm] || 150) * 0.86 * 1.15 * 1.3 / 100;
       var w = bb(frameOf(nm, i), x, 0, z, hh, withMove(nm, i, hh * 100 * S, { alpha: 0.96 }));
       if (w) blob(x, z, w * 0.4, 0.35);
     }
     sp = 2.7;
+    var bush3 = !th.props || th.props.indexOf('loc_fir') < 0 ? 'bush' : 'fir';
     for (i = Math.floor((xw - 20) / sp); i <= Math.floor((xw + 34) / sp); i++) {
       if (hash(i * 5.1) < 0.4) continue;
-      var bx = i * sp - xw + hash(i * 2.9) * 0.8, bz = -2.15 - hash(i * 4.4) * 0.6;
+      var bx = i * sp - xw + hash(i * 2.9) * 0.8, bz = -2.25 - hash(i * 4.4) * 0.6;
       if (Math.abs(bx) < 1.4 || propBusy3(bx)) continue;
-      bb('bush', bx, 0, bz, 0.66 * (0.85 + hash(i) * 0.3), withMove('bush', i, 66 * S, {}));
+      p3(bush3, bx, bz, (bush3 === 'fir' ? 1.1 : 0.78) * (0.85 + hash(i) * 0.3), Math.sin(T * 1.4 + i) * 0.03, hash(i * 3) * 6);
     }
   }
   function propBusy3(x) {
@@ -4574,7 +4688,7 @@ var Plat3D = (function () {
 
   function updFar(xw) {
     var th = thRef, i, n;
-    var hs = [[M.hill1, 9, -30, 7, th.h1], [M.hill2, 14, -55, 16, th.h2]];
+    var hs = [[M.hill1, 9, -30, 6, th.h1], [M.hill2, 14, -55, 9.5, th.h2]];   // ниже, чем было: над ними видно небо и солнце
     for (var r = 0; r < 2; r++) {
       var im = hs[r][0], sp = hs[r][1], z0 = hs[r][2], sz = hs[r][3]; n = 0;
       for (i = Math.floor((xw - 70) / sp); i <= Math.floor((xw + 120) / sp) && n < 14; i++) {
@@ -4601,7 +4715,7 @@ var Plat3D = (function () {
           _c.set(['#f4a6a6', '#a6d1f4', '#f4e0a6', '#bfe8c2', '#d9c2f0'][Math.floor(h1 * 5)]);
           put(fm, n, fx, -drop * 1.6, fz, 1.7 + h2 * 1.2, 4 + h1 * 7, 1.6);
         } else if (key === 'peaks') {
-          _c.setRGB(1, 1, 1); put(fm, n, fx, -drop * 2, fz, 5 + h1 * 4, 6 + h2 * 6, 5 + h1 * 2);
+          _c.setRGB(1, 1, 1); put(fm, n, fx, -drop * 2, fz, 5 + h1 * 4, 5 + h2 * 4.5, 5 + h1 * 2);   // ниже, чтобы над ними оставалось небо с солнцем
         } else if (key === 'dunes') {
           _c.set(th.h1); _c.multiplyScalar(0.95 + h2 * 0.1); put(fm, n, fx, -1.4 - drop, fz, 4 + h1 * 3, 1.8 + h2, 3);
         } else if (key === 'sea') {
@@ -4626,9 +4740,17 @@ var Plat3D = (function () {
     M.sun.visible = !!th.sun && ok(sunIm) && night < 0.6;
     if (M.sun.visible) {
       if (mats.sun.map !== texOf(sunIm)) { mats.sun.map = texOf(sunIm); mats.sun.needsUpdate = true; }
-      M.sun.position.set(cam.position.x + 52, cam.position.y + 30, -140);
-      M.sun.scale.set(11, 11 * ih(sunIm) / iw(sunIm), 1); mats.sun.opacity = 1 - night;
+      /* Солнце целиком в кадре, в правой верхней трети: точка экрана → луч камеры на глубине d
+         (ось камеры приходит в (CARX, GY) — см. updCam). */
+      cam.updateMatrixWorld();
+      var d = 150, kk2 = 2 * d * Math.tan(cam.fov * Math.PI / 360) / H, sh2 = H * 0.17 * kk2;
+      _v.set((W * 0.72 - CARX) * kk2, (GY - H * 0.12) * kk2, -d); cam.localToWorld(_v);
+      M.sun.position.copy(_v); M.sun.quaternion.copy(cam.quaternion);
+      M.sun.scale.set(sh2 * iw(sunIm) / ih(sunIm), sh2, 1); mats.sun.opacity = 1 - night;
+      M.halo.position.copy(_v).addScaledVector(_v.sub(cam.position).normalize(), 2); M.halo.quaternion.copy(cam.quaternion);
+      M.halo.scale.set(sh2 * 3, sh2 * 3, 1); mats.halo.opacity = 0.9 * (1 - night);
     }
+    M.halo.visible = M.sun.visible;
   }
 
   /* ── палитра: небо, туман, свет, трава, асфальт — от TH(); он уже плавно смешивает темы ── */
@@ -4735,7 +4857,7 @@ var Plat3D = (function () {
     try {
       frameId++;
       u = 1 / (100 * S);
-      bbN = 0; glN = 0; miN = 0; nB = 0;
+      bbN = 0; glN = 0; miN = 0; nB = 0; for (var k3 in P3N) n3[k3] = 0;
       updTheme();
       R.setClearColor(fog.color);
       var xw = carX * u;
@@ -4749,13 +4871,13 @@ var Plat3D = (function () {
       drawPops(dt, M.star.count);
       updRobot();
       updCar();
-      if (grounded && !wasGround) burst(0, 0.05, 0.3, 10, '#e8e0cd', 1.8, 0.45);   // пыль при посадке
+      if (grounded && !wasGround) burst(0, 0.05, 0.3, 12, '#e8e0cd', 1.9, 0.5);   // пыль при посадке (2D-клубы в 3D не рисуются)
       wasGround = grounded;
       updPts(dt);
       for (var i = bbN; i < pool.length; i++) pool[i].visible = false;
       for (i = glN; i < glows.length; i++) glows[i].visible = false;
       for (i = miN; i < misc.length; i++) misc[i].visible = false;
-      done(M.blob, nB);
+      done(M.blob, nB); p3done();
       R.render(scene, cam);
     } catch (e) { if (window.__p3err === undefined) window.__p3err = String(e && e.stack || e); fail(); return; }
     ms = performance.now() - t0;
@@ -4877,9 +4999,16 @@ function drawHUD() {
   var hudTop = HUDTOP();
   if (best > 0) drawBest(best, hudTop);
 
+  /* В 3D надписи идут поверх пёстрого леса: белая заливка, тёмная обводка в цвет надписи и
+     мягкая тень, как у HUD; сдвиг на подъём камеры — как у частиц. */
+  var p3on = typeof Plat3D !== 'undefined' && Plat3D.on(), tdy = p3on ? Plat3D.dy() : 0;
   texts.forEach(function (t) {
     g.save(); g.globalAlpha = clamp(t.life / t.max, 0, 1);
-    outText(t.t, (t.x - carX) + CARX, GY - t.y, 40 * S, t.c, '#2b2140');
+    if (p3on) {
+      g.globalAlpha = clamp(t.life / t.max * 2.5, 0, 1);   // полная яркость до последних 40 % жизни: полупрозрачное над лесом — серое
+      g.shadowColor = 'rgba(20,12,40,.45)'; g.shadowBlur = 8 * S; g.shadowOffsetY = 3 * S;
+      outText(t.t, (t.x - carX) + CARX, GY - t.y + tdy, 44 * S, '#ffffff', (t.c.length === 7 ? mix(t.c, '#1a1030', 0.68) : '#2b2140'));
+    } else outText(t.t, (t.x - carX) + CARX, GY - t.y, 40 * S, t.c, '#2b2140');
     g.restore();
   });
 
