@@ -169,6 +169,25 @@ console.log("6) газ с тачскрина");
   await pg.close();
 }
 
+console.log("N) предметы темы на обочине не дают звезду за «объехал»");
+{
+  const pp = await open("?s=lane&test=1", ALL_KNOWN);
+  await freeze(pp);
+  const r = await pp.evaluate(async () => {
+    const L = window.__lane(), ln = L.ln;
+    const t = Object.keys(window.PROP_H || {})[0];
+    if (!t) return { t: null };
+    const kind = window.laneKindProp(t);
+    const o = L.push(kind, 2.2, 0.30);
+    const s0 = window.__bg().stars;
+    for (let i = 0; i < 40 && o.z > -0.3; i++) await new Promise(r => setTimeout(r, 100));
+    return { t, decor: o.decor, overs: ln.overs, ds: window.__bg().stars - s0 };
+  });
+  ck("предмет темы помечен decor", r.t === null || r.decor === true, JSON.stringify(r));
+  ck("за проезд мимо предмета темы нет «объехал»", r.t === null || (r.overs === 0 && r.ds === 0), JSON.stringify(r));
+  await pp.close();
+}
+
 if (errs.length) { console.log("ошибки страницы:", errs.slice(0, 3).join(" | ")); fail += errs.length; }
 await browser.close();
 console.log(fail ? `\nПРОВАЛОВ: ${fail}` : "\nВСЁ ОК");

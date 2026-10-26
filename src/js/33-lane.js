@@ -84,7 +84,9 @@ var LANE_KINDS = [
 var LANE_DECOR = [ { t:'tree', h: 170 }, { t:'house', h: 160 }, { t:'bush', h: 70 }, { t:'flower', h: 56 } ];
 /* Обочина «руля» была одна и та же в любой локации: дерево, дом, куст, цветок.
    PROP_H уже сводит высоты всего реквизита к общей шкале — берём оттуда предметы темы. */
-function laneKindProp(t) { return PROP_H[t] ? { t: t, h: PROP_H[t] } : null; }
+/* Предметы темы (корова, мельница…) — только обочина: decor обязателен, иначе каждый
+   проезд мимо коровы засчитывался как «объехал препятствие» и давал звезду. */
+function laneKindProp(t) { return PROP_H[t] ? { t: t, h: PROP_H[t], decor: true } : null; }
 function laneDecorPool() {
   var extra = (TH().props || []).concat(TH().extra || []).map(laneKindProp).filter(Boolean);
   return extra.length ? LANE_DECOR.concat(extra) : LANE_DECOR;
@@ -372,7 +374,7 @@ var Lane = {
     var o = { t: kind.t, lane: lane, z: z, good: !!kind.good, jump: !!kind.jump, h: kind.h,
               pop: !!kind.pop, air: kind.air || 0,          // шарик: висит на высоте прыжка и лопается
               slow: kind.slow || 0, col: kind.slow ? pick(TRAFFIC) : null,   // попутная машина едет, а не стоит
-              decor: LANE_DECOR.indexOf(kind) >= 0, sky: LANE_SKY.indexOf(kind) >= 0,
+              decor: LANE_DECOR.indexOf(kind) >= 0 || !!kind.decor, sky: LANE_SKY.indexOf(kind) >= 0,
               ph: rnd(0, TAU), done: false };
     ln.objs.push(o);
     markFirst(o, o.t);
