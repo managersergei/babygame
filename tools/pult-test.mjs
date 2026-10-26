@@ -3,6 +3,8 @@
 import { createRequire } from "node:module"; import { pathToFileURL } from "node:url"; import { existsSync, readdirSync } from "node:fs";
 async function loadChromium() { for (const b of [import.meta.url, pathToFileURL(process.cwd() + "/").href, pathToFileURL(process.env.HOME + "/Documents/pf/").href]) for (const n of ["playwright", "@playwright/test"]) { try { const r = createRequire(b); const m = await import(pathToFileURL(r.resolve(n)).href); const c = m.chromium ?? m.default?.chromium; if (c) return c; } catch {} } throw new Error("playwright не найден"); }
 function cachedChrome() { const cache = `${process.env.HOME}/Library/Caches/ms-playwright`; if (!existsSync(cache)) return null; const dirs = readdirSync(cache).filter(d => /^chromium(_headless_shell)?-\d+$/.test(d)).sort((a, b) => +b.match(/\d+$/)[0] - +a.match(/\d+$/)[0]); for (const d of dirs) for (const l of ["chrome-headless-shell-mac-arm64/chrome-headless-shell", "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"]) { const p = `${cache}/${d}/${l}`; if (existsSync(p)) return p; } return null; }
+let FAILN = 0; const _log = console.log;
+console.log = (...a) => { if (a.some(x => typeof x === "string" && /FAIL/.test(x))) FAILN++; _log(...a); };
 const chromium = await loadChromium();
 const ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
 let browser; try { browser = await chromium.launch({ args: ARGS }); } catch { browser = await chromium.launch({ args: ARGS, executablePath: cachedChrome() }); }
@@ -12,7 +14,8 @@ const errs = []; game.on("pageerror", e => errs.push("game: " + e.message));
 await game.goto(BASE + "?test=1"); await game.waitForFunction(() => window.__bg && window.__bg().state === "garage", null, { timeout: 30000 });
 console.log("sw:", await game.evaluate(async () => { try { const r = await navigator.serviceWorker.getRegistration(); return r ? "registered" : "none"; } catch (e) { return "err " + e.message; } }));
 await game.click("#parentGo"); await game.keyboard.press("Space"); await game.waitForFunction(() => window.__bg().state === "gamemode");
-await game.keyboard.press("ArrowRight"); await game.waitForTimeout(150); await game.keyboard.press("ArrowRight");
+// Сюжет скрыт (07-cars.js), видимых режимов два — стрелкой листаем до РУЛЯ по id, а не по числу нажатий
+for (let i = 0; i < 4 && (await game.evaluate(() => window.__bg().gmId)) !== "lane"; i++) { await game.keyboard.press("ArrowRight"); await game.waitForTimeout(150); }
 await game.waitForFunction(() => !window.__bg().talking, null, { timeout: 15000 }); await game.keyboard.press("Space");
 await game.waitForFunction(() => window.__bg().state === "lane");
 await game.waitForFunction(() => /Ждём/.test(document.getElementById("pultState").textContent), null, { timeout: 20000 }).catch(() => {});
@@ -20,6 +23,9 @@ const code = await game.evaluate(() => document.getElementById("pultCode").textC
 const status = await game.evaluate(() => document.getElementById("pultState").textContent);
 console.log("code:", code, "| status:", status, "| qr:", await game.evaluate(() => document.getElementById("pultQr").width + "px"));
 const pult = await browser.newPage({ viewport: { width: 390, height: 844 } }); pult.on("pageerror", e => errs.push("pult: " + e.message));
+// Свежий Chromium завёл DeviceOrientationEvent.requestPermission (как Safari) и в headless отвечает
+// «denied» — пульт честно пишет «Нет доступа к движению». На телефоне разрешение даёт человек, здесь — тест.
+await pult.context().grantPermissions(["accelerometer", "gyroscope", "magnetometer"]);
 await pult.goto(BASE + "pult.html?c=" + code);
 await pult.waitForFunction(() => /Подключено/.test(document.getElementById("st").textContent), null, { timeout: 30000 }).catch(() => {});
 console.log("pult status:", await pult.evaluate(() => document.getElementById("st").textContent));
@@ -100,3 +106,5 @@ console.log("после выключения наклона руль не зал
 
 if (errs.length) console.log("errors:", errs.join(" | "));
 await browser.close();
+// Раньше тест печатал FAIL и выходил с нулём — run-tests считал его зелёным.
+process.exit(FAILN || errs.length ? 1 : 0);

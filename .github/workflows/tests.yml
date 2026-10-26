@@ -28,5 +28,13 @@ jobs:
       # кто-то правил собранный файл руками, и правка потеряется при следующей сборке.
       - name: Сборка совпадает с index.html
         run: node tools/build.mjs --check
+      # Поменяли index.html или vendor/, а VER в sw.js — нет: телефоны останутся на старой игре из кеша.
+      # База — коммит до пуша или база PR; клон неглубокий, поэтому её коммит догружаем отдельно.
+      - name: Версия кеша в sw.js поднята
+        env:
+          SWVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$SWVER_BASE" ] && ! echo "$SWVER_BASE" | grep -qE '^0+$'; then git fetch --no-tags --depth=1 origin "$SWVER_BASE" || true; fi
+          node tools/check-sw-ver.mjs
       - name: Прогон проверок
         run: node tools/run-tests.mjs ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '--quick' || '' }}

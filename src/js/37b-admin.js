@@ -66,6 +66,19 @@ var Admin = (function () {
     x.addEventListener('click', hide);
     head.appendChild(x);
     box.appendChild(head);
+    /* Версия сборки (tools/build.mjs: хеш исходников) — чтобы по скриншоту админки было видно,
+       какая сборка открыта и не отдал ли service worker старую. */
+    var ver = el('div', 'aver', 'сборка ' + (typeof BUILD_ID === 'string' ? BUILD_ID : 'без сборщика'));
+    ver.id = 'adminVer'; ver.style.cssText = 'font:12px monospace;opacity:.7;padding:0 12px 4px';
+    box.appendChild(ver);
+    /* Только чтение: сколько стоит кадр 3D-дороги, когда она включена (Lane3D.stats → renderer.info). */
+    var r3 = el('div', 'a3d', ''); r3.id = 'admin3d'; r3.style.cssText = ver.style.cssText;
+    box.appendChild(r3);
+    setInterval(function () {
+      if (!open()) return;
+      var s = typeof Lane3D !== 'undefined' && Lane3D.on() ? Lane3D.stats() : null;
+      r3.textContent = s && s.calls !== undefined ? '3D: вызовов отрисовки ' + s.calls + ', треугольников ' + s.tris + ', ' + s.ms + ' мс' : '';
+    }, 500);
 
     var body = el('div', 'abody');
     var G = CFG.groups();
