@@ -189,7 +189,7 @@ function laneProjTo(z, out) {
   return out;
 }
 function laneProj(z) { return laneProjTo(z, {}); }
-var lpA = {}, lpB = {}, lpC = {};        // рабочие проекции для горячих циклов
+var lpA = {}, lpB = {}, lpC = {}, lp3 = {};      // рабочие проекции для горячих циклов
 function laneH(o, k) { return o.h * S * k * 1.6; }        // экранная высота объекта
 
 var Lane = {
@@ -247,9 +247,9 @@ var Lane = {
         ln.y = 0; ln.vy = 0;
         if (wasUp) {                                        // приземление: звук и пыль из-под колёс
           A.land();
-          var nn = laneProj(0), cxl = nn.cx + ln.x * nn.half * LN.laneK;
+          var nn = Lane.pos(0, ln.x), cxl = nn.x;
           for (var d0 = 0; d0 < 7; d0++)
-            P({ x: cxl + rnd(-60, 60) * S, y: GY - H * LN.carY, vx: rnd(-70, 70) * S, vy: rnd(20, 90) * S,
+            P({ x: cxl + rnd(-60, 60) * S, y: GY - nn.y, vx: rnd(-70, 70) * S, vy: rnd(20, 90) * S,
                 r: rnd(5, 11) * S, c: pick(['#e8e0cd', '#d4c9ae']), kind: 'puff', life: rnd(0.3, 0.55), ay: 60 * S });
         }
       }
@@ -282,8 +282,8 @@ var Lane = {
     ln.sy = clamp(ln.sy + ln.syV * dt, -18 * S, 14 * S);   // упоры хода подвески
     A.engine(clamp((ln.spd - LN.spd0) / (LN.spdMax - LN.spd0), 0, 1) * (1 - 0.5 * b), 1, true);
     if (ln.gas && ln.y === 0 && Math.floor(ln.t * 22) !== Math.floor((ln.t - dt) * 22)) {
-      var nz = laneProj(0), cxg = nz.cx + ln.x * nz.half * LN.laneK;
-      P({ x: cxg + rnd(-50, 50) * S, y: GY - H * LN.carY, vx: rnd(-40, 40) * S, vy: rnd(10, 50) * S,
+      var nz = Lane.pos(0, ln.x), cxg = nz.x;
+      P({ x: cxg + rnd(-50, 50) * S, y: GY - nz.y, vx: rnd(-40, 40) * S, vy: rnd(10, 50) * S,
           r: rnd(4, 9) * S, c: pick(['#e8e0cd', '#d4c9ae']), kind: 'puff', life: rnd(0.25, 0.5), ay: 40 * S });
     }
     Lane.rhythm(dt);
@@ -412,6 +412,11 @@ var Lane = {
   },
   touch: function (o, near, peak) {
     var p = laneProj(o.z), px = p.cx + o.lane * p.half * LN.laneK, py = p.y;
+    /* В 3D надписи и искры ставим по 3D-камере: 2D-проекция там с картинкой не совпадает. */
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) {
+      var q3 = o.pop ? Lane3D.projObj(o, 0, lp3) : Lane3D.project(o.z, o.lane, 0, lp3);
+      if (q3) { px = q3.x; py = q3.y + (o.pop ? o.air * S : 0); }
+    }
     var high = Math.max(ln.y, peak || 0);
     if (o.pop) {                                            // шарик: допрыгнул — лопнул, не допрыгнул — пролетел мимо
       if (high > o.air * S * 0.55) {
@@ -474,7 +479,11 @@ var Lane = {
       burst(W / 2, GY - H * 0.45, 22, ['#ffd93d', '#fff'], 300 * S, 'spark');
     }
   },
-  pos: function (z, lane) { var q = laneProj(z); q.x = q.cx + lane * q.half * LN.laneK; return q; },
+  pos: function (z, lane) {
+    var q = laneProj(z); q.x = q.cx + lane * q.half * LN.laneK;
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) { var q3 = Lane3D.project(z, lane, 0, lp3); if (q3) { q.x = q3.x; q.y = q3.y; } }   // 3D: точка по 3D-камере
+    return q;
+  },
   /* Сцена без HUD: нужна и самому режиму, и уроку, начатому из него. */
   scene: function () {
     /* 3D готов — мир рисует WebGL-холст под этим; здесь только прозрачная очистка и частицы. */

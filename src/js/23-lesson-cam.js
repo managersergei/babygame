@@ -38,6 +38,10 @@ function scr(o) { return (o.x - carX) + CARX; }
 function lessonFocus(key) {
   var o;
   if (les.from === 'lane') {                                     // в «руле» координаты свои
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) {          // 3D: точка — по 3D-камере, иначе кружок «уплывал»
+      var q3 = les.obj ? Lane3D.projObj(les.obj, les.obj.sky ? 0 : 1.1) : Lane3D.project(0, ln.x, 1.4);
+      if (q3) return [q3.x, q3.y];
+    }
     if (les.obj) {
       var lo = les.obj, lp = laneProj(lo.z);
       return [W / 2 + lo.lane * lp.half * LN.laneK, lp.y - laneH(lo, lp.k) * 0.55];
