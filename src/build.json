@@ -21,6 +21,8 @@
     "15-background.js",
     "16-objects.js",
     "17-car-draw.js",
+    "32b-r3d.js",
+    "17b-plat3d.js",
     "18-hud.js",
     "19-screen-garage.js",
     "20-screen-mode.js",

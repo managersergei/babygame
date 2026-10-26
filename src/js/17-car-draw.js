@@ -87,6 +87,16 @@ function drawNight() {
 }
 
 function drawPlayScene() {
+  /* 3D готов — мир рисует WebGL-холст под этим (17b-plat3d.js); здесь прозрачная очистка и
+     частицы, сдвинутые на подъём камеры. Отказал прямо в этом кадре — ниже прежний 2D. */
+  if (typeof Plat3D !== 'undefined' && Plat3D.on()) {
+    Plat3D.render();
+    if (Plat3D.on()) {
+      g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.restore();
+      g.save(); g.translate(0, Plat3D.dy()); drawParts(true); g.restore();
+      return;
+    }
+  }
   drawSky(); drawClouds(); drawFar(); drawRoad(); drawProps();
   drawObjs(); drawTrain(false); drawRobot(); drawParts(true); drawCar(); drawTrain(true);
   drawNight();

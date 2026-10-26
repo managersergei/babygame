@@ -174,7 +174,7 @@ function frame(ts) {
     g.restore();
   }
   g.restore();
-  Lane3D.post();                              // 3D-холст скрыт везде, где «руль» не рисовался в этом кадре
+  R3D.post();                                 // 3D-холст скрыт везде, где в этом кадре не рисовали 3D (руль, платформер)
 
   /* Полноэкранная белая заливка до 0,75 — прямой запрет для 2–4 лет: вестибулярно и
      зрительно это удар. Заменено мягким тёплым свечением от центра события, вдвое слабее. */
@@ -308,6 +308,13 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     };
     /* Тест: режим «руль» изнутри. quiet() глушит очередь слов — иначе урок,
        начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
+    /* Тест: снимки 3D-платформера — ночь с фарами и выход из урока, который ждёт микрофон. */
+    window.__look = function (o) {
+      if ('night' in o) { night = o.night; nightTo = o.night; }
+      if ('lights' in o) lights = !!o.lights;
+      if (o.play && state === 'lesson') state = 'play';
+      return { state: state, night: night, lights: lights };
+    };
     window.__th = function () { return { ix: themeIx, from: themeFrom, k: +themeK.toFixed(3), sky: TH().sky.slice(), grass: TH().grass, set: setTheme }; };   // тест: смена палитры
     window.__lane = function () {
       return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS, l3d: Lane3D,
@@ -328,6 +335,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
                tilt: +tilt.toFixed(4), gh: Math.round(groundProbe(carX, carY) / S), grounded: grounded,   // тест: честный наклон по уклону
                wheelA: +wheelA.toFixed(3), carXw: Math.round(carX / S),   // тест: вращение колеса
                rigW: car ? Math.round(vehW(car.id, car.h * S) / S) : 0,
+               p3d: Plat3D.stats(),
                rigOn: !!(car && car.rig && rigSize(car, car.h * S)),   // машинка выбирается позже — до гаража car ещё null
                carY: Math.round(carY / S), best: best, total: total, tank: +tankMul.toFixed(2),
                fuelPicks: fuelPicks, overSel: over.sel,
