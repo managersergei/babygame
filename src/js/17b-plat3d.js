@@ -131,19 +131,18 @@ var Plat3D = (function () {
     gr.addColorStop(0.65, 'rgba(255,236,160,.14)'); gr.addColorStop(1, 'rgba(255,236,160,0)');
     c.fillStyle = gr; c.fillRect(0, 0, w, w);
   }
-  /* яма сверху: верх текстуры — дальний край. Видна дальняя стенка (земля темнеет вглубь),
-     боковые стенки, светлая кромка грунта по краю, в середине — темнота */
+  /* яма сверху: верх текстуры — дальний край. Камера смотрит в яму сбоку, поэтому видна дальняя
+     стенка (полоса сверху) и одна боковая — та, что обращена к камере (справа; для ямы левее
+     камеры экземпляр зеркалится). Ближняя кромка закрыта травой. В середине — темнота. */
   function pitTex(c, w, h) {
     c.fillStyle = '#07080c'; c.fillRect(0, 0, w, h);
-    var gr = c.createLinearGradient(0, 0, 0, h * 0.16);
-    gr.addColorStop(0, '#8a5c36'); gr.addColorStop(0.45, '#4a2f1c'); gr.addColorStop(1, 'rgba(7,8,12,0)');
-    c.fillStyle = gr; c.fillRect(0, 0, w, h * 0.16);
-    for (var sd = 0; sd < 2; sd++) {
-      var gx = c.createLinearGradient(sd ? w : 0, 0, sd ? w * 0.8 : w * 0.2, 0);
-      gx.addColorStop(0, '#5a3b24'); gx.addColorStop(1, 'rgba(7,8,12,0)');
-      c.fillStyle = gx; c.fillRect(sd ? w * 0.8 : 0, 0, w * 0.2, h);
-    }
-    c.fillStyle = '#b07a48'; c.fillRect(0, 0, w, 5); c.fillRect(0, 0, 4, h); c.fillRect(w - 4, 0, 4, h);
+    var gr = c.createLinearGradient(0, 0, 0, h * 0.22);
+    gr.addColorStop(0, '#8a5c36'); gr.addColorStop(0.5, '#4a2f1c'); gr.addColorStop(1, 'rgba(7,8,12,0)');
+    c.fillStyle = gr; c.fillRect(0, 0, w, h * 0.22);
+    var gx = c.createLinearGradient(w, 0, w * 0.66, 0);
+    gx.addColorStop(0, '#8a5c36'); gx.addColorStop(0.35, '#6a4529'); gx.addColorStop(0.7, '#2e1d12'); gx.addColorStop(1, 'rgba(7,8,12,0)');
+    c.fillStyle = gx; c.beginPath(); c.moveTo(w, 0); c.lineTo(w * 0.66, h * 0.22); c.lineTo(w * 0.66, h); c.lineTo(w, h); c.closePath(); c.fill();
+    c.fillStyle = '#b07a48'; c.fillRect(0, 0, w, 5); c.fillRect(w - 4, 0, 4, h);
   }
   function discTex(c, w) {
     c.fillStyle = '#fff'; c.beginPath(); c.arc(w / 2, w / 2, w / 2 - 1, 0, TAU); c.fill();
@@ -190,7 +189,6 @@ var Plat3D = (function () {
     mats.star = new T.MeshLambertMaterial({ color: 0xffd23d, emissive: 0x8a5a00, emissiveIntensity: 0.9, flatShading: true });
     mats.blob = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false,
                                           polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    mats.pit = new T.MeshBasicMaterial({ color: 0x14161d, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     mats.puddleRim = new T.MeshBasicMaterial({ color: 0x14283c, transparent: true, opacity: 0.35, depthWrite: false,
                                                polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     mats.puddle = new T.MeshLambertMaterial({ color: 0x2f8cc4, emissive: 0x1c6ea4, emissiveIntensity: 0.35,
@@ -205,7 +203,7 @@ var Plat3D = (function () {
     ctex.tlR = canvasTex(64, 270, tlightTex(true)); ctex.tlG = canvasTex(64, 270, tlightTex(false));
     ctex.disc = canvasTex(64, 64, discTex);
     ctex.halo = canvasTex(256, 256, haloTex); ctex.pit = canvasTex(128, 512, pitTex);
-    mats.pitIn = new T.MeshBasicMaterial({ map: ctex.pit, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    mats.pitIn = new T.MeshBasicMaterial({ map: ctex.pit, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     mats.halo = new T.MeshBasicMaterial({ map: ctex.halo, transparent: true, depthWrite: false, fog: false });
     ctex.sky = document.createElement('canvas'); ctex.sky.width = 2; ctex.sky.height = 256;
     ctex.skyT = new T.CanvasTexture(ctex.sky); ctex.skyT.colorSpace = T.SRGBColorSpace;
@@ -238,6 +236,7 @@ var Plat3D = (function () {
     var curb = merge([part(box(1, 1, 1), '#ffffff')]);
     M.curbF = inst(140, curb, mats.v, true); M.curbB = inst(140, curb, mats.v, true);
     M.dash = inst(70, merge([part(box(1, 1, 1), '#f4f4ee')]), mats.v, true);
+    M.seam = inst(112, merge([part(box(1, 1, 1), '#5f6672')]), mats.v);
     M.stone = inst(80,merge([part(ico(0.5, 0), '#ffffff', null, null, [1, 0.6, 0.35])]), mats.flat);
     M.tuft = inst(160, merge([part(cone(0.09, 0.32, 4), '#ffffff', [0, 0.16, 0]), part(cone(0.07, 0.24, 4), '#ffffff', [0.1, 0.12, 0.03], [0, 0, -0.4]),
                              part(cone(0.07, 0.24, 4), '#ffffff', [-0.1, 0.12, -0.02], [0, 0, 0.4])]), mats.v);
@@ -275,8 +274,10 @@ var Plat3D = (function () {
         BH — высота модели; масштаб экземпляра = нужная высота / BH. Спрайты остались у животных,
         машин и предметов, у которых нет объёмной версии. ── */
   var P3K = { house: 'house', tree: 'tree', bush: 'bush', haystack: 'hay', fence: 'fence', daisies: 'daisy', loc_fir: 'fir' };
-  var BH = { house: 1.12, tree: 1.02, bush: 0.44, hay: 0.7, fence: 0.6, daisy: 0.3, fir: 1.22 };
-  var P3N = { house: 16, tree: 30, bush: 40, hay: 16, fence: 48, daisy: 80, fir: 30 }, n3 = {};
+  var BH = { house: 1.12, tree: 1.02, bush: 0.44, hay: 0.7, fence: 0.6, daisy: 0.3, fir: 1.22,
+            shell: 0.1, starfish: 0.06, palmlet: 0.56, hydrant: 0.44, bench: 0.42, lamp: 0.9, drift: 0.26, snowlump: 0.62 };
+  var P3N = { house: 16, tree: 30, bush: 40, hay: 16, fence: 48, daisy: 80, fir: 60,
+              shell: 40, starfish: 30, palmlet: 30, hydrant: 20, bench: 24, lamp: 24, drift: 50, snowlump: 20 }, n3 = {};
   function buildProps3() {
     var T = TT, i, P = {};
     P.tree = [part(cyl(0.05, 0.08, 0.44, 6), '#8a5a35', [0, 0.22, 0]),
@@ -308,14 +309,46 @@ var Plat3D = (function () {
              part(cone(0.44, 0.5, 7), '#2f6b4a', [0, 0.47, 0]), part(cone(0.34, 0.42, 7), '#357a52', [0, 0.74, 0]),
              part(cone(0.24, 0.36, 7), '#3b8659', [0, 0.98, 0]), part(cone(0.13, 0.17, 7), '#ffffff', [0, 1.13, 0]),
              part(cone(0.2, 0.08, 7), '#f4f8ff', [0, 0.84, 0]), part(cone(0.3, 0.08, 7), '#f4f8ff', [0, 0.6, 0])];
+    /* ближний план тем без цветов: пляж (ракушки, морские звёзды, кустики пальм),
+       город (гидрант, скамейка, фонарик), зима (сугробы, ёлочки, снежные комья) */
+    P.shell = [part(ico(0.13, 1), '#ffe1cf', [0, 0.03, 0], null, [1, 0.42, 0.85]), part(cone(0.05, 0.05, 5), '#f1b39a', [0, 0.02, -0.12], [-1.4, 0, 0]),
+               part(ico(0.08, 1), '#ffc2b8', [0.2, 0.02, 0.06], [0, 0.6, 0], [1, 0.45, 0.85])];
+    for (i = 0; i < 5; i++) P.shell.push(part(box(0.012, 0.012, 0.2), '#e9a88c', [(i - 2) * 0.045, 0.055 - Math.abs(i - 2) * 0.008, 0], [0, (i - 2) * 0.28, 0]));
+    var sf = new T.Shape();
+    for (i = 0; i < 10; i++) {
+      var sa = Math.PI / 2 + i * Math.PI / 5, sr = i % 2 ? 0.06 : 0.17;
+      if (i) sf.lineTo(Math.cos(sa) * sr, Math.sin(sa) * sr); else sf.moveTo(Math.cos(sa) * sr, Math.sin(sa) * sr);
+    }
+    var sfg = new T.ExtrudeGeometry(sf, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 });
+    sfg.rotateX(-Math.PI / 2);
+    P.starfish = [part(sfg, '#ff8a5c', [0, 0.02, 0]), part(ico(0.03, 0), '#ffb38a', [0, 0.07, 0])];
+    P.palmlet = [part(cyl(0.035, 0.05, 0.22, 6), '#a0703f', [0, 0.11, 0], [0, 0, 0.12]), part(ico(0.045, 0), '#7a4f2a', [0.035, 0.22, 0.03])];
+    for (i = 0; i < 7; i++) {
+      var la = i / 7 * TAU, lt = 0.75 + hash(i + 11) * 0.35;
+      P.palmlet.push(part(cone(0.07, 0.36, 4), i % 2 ? '#3fae5a' : '#55c46a', [Math.cos(la) * 0.15, 0.27, Math.sin(la) * 0.15],
+                          [Math.sin(la) * lt, 0, -Math.cos(la) * lt], [1, 1, 0.3]));
+    }
+    P.hydrant = [part(cyl(0.12, 0.13, 0.05, 8), '#b8202c', [0, 0.025, 0]), part(cyl(0.09, 0.1, 0.3, 8), '#e63946', [0, 0.2, 0]),
+                 part(ico(0.095, 1), '#e63946', [0, 0.35, 0], null, [1, 0.7, 1]), part(cyl(0.03, 0.03, 0.06, 6), '#f4c542', [0, 0.42, 0]),
+                 part(cyl(0.04, 0.04, 0.28, 6), '#c42a36', [0, 0.25, 0], [0, 0, Math.PI / 2]), part(cyl(0.11, 0.11, 0.035, 8), '#f4c542', [0, 0.31, 0])];
+    P.bench = [part(box(0.8, 0.04, 0.24), '#c9853f', [0, 0.22, 0]), part(box(0.8, 0.12, 0.03), '#b87638', [0, 0.36, -0.12], [-0.2, 0, 0]),
+               part(box(0.04, 0.22, 0.2), '#4a4f5a', [-0.32, 0.11, 0]), part(box(0.04, 0.22, 0.2), '#4a4f5a', [0.32, 0.11, 0]),
+               part(box(0.03, 0.2, 0.03), '#4a4f5a', [-0.32, 0.3, -0.12]), part(box(0.03, 0.2, 0.03), '#4a4f5a', [0.32, 0.3, -0.12])];
+    P.lamp = [part(cyl(0.07, 0.09, 0.08, 6), '#3b414c', [0, 0.04, 0]), part(cyl(0.03, 0.035, 0.7, 6), '#4a5260', [0, 0.42, 0]),
+              part(cyl(0.05, 0.09, 0.08, 6), '#3b414c', [0, 0.8, 0]), part(ico(0.075, 1), '#fff2b0', [0, 0.84, 0], null, [1, 0.8, 1])];
+    P.drift = [part(ico(0.3, 1), '#f4f9ff', [0, 0, 0], null, [1.7, 0.85, 1]), part(ico(0.2, 1), '#e6f0fa', [0.38, 0, 0.05], null, [1.4, 0.8, 1]),
+               part(ico(0.16, 1), '#ffffff', [-0.36, 0, -0.02], null, [1.3, 0.75, 1])];
+    P.snowlump = [part(ico(0.22, 1), '#f4f9ff', [0, 0.18, 0], null, [1, 0.85, 1]), part(ico(0.15, 1), '#ffffff', [0.02, 0.45, 0]),
+                  part(cone(0.03, 0.12, 5), '#ff8c2a', [0.04, 0.46, 0.17], [Math.PI / 2, 0, 0]),
+                  part(ico(0.018, 0), '#2b2140', [-0.03, 0.5, 0.13]), part(ico(0.018, 0), '#2b2140', [0.08, 0.5, 0.12])];
     M.p3 = {};
     for (var k in P) M.p3[k] = inst(P3N[k], merge(P[k]), mats.v, true);
   }
   /* поставить объёмный реквизит: kind — ключ модели, h — высота в единицах */
-  function p3(kind, x, z, h, sway, ry) {
+  function p3(kind, x, z, h, sway, ry, y) {
     var im = M.p3[kind]; if (!im || n3[kind] >= P3N[kind]) return 0;
     var sc = h / BH[kind];
-    put(im, n3[kind]++, x, 0, z, sc, sc, sc, sway || 0, ry || 0);
+    put(im, n3[kind]++, x, y || 0, z, sc, sc, sc, sway || 0, ry || 0);
     return sc;
   }
   function p3done() { for (var k in M.p3) { done(M.p3[k], n3[k] || 0); n3[k] = 0; } }
@@ -340,7 +373,14 @@ var Plat3D = (function () {
     var pl = [part(box(1, 0.32, 1), '#7a4a2a', [0, 0.16, 0]), part(box(1, 0.3, 1), '#8d5a33', [0, 0.47, 0]),
               part(box(1, 0.26, 1), '#a8703f', [0, 0.75, 0]),
               part(box(1.05, 0.13, 1.06), '#78c850', [0, 0.935, 0], null, null, function (x, y) { return y > 0.99 ? '#8ad85e' : '#5fae43'; })];
-    for (i = 0; i < 7; i++) pl.push(part(box(0.06 + hash(i) * 0.06, 0.06 + hash(i + 3) * 0.05, 0.04), '#5fae43', [-0.44 + i * 0.145, 0.85, 0.52]));
+    /* свесы травы — неровные капли: разный шаг, ширина и длина, скруглённые снизу (ящики читались как зубцы стены) */
+    for (var dxp = -0.5; dxp < 0.47; ) {
+      var dw = 0.03 + hash(dxp * 91) * 0.04, dl = 0.04 + hash(dxp * 37 + 5) * 0.11;
+      dxp += dw + 0.01 + hash(dxp * 53 + 2) * 0.05;
+      if (dxp > 0.49) break;
+      pl.push(part(ico(1, 1), hash(dxp * 17) > 0.5 ? '#5fae43' : '#54a03c', [dxp, 0.875 - dl * 0.5, 0.515 + hash(dxp * 13) * 0.01], null, [dw, dl * 0.5 + 0.035, 0.022]));
+      dxp += dw;
+    }
     for (i = 0; i < 6; i++) pl.push(part(ico(0.05, 0), i % 2 ? '#5e3a22' : '#c49061', [-0.4 + i * 0.16 + hash(i * 3) * 0.05, 0.12 + hash(i * 5) * 0.55, 0.5]));
     M.plat = inst(6, merge(pl), mats.v, true);
     M.post = inst(24, merge([part(cyl(0.07, 0.08, 1, 6), '#8a5a28', [0, 0.5, 0])]), mats.v);
@@ -357,7 +397,7 @@ var Plat3D = (function () {
     M.blob = inst(64, cg, mats.blob); M.blob.renderOrder = 1;
     M.pudRim = inst(6, cg, mats.puddleRim); M.pud = inst(6, cg, mats.puddle);
     var pq = new T.PlaneGeometry(1, 1); pq.rotateX(-Math.PI / 2);
-    M.pitTop = inst(6, pq, mats.pitIn); M.pitFace = inst(6, new T.PlaneGeometry(1, 1), mats.pit);
+    M.pitTop = inst(6, pq, mats.pitIn);
     M.rail = inst(80, merge([part(box(1, 1, 1), '#ffffff')]), mats.v);
     bbGeoB = new T.PlaneGeometry(1, 1); bbGeoB.translate(0, 0.5, 0);
     bbGeoM = new T.PlaneGeometry(1, 1);
@@ -485,8 +525,8 @@ var Plat3D = (function () {
         if (nPd < 6) { put(M.pudRim, nPd, x, 0.006, 0.45, o.w * 0.52 * u + 0.06, 1, 0.78); put(M.pud, nPd++, x, 0.01, 0.45, o.w * 0.52 * u, 1, 0.68); }
       } else if (t === 'pit') {
         if (nPt < 6) {
-          put(M.pitTop, nPt, x, 0.016, (ZB - 0.25 + ZE) / 2, o.w * u, 1, ZE - ZB + 0.25);
-          put(M.pitFace, nPt++, x, -3.5, ZE + 0.01, o.w * u, 7.04, 1);
+          // дыра только в полотне: от дальнего бордюра до ближнего; травяная полоса и срез земли перед ней целые
+          put(M.pitTop, nPt++, x, 0.016, (ZB - 0.25 + ZC) / 2, (x < 0 ? -1 : 1) * o.w * u, 1, ZC - ZB + 0.25);
         }
         var bite = o.bite || 0, rise = bite > 0 ? (1 - Math.abs(bite - 0.55) / 0.55) : 0;
         var ew = 0.8 * (1 + rise * 0.6);
@@ -559,7 +599,7 @@ var Plat3D = (function () {
       }
     }
     done(M.star, nS); done(M.ramp, nR); done(M.plat, nP); done(M.post, nPo);
-    done(M.pitTop, nPt); done(M.pitFace, nPt); done(M.pudRim, nPd); done(M.pud, nPd); done(M.rail, nRl);
+    done(M.pitTop, nPt); done(M.pudRim, nPd); done(M.pud, nPd); done(M.rail, nRl);
   }
   function Y(y2d) { return (GY - y2d) * u; }
 
@@ -667,12 +707,13 @@ var Plat3D = (function () {
       put(M.dash, n++, dx, 0.004, 1.35, 0.76, 0.01, 0.1);
     }
     done(M.dash, n);
-    n = 0;                                          // пучки травы на ближней и дальней обочине
+    n = 0;                                          // пучки травы на ближней и дальней обочине (на тротуаре города — нет)
+    var paved = !!(thRef && thRef.props && thRef.props.indexOf('loc_tower') >= 0);
     for (i = Math.floor((xw - 30) / 0.6); i <= Math.floor((xw + 60) / 0.6) && n < 160; i++) {
       var hx = hash(i);
       if (hx < 0.4) continue;
       var tx = i * 0.6 - xw + hx * 0.4, front = hash(i * 1.7) > 0.5;
-      if (front && inPit(tx)) continue;
+      if (front && paved) continue;
       _c.set(thRef ? thRef.grass : '#6ab04c'); _c.multiplyScalar(0.8 + hx * 0.3);
       M.tuft.setColorAt(n, _c);
       put(M.tuft, n++, tx, 0, front ? ZC + 0.2 + hash(i * 2.3) * (ZE - ZC - 0.5) : ZB - 0.5 - hash(i * 2.3) * 1.2, 1 + hx, 1 + hx, 1, 0, hx * 3);
@@ -680,27 +721,54 @@ var Plat3D = (function () {
     done(M.tuft, n);
     var pr0 = thRef && thRef.props || [], green = /^(house|tree|bush|daisies|fence)$/;   // цветы — только в зелёных темах
     var flowers = pr0.some(function (k) { return green.test(k); });
+    var nearK = pr0.indexOf('loc_palm') >= 0 ? 'beach' : pr0.indexOf('loc_tower') >= 0 ? 'city' : pr0.indexOf('loc_fir') >= 0 ? 'winter' : '';
+    if (nearK) nearProps(nearK, xw);
     if (flowers) for (i = Math.floor((xw - 20) / 1.1); i <= Math.floor((xw + 40) / 1.1); i++) {   // ромашки на ближней обочине
       if (hash(i * 8.3) < 0.45) continue;
       var vx = i * 1.1 - xw + hash(i * 1.9) * 0.7;
-      if (inPit(vx)) continue;
       p3('daisy', vx, ZC + 1.6 + hash(i * 6.1) * (ZE - ZC - 1.9), 0.4 + hash(i) * 0.1, Math.sin(T * 1.6 + i) * 0.05, (hash(i) - 0.5) * 0.6);
     }
     n = 0;                                          // камешки в срезе земли: без них торт плоский
     for (i = Math.floor((xw - 30) / 1.3); i <= Math.floor((xw + 50) / 1.3) && n < 40; i++) {
       var sx = i * 1.3 - xw + hash(i * 3.3) * 0.8, sy = -0.7 - hash(i * 5.7) * 1.4, ss = 0.2 + hash(i * 1.1) * 0.25;
-      if (inPit(sx)) continue;
       _c.set(sy < -1.3 ? '#5e3a22' : '#93603a'); M.stone.setColorAt(n, _c);
       put(M.stone, n++, sx, sy, ZE + 0.02, ss * 1.4, ss, ss, hash(i) * 2);
     }
-    if (!flowers) for (i = Math.floor((xw - 20) / 1.5); i <= Math.floor((xw + 40) / 1.5) && n < 80; i++) {   // без цветов (пляж, город, зима) — камушки и комья на обочине
+    if (!flowers && nearK !== 'city') for (i = Math.floor((xw - 20) / 1.5); i <= Math.floor((xw + 40) / 1.5) && n < 80; i++) {   // без цветов (пляж, город, зима) — камушки и комья на обочине
       if (hash(i * 9.7) < 0.35) continue;
       var gx = i * 1.5 - xw + hash(i * 2.2) * 0.9, gs = 0.16 + hash(i * 4.9) * 0.22;
-      if (inPit(gx)) continue;
       _c.set(mix(thRef ? thRef.grass : '#6ab04c', '#2a2018', 0.12 + hash(i) * 0.2)); M.stone.setColorAt(n, _c);
       put(M.stone, n++, gx, 0.03, ZC + 0.8 + hash(i * 3.9) * (ZE - ZC - 1.1), gs * 1.3, gs * 0.8, gs * 3.2, 0, hash(i) * 3);
     }
     done(M.stone, n);
+  }
+  /* ближний план тем без цветов — та же плотность, что у ромашек; в городе полоса — тротуар со швами плиток */
+  function nearProps(k, xw) {
+    var i, n = 0, GT = 0.06;                         // верх травяной полосы: она на 6 см выше полотна
+    for (i = Math.floor((xw - 20) / 1.1); i <= Math.floor((xw + 40) / 1.1); i++) {
+      if (hash(i * 8.3) < 0.45) continue;
+      var vx = i * 1.1 - xw + hash(i * 1.9) * 0.7, vz = ZC + 1.6 + hash(i * 6.1) * (ZE - ZC - 1.9), r = hash(i * 4.4), ry = (hash(i) - 0.5) * 1.2;
+      if (k === 'beach') {
+        if (r < 0.35) p3('shell', vx, vz, 0.16 + hash(i) * 0.06, 0, ry * 2, GT);
+        else if (r < 0.6) p3('starfish', vx, vz, 0.09, 0, ry * 3, GT);
+        else p3('palmlet', vx, vz - 0.3, 0.55 + hash(i) * 0.15, Math.sin(T * 1.4 + i) * 0.04, ry, GT);
+      } else if (k === 'city') {
+        if (r < 0.5) continue;                       // в городе реже: тротуар не свалка
+        if (r < 0.7) p3('hydrant', vx, vz, 0.42, 0, ry, GT);
+        else if (r < 0.88) p3('bench', vx, vz - 0.2, 0.42, 0, ry * 0.3, GT);
+        else p3('lamp', vx, vz - 0.4, 0.85, 0, 0, GT);
+      } else {
+        if (r < 0.5) p3('drift', vx, vz, 0.22 + hash(i) * 0.1, 0, ry, GT);
+        else if (r < 0.8) p3('fir', vx, vz - 0.3, 0.55 + hash(i) * 0.2, Math.sin(T * 1.2 + i) * 0.03, ry, GT);
+        else p3('snowlump', vx, vz - 0.2, 0.55, 0, ry * 0.5, GT);
+      }
+    }
+    if (k === 'city') {
+      for (i = Math.floor((xw - 30) / 0.9); i <= Math.floor((xw + 60) / 0.9) && n < 110; i++)
+        put(M.seam, n++, i * 0.9 - xw, 0.065, (ZC + ZE) / 2, 0.035, 0.01, ZE - ZC);
+      for (i = 1; i < 3; i++) put(M.seam, n++, 15, 0.065, ZC + i * (ZE - ZC) / 3, 90, 0.01, 0.035);
+    }
+    done(M.seam, n);
   }
   var pits = [], pitN = 0;
   function inPit(x) { for (var k = 0; k < pitN; k += 2) if (x > pits[k] - 0.1 && x < pits[k + 1] + 0.1) return true; return false; }
