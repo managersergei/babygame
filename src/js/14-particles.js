@@ -16,7 +16,9 @@ function updateParts(dt) {
 }
 
 function drawParts(worldSpace) {
+  var p3 = typeof Plat3D !== 'undefined' && Plat3D.on();
   parts.forEach(function (p) {
+    if (p3 && p.land) return;                     // пыль посадки в 3D рисует сама сцена — без двойной
     var a = clamp(p.life / p.max, 0, 1);
     var sx = worldSpace ? (p.x - carX) + CARX : p.x;
     var sy = GY - p.y;

@@ -83,9 +83,16 @@ function drawHUD() {
   var hudTop = HUDTOP();
   if (best > 0) drawBest(best, hudTop);
 
+  /* В 3D надписи идут поверх пёстрого леса: белая заливка, тёмная обводка в цвет надписи и
+     мягкая тень, как у HUD; сдвиг на подъём камеры — как у частиц. */
+  var p3on = typeof Plat3D !== 'undefined' && Plat3D.on(), tdy = p3on ? Plat3D.dy() : 0;
   texts.forEach(function (t) {
     g.save(); g.globalAlpha = clamp(t.life / t.max, 0, 1);
-    outText(t.t, (t.x - carX) + CARX, GY - t.y, 40 * S, t.c, '#2b2140');
+    if (p3on) {
+      g.globalAlpha = clamp(t.life / t.max * 2.5, 0, 1);   // полная яркость до последних 40 % жизни: полупрозрачное над лесом — серое
+      g.shadowColor = 'rgba(20,12,40,.45)'; g.shadowBlur = 8 * S; g.shadowOffsetY = 3 * S;
+      outText(t.t, (t.x - carX) + CARX, GY - t.y + tdy, 44 * S, '#ffffff', (t.c.length === 7 ? mix(t.c, '#1a1030', 0.68) : '#2b2140'));
+    } else outText(t.t, (t.x - carX) + CARX, GY - t.y, 40 * S, t.c, '#2b2140');
     g.restore();
   });
 

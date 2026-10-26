@@ -72,7 +72,7 @@ function updatePlay(dt) {
       if (hard) shake = 5 * S;
       for (var i = 0; i < (hard ? 20 : 9); i++)
         P({ x: carX + rnd(-cw*0.4, cw*0.4), y: gh + 4*S, vx: rnd(-300,300)*S, vy: rnd(60,260)*S,
-            r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff',
+            r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff', land: 1,   // land — в 3D не рисуется: там своя пыль
             life: rnd(0.35,0.75), ay: -40*S });
       coyoteT = 0;
       if (jumpBufT > 0) jumpGo(cw);           // нажали чуть раньше посадки — прыгаем сразу, как коснулись
