@@ -53,22 +53,22 @@ var Lane3D = (function () {
   var mats = {}, road = {}, pools = {}, scen = {}, shadowIM, player = null;
 
   /* ── проверка WebGL без three.js: ничего не грузим туда, где он всё равно не заведётся ── */
-  function hasGL() {
-    try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); }
-    catch (e) { return false; }
-  }
+  /* three.js, холст и рендерер — общие (32b-r3d.js): один WebGL-контекст на всю игру. */
   function init() {
-    if (st !== 0 || !L3.on) return;
-    if (!hasGL()) { st = -1; return; }
-    st = 1;
-    import('./vendor/three/three.module.min.js').then(function (m) {
-      try { T3 = m; build(); st = 2; } catch (e) { fail(); }
-    }, function () { st = -1; });
+    if (!L3.on || st === -1) return;
+    R3D.load();
   }
-  function fail() {
-    st = -1;
-    try { if (glc) glc.style.display = 'none'; } catch (e) {}
+  /* Сцена собирается в первом кадре, когда three.js уже в памяти. */
+  function ensure() {
+    if (st === 2 || st === -1 || !L3.on) return st === 2;
+    if (R3D.dead()) { st = -1; return false; }
+    if (!R3D.ready()) { R3D.load(); return false; }
+    T3 = R3D.T(); R = R3D.renderer();
+    if (!R) { st = -1; return false; }
+    try { build(); st = 2; } catch (e) { fail(); }
+    return st === 2;
   }
+  function fail() { st = -1; }
 
   /* ════════ Геометрия: детали склеиваются в одну сетку с цветами вершин ════════
      Один меш на предмет = один вызов отрисовки. Всё — при постройке, не в кадре. */
@@ -313,14 +313,6 @@ var Lane3D = (function () {
   function build() {
     var T = T3;
     _m = new T.Matrix4(); _q = new T.Quaternion(); _e = new T.Euler(); _p = new T.Vector3(); _s = new T.Vector3(); _c = new T.Color();
-    glc = document.createElement('canvas');
-    glc.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none';
-    cv.parentNode.insertBefore(glc, cv);                   // под игровым холстом: HUD рисуется поверх
-    /* powerPreference по умолчанию: high-performance вместе со сглаживанием на iPhone
-       давал 20 кадров вместо 120 (bugs.webkit.org/276959). */
-    R = new T.WebGLRenderer({ canvas: glc, antialias: true, alpha: false, powerPreference: 'default' });
-    R.shadowMap.enabled = true; R.shadowMap.type = T.PCFSoftShadowMap;
-    glc.addEventListener('webglcontextlost', function (e) { e.preventDefault(); fail(); }, false);
     scene = new T.Scene();
     fog = new T.Fog(0xffffff, 10, 100); scene.fog = fog;
     cam = new T.PerspectiveCamera(56, 1, 0.3, 900);
@@ -673,7 +665,6 @@ var Lane3D = (function () {
      (внецентровая проекция) — так машинка внизу, а неба над дорогой не полкадра. */
   function fitView(dpr) {
     var hz = L3.horizon, hf = 2 * H * Math.max(hz, 1 - hz);
-    R.setPixelRatio(dpr); R.setSize(W, H, false);
     cam.aspect = W / hf;                                   // при setViewOffset это пропорция ПОЛНОГО кадра
     cam.fov = 2 * Math.atan(Math.tan(L3.fov * Math.PI / 360) * hf / H) * 180 / Math.PI;
     cam.setViewOffset(W, hf, 0, hf / 2 - hz * H, W, H);
@@ -683,15 +674,12 @@ var Lane3D = (function () {
   var vhz = 0, vfov = 0;
 
   function render() {
-    if (st !== 2) return;
+    if (!ensure()) return;
     var t0 = performance.now();
-    /* Кадры тяжелее 16 мс 60 раз подряд — опускаем плотность пикселей до 1. Обратно не поднимаем. */
-    if (lastT && t0 - lastT > 17.5) { if (++slowN > 60) { dprNow = 1; slowN = 0; } } else if (slowN > 0) slowN--;
-    lastT = t0;
-    var dpr = Math.min(L3.dpr, dprNow, dprCap, window.devicePixelRatio || 1);
+    var dpr = R3D.frame(L3.dpr);
     if (W !== vw || H !== vh || dpr !== vdpr || L3.horizon !== vhz || L3.fov !== vfov) fitView(dpr);
-    if (!shown) { glc.style.display = 'block'; shown = true; }
     try {
+      R.setClearColor(fog.color);                          // рендерер общий: платформер мог поставить свой
       _sm = _sm || new T3.Matrix4();
       nSh = 0;
       updTheme(); updRoad(); updPlayer(); updObjs(); updScenery(); updCam();
@@ -701,28 +689,22 @@ var Lane3D = (function () {
     drew = true;
     ms = performance.now() - t0;
   }
-  /* Вызывается главным циклом раз в кадр: в любом другом экране 3D-холст скрыт,
-     а при уходе из «руля» (не в урок из него) контекст отдаём системе. */
-  function post() {
-    if (st !== 2) return;
-    if (!drew && shown) { glc.style.display = 'none'; shown = false; }
-    if (!drew && state !== 'lane' && state !== 'lesson') dispose();
-    drew = false;
-  }
+  /* Холст скрывает и контекст отдаёт R3D.post(); здесь — только своя сцена. */
   function dispose() {
+    if (st !== 2) return;
     try {
       scene.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
       for (var k in mats) mats[k].dispose();
-      R.dispose(); R.forceContextLoss();
-      glc.parentNode.removeChild(glc);
     } catch (e) {}
-    R = null; glc = null; scene = null; pools = {}; scen = {}; player = null; carKey = ''; thRef = null; mats = {}; road = {};
+    R = null; scene = null; pools = {}; scen = {}; player = null; carKey = ''; thRef = null; mats = {}; road = {};
     vw = vh = 0; st = 0;                                   // модуль уже в памяти: следующий вход соберёт сцену заново
   }
   return {
-    init: function () { if (st === 0 && T3 && L3.on && hasGL()) { try { build(); st = 2; } catch (e) { fail(); } } else init(); },
-    on: function () { return st === 2 && !!L3.on; },
-    render: render, post: post,
+    init: init,
+    on: function () { return !!L3.on && st !== -1 && ensure(); },
+    render: render,
+    lost: fail, release: dispose,
     stats: function () { return R ? { calls: R.info.render.calls, tris: R.info.render.triangles, ms: +ms.toFixed(2), st: st, dpr: vdpr } : { st: st }; }
   };
 })();
+R3D.use({ lost: function () { Lane3D.lost(); }, release: function () { Lane3D.release(); } });
