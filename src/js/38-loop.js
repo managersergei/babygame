@@ -174,6 +174,7 @@ function frame(ts) {
     g.restore();
   }
   g.restore();
+  Lane3D.post();                              // 3D-холст скрыт везде, где «руль» не рисовался в этом кадре
 
   /* Полноэкранная белая заливка до 0,75 — прямой запрет для 2–4 лет: вестибулярно и
      зрительно это удар. Заменено мягким тёплым свечением от центра события, вдвое слабее. */
@@ -309,7 +310,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
        начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
     window.__th = function () { return { ix: themeIx, from: themeFrom, k: +themeK.toFixed(3), sky: TH().sky.slice(), grass: TH().grass, set: setTheme }; };   // тест: смена палитры
     window.__lane = function () {
-      return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS,
+      return { ln: ln, LN: LN, proj: laneProj, push: Lane.push, kinds: LANE_KINDS, l3d: Lane3D,
                quiet: function () { wantEl = null; wordArmed = false; wordT = -1e9; } };
     };
     window.__bg = function () {

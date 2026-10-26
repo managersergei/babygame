@@ -204,6 +204,7 @@ var Lane = {
     learned = {}; metEl = {}; resetRhythm(); seedKnown();     // уроки слов — общие с бесконечным режимом
     ln.best = 0; try { ln.best = +(localStorage.getItem('babygame.best') || 0) || 0; } catch (e) {}
     state = 'lane'; setPad();
+    Lane3D.init();                                           // three.js — лениво и только под флагом L3.on
     if (!Pult.everOn) Pult.ensure();                          // окно пульта — только пока телефон ни разу не подключался
     track('start', { game: 'lane' });
     A.rev(); A.fanfare(1);
@@ -476,6 +477,15 @@ var Lane = {
   pos: function (z, lane) { var q = laneProj(z); q.x = q.cx + lane * q.half * LN.laneK; return q; },
   /* Сцена без HUD: нужна и самому режиму, и уроку, начатому из него. */
   scene: function () {
+    /* 3D готов — мир рисует WebGL-холст под этим; здесь только прозрачная очистка и частицы. */
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) {
+      Lane3D.render();
+      if (Lane3D.on()) {                                     // мог отказать прямо в этом кадре — тогда ниже 2D
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.restore();
+        drawParts(false);
+        return;
+      }
+    }
     bgX = ln.run;
     drawSky(); drawClouds(); drawFar();
     bgX = null;

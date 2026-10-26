@@ -37,6 +37,7 @@
     "31-repair.js",
     "32-screen-gamemode.js",
     "33-lane.js",
+    "33b-lane3d.js",
     "34-pult.js",
     "35-telegram.js",
     "36-transitions.js",
