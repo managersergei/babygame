@@ -13,6 +13,11 @@ var simAcc = 0;
 
 var FAST = Math.min(300, +((location.search.match(/[?&]fast=(\d+)/) || [])[1]) || 1);
 var TRACE = [];
+/* ?fixed=1 — каждый нарисованный кадр = ровно SIM.hz/60 шагов симуляции (×?fast=N), сколько бы
+   кадр ни длился на самом деле. Для повторяемых тестов и покадровой записи роликов: с ?seed=N
+   одинаковое число кадров даёт одинаковую игру. Кадры считаются с первого не-«load» кадра. */
+var FIXED = /[?&]fixed=1/.test(location.search);
+var FRAMES = 0, SNAPS = [];
 
 function stepState(dt) {
   if (state === 'name') updateName(dt);
@@ -56,10 +61,13 @@ function autoStep(dt) {
 
 function frame(ts) {
   requestAnimationFrame(frame);
-  var dt = last ? Math.min(0.05, (ts - last) / 1000) : 0.016;
+  var dt = FIXED ? 1 / 60 : last ? Math.min(0.05, (ts - last) / 1000) : 0.016;
   last = ts; T += dt;
   perfStep(dt);                                    // на слабом устройстве опускаем плотность пикселей
   if (state === 'load') return;
+  FRAMES++;
+  if (FIXED && FRAMES % 60 === 0 && SNAPS.length < 120)   // тест повторяемости: снимок раз в 60 кадров
+    SNAPS.push({ f: FRAMES, state: state, carX: +carX.toFixed(3), stars: stars, laneX: +(ln.x || 0).toFixed(4) });
   if (state !== 'play') {                          // эффекты гаснут на любом экране
     if (shake > 0) shake = Math.max(0, shake - dt * 30 * S);
     if (flash > 0) flash = Math.max(0, flash - dt * 1.6);
@@ -80,9 +88,12 @@ function frame(ts) {
     /* ?fast=N ускоряет игровое время в N раз — накапливаем столько же, сколько
        накручивал прежний цикл из N вызовов, но выдаём симуляции ровными шагами. */
     SIM_STEP = 1 / SIM.hz;                    // админка могла поменять частоту прямо сейчас
-    simAcc = Math.min(simAcc + dt * FAST, SIM_MAXF * SIM_STEP);
-    while (simAcc >= SIM_STEP) {
-      simAcc -= SIM_STEP;
+    /* ?fixed=1: кадр продвигает ровно SIM.hz/60 шагов (×FAST) — счётом, а не накопителем:
+       сумма дробных dt в плавающей точке иногда даёт лишний или недостающий шаг. */
+    var nFix = FIXED ? Math.min(SIM_MAXF, Math.max(1, Math.round(SIM.hz / 60)) * FAST) : 0;
+    if (!FIXED) simAcc = Math.min(simAcc + dt * FAST, SIM_MAXF * SIM_STEP);
+    while (FIXED ? nFix-- > 0 : simAcc >= SIM_STEP) {
+      if (!FIXED) simAcc -= SIM_STEP;
       var was = state, wasStage = stage;
       stepState(SIM_STEP);
       if (state !== was || stage !== wasStage) {
@@ -290,7 +301,7 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
 
   if (DBG || REC || /[?&]test=1/.test(location.search)) {
     window.__cfg = CFG;                                          // тест: настройки и админка
-    window.__sim = function () { return { hz: SIM.hz, step: SIM_STEP, acc: simAcc, cruise: CRUISE, phys: PHYS.cruise }; };   // тест: фиксированный шаг
+    window.__sim = function () { return { hz: SIM.hz, step: SIM_STEP, acc: simAcc, cruise: CRUISE, phys: PHYS.cruise, fixed: FIXED, frames: FRAMES, snaps: SNAPS }; };   // тест: фиксированный шаг
     window.__roll = function () { toRepair(); return rep.n; };   // тест: серия случайных поломок
     window.__stats = Stats;                                      // тест: прогресс и повторение слов
     window.__move = moveFx;                                      // тест: параметры процедурной анимации

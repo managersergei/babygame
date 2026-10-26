@@ -52,7 +52,45 @@ ck("выгрузка — валидный js", /^\/\*[\s\S]*window\.TUNE_OVERRID
 ck("сброс вернул заводское", s2.afterReset === 235, String(s2.afterReset));
 ck("сброс очистил хранилище", !s2.stored);
 
+// новые ключи физики и 3D обязаны попадать в выгрузку tune.js — иначе правка из админки не уедет всем
+console.log("новые ключи в выгрузке");
+for (const g of ["L3"]) ck(`группа ${g} зарегистрирована`, s0.groups.includes(g));
+const NEW = { PHYS: ["coyote", "jumpBuf", "suspW"], LN: ["steerW", "rollK"], L3: ["camBack", "fov"] };
+const s3 = await page.evaluate((NEW) => {
+  const C = window.__cfg, miss = [];
+  for (const g in NEW) for (const k of NEW[g]) {
+    const d = C.def(g);
+    if (!d || typeof d[k] !== "number") { miss.push(g + "." + k); continue; }
+    C.set(g, k, +(d[k] * 1.5 + 0.01).toFixed(3));
+  }
+  const js = C.exportJs(); C.reset();
+  return { js, miss };
+}, NEW);
+ck("ключи существуют в настройках", s3.miss.length === 0, s3.miss.join(", "));
+const ov = (() => { try { return JSON.parse(s3.js.slice(s3.js.indexOf("{"), s3.js.lastIndexOf("}") + 1)); } catch { return null; } })();
+for (const g in NEW) for (const k of NEW[g]) ck(`выгрузка содержит ${g}.${k}`, !!(ov && ov[g] && typeof ov[g][k] === "number"));
+
 ck("ошибок в консоли нет", errs.length === 0, errs.slice(0, 3).join(" | "));
+
+// ?fixed=1: кадр = ровно SIM.hz/60 шагов. Два прогона с одним seed за одно число кадров — одна и та же игра.
+console.log("?fixed=1 — повторяемость");
+async function fixedRun() {
+  const p = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  p.on("pageerror", (e) => errs.push("fixed: " + e.message));
+  await p.goto(B);
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem("babygame.parent", "1"); });
+  await p.goto(`${B}${PAGE}?s=endless&seed=7&fixed=1&test=1`, { waitUntil: "load" });
+  await p.waitForFunction(() => window.__sim && window.__sim().snaps.length >= 8, null, { timeout: 60000 });
+  const r = await p.evaluate(() => ({ fixed: window.__sim().fixed, snaps: window.__sim().snaps.slice(0, 8) }));
+  await p.close();
+  return r;
+}
+const fa = await fixedRun(), fb = await fixedRun();
+const last = fa.snaps[fa.snaps.length - 1] || {};
+ck("режим ?fixed=1 включился", fa.fixed && fb.fixed);
+ck("машинка за 480 кадров уехала", fa.snaps.length === 8 && last.carX > fa.snaps[0].carX, `carX ${fa.snaps[0] && fa.snaps[0].carX} → ${last.carX}, звёзд ${last.stars}`);
+ck("два прогона совпали покадрово (carX, звёзды)", JSON.stringify(fa.snaps) === JSON.stringify(fb.snaps),
+   fa.snaps.map((s, i) => s.carX + "/" + (fb.snaps[i] || {}).carX).join(" "));
 
 await browser.close();
 console.log(fail ? `\nПРОВАЛОВ: ${fail}` : "\nВСЁ ОК");

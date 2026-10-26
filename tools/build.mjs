@@ -3,6 +3,7 @@
    публикации от этого не меняется.
    --check — ничего не пишет, только сверяет, что index.html совпадает со сборкой (для CI). */
 import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const cfg = JSON.parse(readFileSync(ROOT + "src/build.json", "utf8"));
@@ -15,7 +16,11 @@ const body = cfg.js
   .map((f) => readFileSync(ROOT + "src/js/" + f, "utf8").replace(/\n$/, ""))
   .join("\n");
 
-const out = tpl.replace(MARK, () => body);
+/* Версия сборки — хеш исходников (шаблон + модули), а не время и не SHA коммита: так одна и та же
+   src/ всегда даёт байт-в-байт тот же index.html, и --check в CI сходится. SHA коммита в файл,
+   который сам в этот коммит входит, не вписать. Админка показывает BUILD_ID в шапке. */
+const BUILD_ID = "src-" + createHash("sha256").update(tpl).update("\0").update(body).digest("hex").slice(0, 10);
+const out = tpl.replace(MARK, () => `var BUILD_ID = '${BUILD_ID}';                    // tools/build.mjs: хеш исходников\n` + body);
 
 if (process.argv.includes("--check")) {
   const cur = readFileSync(ROOT + cfg.out, "utf8");
@@ -25,4 +30,4 @@ if (process.argv.includes("--check")) {
 }
 
 writeFileSync(ROOT + cfg.out, out);
-console.log(`собрано: ${cfg.js.length} модулей → ${cfg.out} (${(out.length / 1024).toFixed(0)} КБ)`);
+console.log(`собрано: ${cfg.js.length} модулей → ${cfg.out}, ${BUILD_ID} (${(out.length / 1024).toFixed(0)} КБ)`);
