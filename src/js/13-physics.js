@@ -1,6 +1,7 @@
 /* ═══════════════ 10. ФИЗИКА ═══════════════ */
 function updatePlay(dt) {
   var cw = vehW(car.id, car.h * S), ch = car.h * S;
+  var spdWas = spd;                               // для клевка кузова на разгоне и торможении
 
   /* --- скорость --- */
   if (stopHold > 0) {
@@ -64,7 +65,8 @@ function updatePlay(dt) {
     carY += vy * dt;
     if (carY <= gh) {
       var hard = vy < -1150 * S;   // одиночный прыжок даёт ~-830*S: при пороге 640 тряслось после каждого
-      carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.26;
+      bodyDyV += Math.max(vy, -1800 * S) * PHYS.landK;   // кузов приседает тем глубже, чем быстрее падали
+      carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.16;   // приседание теперь несёт пружина, мультяшный сплющ — меньше
       A.land();
       if (hard) A.thud();                    // тяжёлая посадка должна и звучать тяжело
       if (hard) shake = 5 * S;
@@ -72,6 +74,8 @@ function updatePlay(dt) {
         P({ x: carX + rnd(-cw*0.4, cw*0.4), y: gh + 4*S, vx: rnd(-300,300)*S, vy: rnd(60,260)*S,
             r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff',
             life: rnd(0.35,0.75), ay: -40*S });
+      coyoteT = 0;
+      if (jumpBufT > 0) jumpGo(cw);           // нажали чуть раньше посадки — прыгаем сразу, как коснулись
     }
   } else {
     if (gh > lastGroundH + 0.01) carY = gh;
@@ -79,15 +83,34 @@ function updatePlay(dt) {
       grounded = false; jumps = 1;
       if (lastWasRamp) { vy = clamp(spd * 0.72, 380 * S, 1050 * S); A.whee();
                          burst(carX, 10 * S, 14, ['#fff','#ffe9a8'], 260 * S, 'puff'); }
-      else vy = 0;                                   // просто съехали с платформы
+      else { vy = 0; coyoteT = PHYS.coyote; }        // просто съехали с платформы: ещё миг можно прыгнуть как с земли
     } else carY = gh;
   }
+  var vg = grounded ? (gh - lastGroundH) / dt : 0;   // как быстро земля под колёсами идёт вверх
   lastGroundH = gh; lastWasRamp = ghWasRamp;
 
   /* --- анимация --- */
   var rel = clamp(spd / VMAX, 0, 1.3);
   wobble += dt * (7 + rel * 26);
   squash += (0 - squash) * Math.min(1, dt * 8);
+
+  /* --- подвеска: кузов на пружине относительно колёс --- */
+  if (coyoteT > 0) coyoteT -= dt;
+  if (jumpBufT > 0) jumpBufT -= dt;
+  /* Край трамплина или платформы: земля резко пошла вверх — кузов отстаёт и приседает,
+     резко ушла вниз — выпрямляется. Толчок ограничен, чтобы ступенька не подкидывала кузов. */
+  var dvg = vg - vgPrev; vgPrev = vg;
+  bodyDyV -= clamp(dvg * PHYS.edgeK, -PHYS.edgeMax * S, PHYS.edgeMax * S);
+  var sw = PHYS.suspW, sz = PHYS.suspZ;
+  bodyDyV += (-sw * sw * bodyDy - 2 * sz * sw * bodyDyV) * dt;
+  bodyDy = clamp(bodyDy + bodyDyV * dt, -22 * S, 14 * S);   // упоры хода подвески
+  /* Разгон задирает нос, торможение его опускает. Ускорение сглажено: рывок скорости
+     от робота или Молнии не должен дёргать кузов за один шаг. В воздухе клевок уходит в ноль. */
+  accF += ((spd - spdWas) / dt - accF) * Math.min(1, dt * 10);
+  var wantPitch = grounded ? clamp(accF / (1000 * S) * PHYS.pitchK, -0.08, 0.08) : 0;
+  var pw = PHYS.pitchW;
+  bodyPitchV += (pw * pw * (wantPitch - bodyPitch) - 2 * sz * pw * bodyPitchV) * dt;
+  bodyPitch += bodyPitchV * dt;
   /* Наклон на земле теперь берётся из уклона ПОД КОЛЁСАМИ, а не из синусоиды:
      на трамплине нос честно задирается, на съезде опускается. Синусоида осталась
      мелкой дрожью поверх — это «работа мотора», а не рельеф. */

@@ -63,7 +63,15 @@ function drawRig(car0, x, y, h, o, miss) {
     spr(R.tire, 0, d / 2, d, { mid: false });
     g.restore();
   }
-  spr(R.body, 0, by - y, bh, {});
+  /* Подвеска: кузов смещается и клюёт относительно колёс (o.bodyDy — px, + вверх). */
+  var bdy = (o && o.bodyDy) || 0, brot = (o && o.bodyRot) || 0;
+  if (bdy || brot) {
+    g.save();
+    g.translate(0, by - y - bdy - bh * 0.35);       // поворот вокруг середины кузова, а не его низа
+    if (brot) g.rotate(brot);
+    spr(R.body, 0, bh * 0.35, bh, {});
+    g.restore();
+  } else spr(R.body, 0, by - y, bh, {});
   g.restore();
   return true;
 }
