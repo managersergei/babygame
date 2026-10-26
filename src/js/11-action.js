@@ -3,30 +3,38 @@ function action() {
   A.init(); idleT = 0; idleN = 0;
   if (outOfFuel) { refuel(); return; }
   var cw = vehW(car.id, car.h * S);
-  if (jumps < 2) {
-    jumps++;
-    vy = jumps === 1 ? JUMP1 : JUMP2;
-    grounded = false; squash = -0.16;
-    if (!story && robot.on && !robot.flee) spd = Math.min(VMAX * 1.2, spd + 150 * S);
-    if (jumps === 2) {
-      flipT = (car.id === 'monster') ? 0 : 1;           // монстр-трак сальто не крутит
-      if (car.id === 'race') {                          // у Молнии — электро-разряд
-        flash = 0.25; A.rev(); A.whee();
-        spd = Math.min(VMAX * 1.35, spd + 300 * S);
-        popText('МОЛНИЯ!', carX, carY + car.h * S * 1.3, '#ffd93d');
-        for (var z = 0; z < 30; z++)
-          P({ x: carX + rnd(-50, 50) * S, y: carY + rnd(0, 90) * S, vx: rnd(-420, 420) * S,
-              vy: rnd(-120, 320) * S, r: rnd(6, 16) * S,
-              c: pick(['#ffd93d', '#fff7b0', '#7fd8ff', '#fff']), kind: 'spark',
-              life: rnd(0.35, 0.8), ay: 260 * S, vr: rnd(-14, 14) });
-      }
-    }
-    A.jump();
-    for (var i = 0; i < 12; i++)
-      P({ x: carX + rnd(-cw*0.3, cw*0.3), y: carY + rnd(0, 20*S), vx: rnd(-90,90)*S, vy: rnd(20,150)*S,
-          r: rnd(6,15)*S, c:'#ffffff', kind:'dot', life: rnd(0.3,0.6), ay: 200*S });
-  }
+  /* Ребёнок жмёт чуть позже, чем колёса ушли с края, — прыжок всё равно с земли:
+     счёт прыжков не меняется, второй (в воздухе) остаётся в запасе. */
+  if (!grounded && coyoteT > 0 && jumps === 1) jumps = 0;
+  if (jumps < 2) jumpGo(cw);
+  else if (!grounded) jumpBufT = PHYS.jumpBuf;      // прыжки кончились — запомним нажатие до посадки
   doFx(cw);
+}
+
+/* Сам прыжок. Отдельно от action(): запомненное нажатие срабатывает из физики при посадке. */
+function jumpGo(cw) {
+  coyoteT = 0; jumpBufT = 0;
+  jumps++;
+  vy = jumps === 1 ? JUMP1 : JUMP2;
+  grounded = false; squash = -0.16;
+  if (!story && robot.on && !robot.flee) spd = Math.min(VMAX * 1.2, spd + 150 * S);
+  if (jumps === 2) {
+    flipT = (car.id === 'monster') ? 0 : 1;           // монстр-трак сальто не крутит
+    if (car.id === 'race') {                          // у Молнии — электро-разряд
+      flash = 0.25; A.rev(); A.whee();
+      spd = Math.min(VMAX * 1.35, spd + 300 * S);
+      popText('МОЛНИЯ!', carX, carY + car.h * S * 1.3, '#ffd93d');
+      for (var z = 0; z < 30; z++)
+        P({ x: carX + rnd(-50, 50) * S, y: carY + rnd(0, 90) * S, vx: rnd(-420, 420) * S,
+            vy: rnd(-120, 320) * S, r: rnd(6, 16) * S,
+            c: pick(['#ffd93d', '#fff7b0', '#7fd8ff', '#fff']), kind: 'spark',
+            life: rnd(0.35, 0.8), ay: 260 * S, vr: rnd(-14, 14) });
+    }
+  }
+  A.jump();
+  for (var i = 0; i < 12; i++)
+    P({ x: carX + rnd(-cw*0.3, cw*0.3), y: carY + rnd(0, 20*S), vx: rnd(-90,90)*S, vy: rnd(20,150)*S,
+        r: rnd(6,15)*S, c:'#ffffff', kind:'dot', life: rnd(0.3,0.6), ay: 200*S });
 }
 
 function doFx(cw) {

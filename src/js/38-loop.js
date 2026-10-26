@@ -295,6 +295,16 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
     window.__put = function (o) { objs.push(o); return objs.length; };   // тест: положить объект прямо перед машинкой
     window.__car = function () { return { x: carX, y: carY, w: vehW(car.id, car.h * S), S: S }; };
+    /* Тест: подвеска, запас на прыжок после края и запомненное нажатие. set() ставит машинку
+       в нужное положение (например, на платформу), act() — то же, что пробел. */
+    window.__phys = function () {
+      return { bodyDy: bodyDy, bodyPitch: bodyPitch, carY: carY, vy: vy, grounded: grounded, jumps: jumps,
+               coyoteT: coyoteT, jumpBufT: jumpBufT, spd: spd, S: S, PHYS: PHYS, act: action, J1: JUMP1, J2: JUMP2, lesson: state === 'lesson' ? les.key : null,
+               quiet: function () { wantEl = null; wordArmed = false; wordT = -1e9; metEl.jump0 = metEl.gas0 = 1; },   // урок посреди замера замораживает мир
+               set: function (o) { for (var k in o) { if (k === 'carY') carY = o[k]; else if (k === 'vy') vy = o[k];
+                 else if (k === 'grounded') grounded = o[k]; else if (k === 'jumps') jumps = o[k];
+                 else if (k === 'lastGroundH') lastGroundH = o[k]; } } };
+    };
     /* Тест: режим «руль» изнутри. quiet() глушит очередь слов — иначе урок,
        начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
     window.__th = function () { return { ix: themeIx, from: themeFrom, k: +themeK.toFixed(3), sky: TH().sky.slice(), grass: TH().grass, set: setTheme }; };   // тест: смена палитры

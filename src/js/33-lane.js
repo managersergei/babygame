@@ -19,7 +19,12 @@ var LN = {
   hzHalf: 62, nearHalf: 0.50, pow: 2.1, zMax: 1.9,
   hillAmp: 120, hillA: 1.9, hillB: 0.83,     // рельеф: две синусоиды, амплитуда в пикселях у камеры
   curvAmp: 620, curvA: 0.55, curvB: 0.27,     // изгибы дороги: тот же приём, что и рельеф, но по горизонтали
-  decorGap: [0.45, 0.95], skyGap: [2.6, 5.0]   // обочина вдвое плотнее: пустая обочина не даёт ощущения движения
+  decorGap: [0.45, 0.95], skyGap: [2.6, 5.0],  // обочина вдвое плотнее: пустая обочина не даёт ощущения движения
+  steerW: 9, steerZ: 0.8, steerHi: 0.2,     // руль: резкость, сцепление (гашение заноса), насколько мягче на скорости
+  rollK: 0.11, rollW: 12,                    // крен кузова от бокового ускорения и его жёсткость
+  pitchK: 0.15, pitchW: 9, landPitch: 0.8,   // клевок: от разгона/торможения, жёсткость, кивок при посадке
+  suspW: 12, suspZ: 0.45, landK: 0.14,       // подвеска: жёсткость, гашение, приседание от посадки
+  hillK: 6, curbK: 40                         // подвеска на перегибах холмов и удар о бордюр
 };
 CFG.reg('LN', LN, {
   laneK:    [ 0.3,    1.2, 0.01, 'насколько ряды расходятся к краям'],
@@ -43,10 +48,27 @@ CFG.reg('LN', LN, {
   carY:     [ 0.6,   0.99, 0.01, 'как низко стоит машинка'],
   camUp:    [   0,    240,  2,   'подъём камеры'],
   hillAmp:  [   0,    400,  5,   'высота холмов'],
-  curvAmp:  [   0,   1500, 10,   'сила изгибов дороги']
+  curvAmp:  [   0,   1500, 10,   'сила изгибов дороги'],
+  steerW:   [   3,     20, 0.5,  'резкость руля'],
+  steerZ:   [ 0.3,    1.5, 0.01, 'сцепление: меньше — машинку заносит дальше ряда'],
+  steerHi:  [   0,    0.6, 0.01, 'на скорости руль мягче'],
+  rollK:    [   0,    0.4, 0.01, 'крен кузова в повороте'],
+  rollW:    [   4,     30, 0.5,  'жёсткость крена'],
+  pitchK:   [   0,    0.6, 0.01, 'клевок на разгоне и торможении'],
+  pitchW:   [   3,     30, 0.5,  'жёсткость клевка'],
+  landPitch:[   0,      3, 0.05, 'кивок кузова при посадке'],
+  suspW:    [   4,     30, 0.5,  'жёсткость подвески'],
+  suspZ:    [ 0.1,    1.5, 0.01, 'гашение подвески'],
+  landK:    [   0,    0.5, 0.01, 'приседание при посадке'],
+  hillK:    [   0,     20, 0.5,  'подвеска на перегибах холмов'],
+  curbK:    [   0,    200, 5,    'удар о бордюр']
 });
 
-var ln = { x: 0, y: 0, vy: 0, spd: 0, gas: 0, brake: 0, boost: 0, kick: 0, recShown: 0, dash: 0, run: 0, wz: 0, slope: 0,
+/* vx — боковая скорость (ряды в секунду). roll — крен (рад, + верх кузова к правому краю
+   экрана), pitch — клевок (рад, + нос вверх), sy — подвеска (px, + кузов вверх). Их же
+   читает 3D-отрисовка — имена и знаки не менять. */
+var ln = { x: 0, vx: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, sy: 0, syV: 0, accF: 0, vPrev: 0, dsl: 0,
+           y: 0, vy: 0, spd: 0, gas: 0, brake: 0, boost: 0, kick: 0, recShown: 0, dash: 0, run: 0, wz: 0, slope: 0,
            objs: [], spawnZ: 0, decorZ: 0, skyZ: 0,
            t: 0, hitT: 0, jumps: 0, autoT: 0, best: 0 };
 var LANE_KINDS = [
@@ -88,13 +110,21 @@ function drawRearShadow(x, y, w, lift) {
   g.fillStyle = '#000'; g.beginPath(); g.ellipse(x, y + 6 * S, w * 0.56 * k, 14 * S * k, 0, 0, TAU); g.fill();
   g.restore();
 }
-function drawRearCar(x, y, w, h, tilt, blink, col) {
+function drawRearCar(x, y, w, h, tilt, blink, col, bd) {
   var c = col || CAR_BACK[car.id] || CAR_BACK.race, big = !col && car.id === 'monster';
   g.save(); g.translate(x, y); g.rotate(clamp(tilt, -1, 1) * 0.07);
   var wr = big ? h * 0.36 : h * 0.26, wy = -wr * 0.9;
   g.fillStyle = '#2b2140';
   roundRect(-w * 0.5 - wr * 0.2, wy - wr, wr * 1.3, wr * 2, wr * 0.5); g.fill();
   roundRect(w * 0.5 - wr * 1.1, wy - wr, wr * 1.3, wr * 2, wr * 0.5); g.fill();
+  /* Кузов на подвеске: колёса на асфальте, кузов кренится, приседает и клюёт.
+     Сзади клевок виден так: нос вверх — корма садится. */
+  if (bd) {
+    g.save();
+    g.translate(0, -h * 0.2 - bd.sy + bd.pitch * h * 0.5);
+    g.rotate(bd.roll);
+    g.translate(0, h * 0.2);
+  }
   if (blink) g.globalAlpha = 0.55;
   g.fillStyle = c[0]; roundRect(-w * 0.46, -h * 0.72, w * 0.92, h * 0.62, 22 * S); g.fill();
   g.fillStyle = c[1]; roundRect(-w * 0.46, -h * 0.30, w * 0.92, h * 0.2, 14 * S); g.fill();
@@ -121,6 +151,7 @@ function drawRearCar(x, y, w, h, tilt, blink, col) {
     roundRect(-w * 0.12, -h * 1.15, w * 0.24, h * 0.1, 5 * S); g.fill();
   }
   if (car.id === 'fire') { g.fillStyle = '#c0c0c0'; roundRect(-w * 0.05, -h * 1.62, w * 0.1, h * 0.28, 4 * S); g.fill(); }
+  if (bd) g.restore();
   g.restore();
 }
 
@@ -165,6 +196,7 @@ var Lane = {
   start: function () {
     A.init(); car = CARS[sel]; tune();
     ln.x = 0; ln.y = 0; ln.vy = 0; ln.spd = LN.spd0; ln.gas = 0; ln.brake = 0; ln.boost = 0; ln.kick = 0; ln.recShown = 0; ln.dash = 0; ln.run = 0; ln.wz = 0; ln.slope = 0;
+    ln.vx = 0; ln.roll = ln.rollV = ln.pitch = ln.pitchV = ln.sy = ln.syV = ln.accF = ln.dsl = 0; ln.vPrev = ln.spd;
     ln.objs = []; ln.spawnZ = 0.5; ln.decorZ = 0.3; ln.skyZ = 1.5;
     ln.t = 0; ln.hitT = 0; ln.jumps = 0; ln.autoT = 0; ln.hits = 0; ln.overs = 0; ln.takes = 0;
     parts.length = 0; texts.length = 0; objs.length = 0;
@@ -191,12 +223,26 @@ var Lane = {
   update: function (dt) {
     ln.t += dt;
     var target = clamp(Lane.steer(), -1, 1);
-    ln.x = clamp(ln.x + (target - ln.x) * Math.min(1, dt * 5.5), -1.05, 1.05);
+    /* Руль — пружина с гашением, а не плавный подвод: машинка набирает боковую скорость,
+       сцепление гасит её у ряда, и она встаёт в ряд с лёгкой раскачкой, без проскока.
+       На скорости руль чуть мягче — как у настоящей машины. */
+    var vRel = clamp((ln.spd - LN.spd0) / Math.max(0.01, LN.spdMax - LN.spd0), 0, 1);
+    var stw = LN.steerW * (1 - LN.steerHi * vRel);
+    var ax = stw * stw * (target - ln.x) - 2 * LN.steerZ * stw * ln.vx;
+    ln.vx += ax * dt; ln.x += ln.vx * dt;
+    if (ln.x > 1.05 || ln.x < -1.05) {                    // бордюр: упёрлись — кузов подбросило
+      ln.x = clamp(ln.x, -1.05, 1.05); ln.vx = 0; ln.syV += LN.curbK * S;
+    }
+    /* Крен: в повороте кузов валится наружу (вправо руль — верх кузова влево). */
+    var rollT = clamp(-ax / 100 * LN.rollK, -0.12, 0.12);
+    ln.rollV += (LN.rollW * LN.rollW * (rollT - ln.roll) - 2 * LN.suspZ * LN.rollW * ln.rollV) * dt;
+    ln.roll += ln.rollV * dt;
     if (ln.hitT > 0) ln.hitT -= dt;
     var wasUp = ln.y > 0;
     if (ln.y > 0 || ln.vy > 0) {
       ln.y += ln.vy * dt; ln.vy -= LN.grav * S * dt;
       if (ln.y <= 0) {
+        if (wasUp) { ln.syV += Math.max(ln.vy, -1800 * S) * LN.landK; ln.pitchV -= LN.landPitch; }   // посадка: кузов приседает и кивает
         ln.y = 0; ln.vy = 0;
         if (wasUp) {                                        // приземление: звук и пыль из-под колёс
           A.land();
@@ -221,7 +267,18 @@ var Lane = {
     ln.dash = (ln.dash + dt * v * 16) % 16;
     ln.run += dt * v * 900 * S;
     ln.wz += dt * v;
+    var slopeWas = ln.slope;
     ln.slope = (hillAt(ln.wz + 0.06) - hillAt(ln.wz)) / (0.06 * LN.hillAmp * S);   // + в гору, − под гору
+    /* Клевок: разгон задирает нос, торможение (и удар) — опускает. Ускорение сглажено. */
+    ln.accF += ((v - ln.vPrev) / dt - ln.accF) * Math.min(1, dt * 8); ln.vPrev = v;
+    var pitchT = ln.y > 0 ? 0 : clamp(ln.accF * LN.pitchK, -0.08, 0.08);
+    ln.pitchV += (LN.pitchW * LN.pitchW * (pitchT - ln.pitch) - 2 * LN.suspZ * LN.pitchW * ln.pitchV) * dt;
+    ln.pitch += ln.pitchV * dt;
+    /* Подвеска: в ложбине кузов прижимает, на гребне он легчает. */
+    ln.dsl += ((ln.slope - slopeWas) / dt - ln.dsl) * Math.min(1, dt * 4);
+    var syT = ln.y > 0 ? 0 : clamp(-LN.hillK * ln.dsl * S, -8 * S, 8 * S);
+    ln.syV += (LN.suspW * LN.suspW * (syT - ln.sy) - 2 * LN.suspZ * LN.suspW * ln.syV) * dt;
+    ln.sy = clamp(ln.sy + ln.syV * dt, -18 * S, 14 * S);   // упоры хода подвески
     A.engine(clamp((ln.spd - LN.spd0) / (LN.spdMax - LN.spd0), 0, 1) * (1 - 0.5 * b), 1, true);
     if (ln.gas && ln.y === 0 && Math.floor(ln.t * 22) !== Math.floor((ln.t - dt) * 22)) {
       var nz = laneProj(0), cxg = nz.cx + ln.x * nz.half * LN.laneK;
@@ -541,7 +598,7 @@ var Lane = {
        но не двигает весь мир и не нарушает возрастное правило. */
     var squat = (ln.gas ? 0.96 : 1) * (1 - ln.kick * 0.10);
     drawRearCar(cx, H * LN.carY - ln.y + ln.kick * 10 * S, LN.carW * S, LN.carH * S * squat,
-                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0);   // 2,5 вспышки в секунду — в пределах правила о трёх
+                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0, null, ln);   // 2,5 вспышки в секунду — в пределах правила о трёх
     drawParts(false);
   },
   draw: function (dt) {

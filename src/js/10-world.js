@@ -2,7 +2,7 @@
 function resetWorld() {
   objs.length = 0; parts.length = 0; texts.length = 0;
   carX = 0; carY = 0; vy = 0; spd = easy ? EASYSPD : CRUISE;
-  grounded = true; jumps = 0; lastGroundH = 0; lastObsX = -1e9; breakN = 0; railT = 0;
+  grounded = true; jumps = 0; lastGroundH = 0; bodyDy = bodyDyV = bodyPitch = bodyPitchV = accF = vgPrev = 0; coyoteT = jumpBufT = 0; lastObsX = -1e9; breakN = 0; railT = 0;
   stars = 0; row = 0; combo = 0; nextX = W * 0.9; lastFuelX = 0; fuelPicks = 0; tankMul = 1; bestShown = 0; tune();
   archPending = false; celebrate = 0; flash = 0; shake = 0; idleT = 0; idleN = 0;
   fuel = 1; outOfFuel = false; emptyShown = false; beepT = 0; lowT = 0; refuels = 0;

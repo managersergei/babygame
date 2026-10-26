@@ -35,15 +35,20 @@ function drawCar() {
   g.translate(x, y + squash * 12 * S);
   g.rotate(tilt - (1 - flipT) * 0 - flipT * TAU * (car.id === 'race' ? 1 : 0.6));
   g.scale(1 + squash * 0.5, 1 - squash * 0.5);
-  var bob = grounded ? Math.sin(wobble * 2) * clamp(spd / VMAX, 0, 1) * 3.5 * S : 0;
+  /* Подвеска вместо синусоиды: у ригованной машинки на пружине ходит только кузов
+     (колёса стоят на земле), цельный спрайт качается целиком. */
+  var rigged = car.rig && !carPaint && damage === 0 && !!rigSize(car, h);
+  var bob = rigged ? 0 : -bodyDy;
+  var bo = rigged ? { bodyDy: bodyDy, bodyRot: -bodyPitch } : {};
+  if (!rigged) g.rotate(-bodyPitch);               // + нос вверх = поворот против часовой
   if (paintRevT > 0 && carPaint) {                 // краска наплывает сверху вниз за 0,8 с
     var kr = clamp(1 - paintRevT / 0.8, 0, 1), keep2 = carPaint;
-    carPaint = null; drawVehicle(car.id, 0, bob, h, {}); carPaint = keep2;
+    carPaint = null; drawVehicle(car.id, 0, bob, h, bo); carPaint = keep2;
     g.save();
     g.beginPath(); g.rect(-w, bob - h, w * 2, h * kr); g.clip();
-    drawVehicle(car.id, 0, bob, h, {});
+    drawVehicle(car.id, 0, bob, h, bo);
     g.restore();
-  } else drawVehicle(car.id, 0, bob, h, {});
+  } else drawVehicle(car.id, 0, bob, h, bo);
 
   if (sirenT > 0 && car.siren) {
     var on = Math.floor(sirenT * 5) % 2;      // 2,5 смены в секунду: собственное правило проекта — не чаще трёх

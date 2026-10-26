@@ -1426,7 +1426,15 @@ function drawRig(car0, x, y, h, o, miss) {
     spr(R.tire, 0, d / 2, d, { mid: false });
     g.restore();
   }
-  spr(R.body, 0, by - y, bh, {});
+  /* Подвеска: кузов смещается и клюёт относительно колёс (o.bodyDy — px, + вверх). */
+  var bdy = (o && o.bodyDy) || 0, brot = (o && o.bodyRot) || 0;
+  if (bdy || brot) {
+    g.save();
+    g.translate(0, by - y - bdy - bh * 0.35);       // поворот вокруг середины кузова, а не его низа
+    if (brot) g.rotate(brot);
+    spr(R.body, 0, bh * 0.35, bh, {});
+    g.restore();
+  } else spr(R.body, 0, by - y, bh, {});
   g.restore();
   return true;
 }
@@ -1684,6 +1692,10 @@ var car = null, easy = false;
 
 var carX = 0, carY = 0, vy = 0, spd = 0, grounded = true, jumps = 0;
 var wobble = 0, squash = 0, tilt = 0, lastGroundH = 0;
+/* Подвеска: кузов ходит на пружине относительно колёс. bodyDy — смещение кузова в px
+   (+ вверх), bodyPitch — клевок в радианах (+ нос вверх). Их же читает 3D-отрисовка. */
+var bodyDy = 0, bodyDyV = 0, bodyPitch = 0, bodyPitchV = 0, accF = 0, vgPrev = 0;
+var coyoteT = 0, jumpBufT = 0;   // запас на прыжок после края и запомненное раннее нажатие
 var stars = 0, row = 0, combo = 0, comboT = 0;
 var objs = [], parts = [], texts = [];
 var nextX = 0, lastFuelX = 0, archPending = false;
@@ -1711,7 +1723,16 @@ var PHYS = CFG.reg('PHYS', {
   grav:    2100,   // притяжение
   jump1:    830,   // первый прыжок
   jump2:    690,   // второй прыжок в воздухе
-  fuelDist:3600    // на сколько метров хватает полного бака
+  fuelDist:3600,   // на сколько метров хватает полного бака
+  coyote:   0.10,  // столько секунд после съезда с края прыжок ещё считается прыжком с земли
+  jumpBuf:  0.12,  // нажатие за столько секунд до посадки срабатывает при посадке
+  suspW:    13,    // жёсткость подвески (частота пружины, рад/с)
+  suspZ:    0.42,  // гашение подвески: меньше — дольше качается
+  landK:    0.24,  // как глубоко кузов приседает от скорости посадки
+  edgeK:    0.5,   // толчок кузова на краю трамплина или платформы
+  edgeMax:  120,   // …но не сильнее этого
+  pitchW:   9,     // жёсткость клевка кузова
+  pitchK:   0.10   // клевок на разгоне и торможении (рад на 1000 px/с²)
 }, {
   cruise:  [ 80,  600, 5, 'крейсерская скорость'],
   easySpd: [ 80,  800, 5, 'крейсерская в лёгком режиме'],
@@ -1721,7 +1742,16 @@ var PHYS = CFG.reg('PHYS', {
   grav:    [800, 5000, 50,'притяжение'],
   jump1:   [300, 1800, 10,'сила первого прыжка'],
   jump2:   [200, 1600, 10,'сила второго прыжка'],
-  fuelDist:[800, 12000,100,'на сколько хватает бака']
+  fuelDist:[800, 12000,100,'на сколько хватает бака'],
+  coyote:  [0,    0.3, 0.01,'запас на прыжок после края, с'],
+  jumpBuf: [0,    0.3, 0.01,'раннее нажатие прыжка помнится, с'],
+  suspW:   [4,     30, 0.5, 'жёсткость подвески'],
+  suspZ:   [0.1,  1.5, 0.01,'гашение подвески'],
+  landK:   [0,      1, 0.01,'приседание кузова при посадке'],
+  edgeK:   [0,      2, 0.01,'толчок кузова на краю'],
+  edgeMax: [0,    400, 5,   'предел толчка на краю'],
+  pitchW:  [3,     30, 0.5, 'жёсткость клевка кузова'],
+  pitchK:  [0,    0.4, 0.01,'клевок на разгоне и торможении']
 });
 
 function tune() {
@@ -1767,7 +1797,7 @@ function burst(x, y, n, col, spdv, kind) {
 function resetWorld() {
   objs.length = 0; parts.length = 0; texts.length = 0;
   carX = 0; carY = 0; vy = 0; spd = easy ? EASYSPD : CRUISE;
-  grounded = true; jumps = 0; lastGroundH = 0; lastObsX = -1e9; breakN = 0; railT = 0;
+  grounded = true; jumps = 0; lastGroundH = 0; bodyDy = bodyDyV = bodyPitch = bodyPitchV = accF = vgPrev = 0; coyoteT = jumpBufT = 0; lastObsX = -1e9; breakN = 0; railT = 0;
   stars = 0; row = 0; combo = 0; nextX = W * 0.9; lastFuelX = 0; fuelPicks = 0; tankMul = 1; bestShown = 0; tune();
   archPending = false; celebrate = 0; flash = 0; shake = 0; idleT = 0; idleN = 0;
   fuel = 1; outOfFuel = false; emptyShown = false; beepT = 0; lowT = 0; refuels = 0;
@@ -2175,30 +2205,38 @@ function action() {
   A.init(); idleT = 0; idleN = 0;
   if (outOfFuel) { refuel(); return; }
   var cw = vehW(car.id, car.h * S);
-  if (jumps < 2) {
-    jumps++;
-    vy = jumps === 1 ? JUMP1 : JUMP2;
-    grounded = false; squash = -0.16;
-    if (!story && robot.on && !robot.flee) spd = Math.min(VMAX * 1.2, spd + 150 * S);
-    if (jumps === 2) {
-      flipT = (car.id === 'monster') ? 0 : 1;           // монстр-трак сальто не крутит
-      if (car.id === 'race') {                          // у Молнии — электро-разряд
-        flash = 0.25; A.rev(); A.whee();
-        spd = Math.min(VMAX * 1.35, spd + 300 * S);
-        popText('МОЛНИЯ!', carX, carY + car.h * S * 1.3, '#ffd93d');
-        for (var z = 0; z < 30; z++)
-          P({ x: carX + rnd(-50, 50) * S, y: carY + rnd(0, 90) * S, vx: rnd(-420, 420) * S,
-              vy: rnd(-120, 320) * S, r: rnd(6, 16) * S,
-              c: pick(['#ffd93d', '#fff7b0', '#7fd8ff', '#fff']), kind: 'spark',
-              life: rnd(0.35, 0.8), ay: 260 * S, vr: rnd(-14, 14) });
-      }
-    }
-    A.jump();
-    for (var i = 0; i < 12; i++)
-      P({ x: carX + rnd(-cw*0.3, cw*0.3), y: carY + rnd(0, 20*S), vx: rnd(-90,90)*S, vy: rnd(20,150)*S,
-          r: rnd(6,15)*S, c:'#ffffff', kind:'dot', life: rnd(0.3,0.6), ay: 200*S });
-  }
+  /* Ребёнок жмёт чуть позже, чем колёса ушли с края, — прыжок всё равно с земли:
+     счёт прыжков не меняется, второй (в воздухе) остаётся в запасе. */
+  if (!grounded && coyoteT > 0 && jumps === 1) jumps = 0;
+  if (jumps < 2) jumpGo(cw);
+  else if (!grounded) jumpBufT = PHYS.jumpBuf;      // прыжки кончились — запомним нажатие до посадки
   doFx(cw);
+}
+
+/* Сам прыжок. Отдельно от action(): запомненное нажатие срабатывает из физики при посадке. */
+function jumpGo(cw) {
+  coyoteT = 0; jumpBufT = 0;
+  jumps++;
+  vy = jumps === 1 ? JUMP1 : JUMP2;
+  grounded = false; squash = -0.16;
+  if (!story && robot.on && !robot.flee) spd = Math.min(VMAX * 1.2, spd + 150 * S);
+  if (jumps === 2) {
+    flipT = (car.id === 'monster') ? 0 : 1;           // монстр-трак сальто не крутит
+    if (car.id === 'race') {                          // у Молнии — электро-разряд
+      flash = 0.25; A.rev(); A.whee();
+      spd = Math.min(VMAX * 1.35, spd + 300 * S);
+      popText('МОЛНИЯ!', carX, carY + car.h * S * 1.3, '#ffd93d');
+      for (var z = 0; z < 30; z++)
+        P({ x: carX + rnd(-50, 50) * S, y: carY + rnd(0, 90) * S, vx: rnd(-420, 420) * S,
+            vy: rnd(-120, 320) * S, r: rnd(6, 16) * S,
+            c: pick(['#ffd93d', '#fff7b0', '#7fd8ff', '#fff']), kind: 'spark',
+            life: rnd(0.35, 0.8), ay: 260 * S, vr: rnd(-14, 14) });
+    }
+  }
+  A.jump();
+  for (var i = 0; i < 12; i++)
+    P({ x: carX + rnd(-cw*0.3, cw*0.3), y: carY + rnd(0, 20*S), vx: rnd(-90,90)*S, vy: rnd(20,150)*S,
+        r: rnd(6,15)*S, c:'#ffffff', kind:'dot', life: rnd(0.3,0.6), ay: 200*S });
 }
 
 function doFx(cw) {
@@ -2331,6 +2369,7 @@ function drawEmptyScreen() {
 /* ═══════════════ 10. ФИЗИКА ═══════════════ */
 function updatePlay(dt) {
   var cw = vehW(car.id, car.h * S), ch = car.h * S;
+  var spdWas = spd;                               // для клевка кузова на разгоне и торможении
 
   /* --- скорость --- */
   if (stopHold > 0) {
@@ -2394,7 +2433,8 @@ function updatePlay(dt) {
     carY += vy * dt;
     if (carY <= gh) {
       var hard = vy < -1150 * S;   // одиночный прыжок даёт ~-830*S: при пороге 640 тряслось после каждого
-      carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.26;
+      bodyDyV += Math.max(vy, -1800 * S) * PHYS.landK;   // кузов приседает тем глубже, чем быстрее падали
+      carY = gh; vy = 0; grounded = true; jumps = 0; squash = 0.16;   // приседание теперь несёт пружина, мультяшный сплющ — меньше
       A.land();
       if (hard) A.thud();                    // тяжёлая посадка должна и звучать тяжело
       if (hard) shake = 5 * S;
@@ -2402,6 +2442,8 @@ function updatePlay(dt) {
         P({ x: carX + rnd(-cw*0.4, cw*0.4), y: gh + 4*S, vx: rnd(-300,300)*S, vy: rnd(60,260)*S,
             r: rnd(7,19)*S, c: pick(['#e6ddc9','#cfc4ab','#fff']), kind:'puff',
             life: rnd(0.35,0.75), ay: -40*S });
+      coyoteT = 0;
+      if (jumpBufT > 0) jumpGo(cw);           // нажали чуть раньше посадки — прыгаем сразу, как коснулись
     }
   } else {
     if (gh > lastGroundH + 0.01) carY = gh;
@@ -2409,15 +2451,34 @@ function updatePlay(dt) {
       grounded = false; jumps = 1;
       if (lastWasRamp) { vy = clamp(spd * 0.72, 380 * S, 1050 * S); A.whee();
                          burst(carX, 10 * S, 14, ['#fff','#ffe9a8'], 260 * S, 'puff'); }
-      else vy = 0;                                   // просто съехали с платформы
+      else { vy = 0; coyoteT = PHYS.coyote; }        // просто съехали с платформы: ещё миг можно прыгнуть как с земли
     } else carY = gh;
   }
+  var vg = grounded ? (gh - lastGroundH) / dt : 0;   // как быстро земля под колёсами идёт вверх
   lastGroundH = gh; lastWasRamp = ghWasRamp;
 
   /* --- анимация --- */
   var rel = clamp(spd / VMAX, 0, 1.3);
   wobble += dt * (7 + rel * 26);
   squash += (0 - squash) * Math.min(1, dt * 8);
+
+  /* --- подвеска: кузов на пружине относительно колёс --- */
+  if (coyoteT > 0) coyoteT -= dt;
+  if (jumpBufT > 0) jumpBufT -= dt;
+  /* Край трамплина или платформы: земля резко пошла вверх — кузов отстаёт и приседает,
+     резко ушла вниз — выпрямляется. Толчок ограничен, чтобы ступенька не подкидывала кузов. */
+  var dvg = vg - vgPrev; vgPrev = vg;
+  bodyDyV -= clamp(dvg * PHYS.edgeK, -PHYS.edgeMax * S, PHYS.edgeMax * S);
+  var sw = PHYS.suspW, sz = PHYS.suspZ;
+  bodyDyV += (-sw * sw * bodyDy - 2 * sz * sw * bodyDyV) * dt;
+  bodyDy = clamp(bodyDy + bodyDyV * dt, -22 * S, 14 * S);   // упоры хода подвески
+  /* Разгон задирает нос, торможение его опускает. Ускорение сглажено: рывок скорости
+     от робота или Молнии не должен дёргать кузов за один шаг. В воздухе клевок уходит в ноль. */
+  accF += ((spd - spdWas) / dt - accF) * Math.min(1, dt * 10);
+  var wantPitch = grounded ? clamp(accF / (1000 * S) * PHYS.pitchK, -0.08, 0.08) : 0;
+  var pw = PHYS.pitchW;
+  bodyPitchV += (pw * pw * (wantPitch - bodyPitch) - 2 * sz * pw * bodyPitchV) * dt;
+  bodyPitch += bodyPitchV * dt;
   /* Наклон на земле теперь берётся из уклона ПОД КОЛЁСАМИ, а не из синусоиды:
      на трамплине нос честно задирается, на съезде опускается. Синусоида осталась
      мелкой дрожью поверх — это «работа мотора», а не рельеф. */
@@ -3720,15 +3781,20 @@ function drawCar() {
   g.translate(x, y + squash * 12 * S);
   g.rotate(tilt - (1 - flipT) * 0 - flipT * TAU * (car.id === 'race' ? 1 : 0.6));
   g.scale(1 + squash * 0.5, 1 - squash * 0.5);
-  var bob = grounded ? Math.sin(wobble * 2) * clamp(spd / VMAX, 0, 1) * 3.5 * S : 0;
+  /* Подвеска вместо синусоиды: у ригованной машинки на пружине ходит только кузов
+     (колёса стоят на земле), цельный спрайт качается целиком. */
+  var rigged = car.rig && !carPaint && damage === 0 && !!rigSize(car, h);
+  var bob = rigged ? 0 : -bodyDy;
+  var bo = rigged ? { bodyDy: bodyDy, bodyRot: -bodyPitch } : {};
+  if (!rigged) g.rotate(-bodyPitch);               // + нос вверх = поворот против часовой
   if (paintRevT > 0 && carPaint) {                 // краска наплывает сверху вниз за 0,8 с
     var kr = clamp(1 - paintRevT / 0.8, 0, 1), keep2 = carPaint;
-    carPaint = null; drawVehicle(car.id, 0, bob, h, {}); carPaint = keep2;
+    carPaint = null; drawVehicle(car.id, 0, bob, h, bo); carPaint = keep2;
     g.save();
     g.beginPath(); g.rect(-w, bob - h, w * 2, h * kr); g.clip();
-    drawVehicle(car.id, 0, bob, h, {});
+    drawVehicle(car.id, 0, bob, h, bo);
     g.restore();
-  } else drawVehicle(car.id, 0, bob, h, {});
+  } else drawVehicle(car.id, 0, bob, h, bo);
 
   if (sirenT > 0 && car.siren) {
     var on = Math.floor(sirenT * 5) % 2;      // 2,5 смены в секунду: собственное правило проекта — не чаще трёх
@@ -5556,7 +5622,12 @@ var LN = {
   hzHalf: 62, nearHalf: 0.50, pow: 2.1, zMax: 1.9,
   hillAmp: 120, hillA: 1.9, hillB: 0.83,     // рельеф: две синусоиды, амплитуда в пикселях у камеры
   curvAmp: 620, curvA: 0.55, curvB: 0.27,     // изгибы дороги: тот же приём, что и рельеф, но по горизонтали
-  decorGap: [0.45, 0.95], skyGap: [2.6, 5.0]   // обочина вдвое плотнее: пустая обочина не даёт ощущения движения
+  decorGap: [0.45, 0.95], skyGap: [2.6, 5.0],  // обочина вдвое плотнее: пустая обочина не даёт ощущения движения
+  steerW: 9, steerZ: 0.8, steerHi: 0.2,     // руль: резкость, сцепление (гашение заноса), насколько мягче на скорости
+  rollK: 0.11, rollW: 12,                    // крен кузова от бокового ускорения и его жёсткость
+  pitchK: 0.15, pitchW: 9, landPitch: 0.8,   // клевок: от разгона/торможения, жёсткость, кивок при посадке
+  suspW: 12, suspZ: 0.45, landK: 0.14,       // подвеска: жёсткость, гашение, приседание от посадки
+  hillK: 6, curbK: 40                         // подвеска на перегибах холмов и удар о бордюр
 };
 CFG.reg('LN', LN, {
   laneK:    [ 0.3,    1.2, 0.01, 'насколько ряды расходятся к краям'],
@@ -5580,10 +5651,27 @@ CFG.reg('LN', LN, {
   carY:     [ 0.6,   0.99, 0.01, 'как низко стоит машинка'],
   camUp:    [   0,    240,  2,   'подъём камеры'],
   hillAmp:  [   0,    400,  5,   'высота холмов'],
-  curvAmp:  [   0,   1500, 10,   'сила изгибов дороги']
+  curvAmp:  [   0,   1500, 10,   'сила изгибов дороги'],
+  steerW:   [   3,     20, 0.5,  'резкость руля'],
+  steerZ:   [ 0.3,    1.5, 0.01, 'сцепление: меньше — машинку заносит дальше ряда'],
+  steerHi:  [   0,    0.6, 0.01, 'на скорости руль мягче'],
+  rollK:    [   0,    0.4, 0.01, 'крен кузова в повороте'],
+  rollW:    [   4,     30, 0.5,  'жёсткость крена'],
+  pitchK:   [   0,    0.6, 0.01, 'клевок на разгоне и торможении'],
+  pitchW:   [   3,     30, 0.5,  'жёсткость клевка'],
+  landPitch:[   0,      3, 0.05, 'кивок кузова при посадке'],
+  suspW:    [   4,     30, 0.5,  'жёсткость подвески'],
+  suspZ:    [ 0.1,    1.5, 0.01, 'гашение подвески'],
+  landK:    [   0,    0.5, 0.01, 'приседание при посадке'],
+  hillK:    [   0,     20, 0.5,  'подвеска на перегибах холмов'],
+  curbK:    [   0,    200, 5,    'удар о бордюр']
 });
 
-var ln = { x: 0, y: 0, vy: 0, spd: 0, gas: 0, brake: 0, boost: 0, kick: 0, recShown: 0, dash: 0, run: 0, wz: 0, slope: 0,
+/* vx — боковая скорость (ряды в секунду). roll — крен (рад, + верх кузова к правому краю
+   экрана), pitch — клевок (рад, + нос вверх), sy — подвеска (px, + кузов вверх). Их же
+   читает 3D-отрисовка — имена и знаки не менять. */
+var ln = { x: 0, vx: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, sy: 0, syV: 0, accF: 0, vPrev: 0, dsl: 0,
+           y: 0, vy: 0, spd: 0, gas: 0, brake: 0, boost: 0, kick: 0, recShown: 0, dash: 0, run: 0, wz: 0, slope: 0,
            objs: [], spawnZ: 0, decorZ: 0, skyZ: 0,
            t: 0, hitT: 0, jumps: 0, autoT: 0, best: 0 };
 var LANE_KINDS = [
@@ -5625,13 +5713,21 @@ function drawRearShadow(x, y, w, lift) {
   g.fillStyle = '#000'; g.beginPath(); g.ellipse(x, y + 6 * S, w * 0.56 * k, 14 * S * k, 0, 0, TAU); g.fill();
   g.restore();
 }
-function drawRearCar(x, y, w, h, tilt, blink, col) {
+function drawRearCar(x, y, w, h, tilt, blink, col, bd) {
   var c = col || CAR_BACK[car.id] || CAR_BACK.race, big = !col && car.id === 'monster';
   g.save(); g.translate(x, y); g.rotate(clamp(tilt, -1, 1) * 0.07);
   var wr = big ? h * 0.36 : h * 0.26, wy = -wr * 0.9;
   g.fillStyle = '#2b2140';
   roundRect(-w * 0.5 - wr * 0.2, wy - wr, wr * 1.3, wr * 2, wr * 0.5); g.fill();
   roundRect(w * 0.5 - wr * 1.1, wy - wr, wr * 1.3, wr * 2, wr * 0.5); g.fill();
+  /* Кузов на подвеске: колёса на асфальте, кузов кренится, приседает и клюёт.
+     Сзади клевок виден так: нос вверх — корма садится. */
+  if (bd) {
+    g.save();
+    g.translate(0, -h * 0.2 - bd.sy + bd.pitch * h * 0.5);
+    g.rotate(bd.roll);
+    g.translate(0, h * 0.2);
+  }
   if (blink) g.globalAlpha = 0.55;
   g.fillStyle = c[0]; roundRect(-w * 0.46, -h * 0.72, w * 0.92, h * 0.62, 22 * S); g.fill();
   g.fillStyle = c[1]; roundRect(-w * 0.46, -h * 0.30, w * 0.92, h * 0.2, 14 * S); g.fill();
@@ -5658,6 +5754,7 @@ function drawRearCar(x, y, w, h, tilt, blink, col) {
     roundRect(-w * 0.12, -h * 1.15, w * 0.24, h * 0.1, 5 * S); g.fill();
   }
   if (car.id === 'fire') { g.fillStyle = '#c0c0c0'; roundRect(-w * 0.05, -h * 1.62, w * 0.1, h * 0.28, 4 * S); g.fill(); }
+  if (bd) g.restore();
   g.restore();
 }
 
@@ -5702,6 +5799,7 @@ var Lane = {
   start: function () {
     A.init(); car = CARS[sel]; tune();
     ln.x = 0; ln.y = 0; ln.vy = 0; ln.spd = LN.spd0; ln.gas = 0; ln.brake = 0; ln.boost = 0; ln.kick = 0; ln.recShown = 0; ln.dash = 0; ln.run = 0; ln.wz = 0; ln.slope = 0;
+    ln.vx = 0; ln.roll = ln.rollV = ln.pitch = ln.pitchV = ln.sy = ln.syV = ln.accF = ln.dsl = 0; ln.vPrev = ln.spd;
     ln.objs = []; ln.spawnZ = 0.5; ln.decorZ = 0.3; ln.skyZ = 1.5;
     ln.t = 0; ln.hitT = 0; ln.jumps = 0; ln.autoT = 0; ln.hits = 0; ln.overs = 0; ln.takes = 0;
     parts.length = 0; texts.length = 0; objs.length = 0;
@@ -5728,12 +5826,26 @@ var Lane = {
   update: function (dt) {
     ln.t += dt;
     var target = clamp(Lane.steer(), -1, 1);
-    ln.x = clamp(ln.x + (target - ln.x) * Math.min(1, dt * 5.5), -1.05, 1.05);
+    /* Руль — пружина с гашением, а не плавный подвод: машинка набирает боковую скорость,
+       сцепление гасит её у ряда, и она встаёт в ряд с лёгкой раскачкой, без проскока.
+       На скорости руль чуть мягче — как у настоящей машины. */
+    var vRel = clamp((ln.spd - LN.spd0) / Math.max(0.01, LN.spdMax - LN.spd0), 0, 1);
+    var stw = LN.steerW * (1 - LN.steerHi * vRel);
+    var ax = stw * stw * (target - ln.x) - 2 * LN.steerZ * stw * ln.vx;
+    ln.vx += ax * dt; ln.x += ln.vx * dt;
+    if (ln.x > 1.05 || ln.x < -1.05) {                    // бордюр: упёрлись — кузов подбросило
+      ln.x = clamp(ln.x, -1.05, 1.05); ln.vx = 0; ln.syV += LN.curbK * S;
+    }
+    /* Крен: в повороте кузов валится наружу (вправо руль — верх кузова влево). */
+    var rollT = clamp(-ax / 100 * LN.rollK, -0.12, 0.12);
+    ln.rollV += (LN.rollW * LN.rollW * (rollT - ln.roll) - 2 * LN.suspZ * LN.rollW * ln.rollV) * dt;
+    ln.roll += ln.rollV * dt;
     if (ln.hitT > 0) ln.hitT -= dt;
     var wasUp = ln.y > 0;
     if (ln.y > 0 || ln.vy > 0) {
       ln.y += ln.vy * dt; ln.vy -= LN.grav * S * dt;
       if (ln.y <= 0) {
+        if (wasUp) { ln.syV += Math.max(ln.vy, -1800 * S) * LN.landK; ln.pitchV -= LN.landPitch; }   // посадка: кузов приседает и кивает
         ln.y = 0; ln.vy = 0;
         if (wasUp) {                                        // приземление: звук и пыль из-под колёс
           A.land();
@@ -5758,7 +5870,18 @@ var Lane = {
     ln.dash = (ln.dash + dt * v * 16) % 16;
     ln.run += dt * v * 900 * S;
     ln.wz += dt * v;
+    var slopeWas = ln.slope;
     ln.slope = (hillAt(ln.wz + 0.06) - hillAt(ln.wz)) / (0.06 * LN.hillAmp * S);   // + в гору, − под гору
+    /* Клевок: разгон задирает нос, торможение (и удар) — опускает. Ускорение сглажено. */
+    ln.accF += ((v - ln.vPrev) / dt - ln.accF) * Math.min(1, dt * 8); ln.vPrev = v;
+    var pitchT = ln.y > 0 ? 0 : clamp(ln.accF * LN.pitchK, -0.08, 0.08);
+    ln.pitchV += (LN.pitchW * LN.pitchW * (pitchT - ln.pitch) - 2 * LN.suspZ * LN.pitchW * ln.pitchV) * dt;
+    ln.pitch += ln.pitchV * dt;
+    /* Подвеска: в ложбине кузов прижимает, на гребне он легчает. */
+    ln.dsl += ((ln.slope - slopeWas) / dt - ln.dsl) * Math.min(1, dt * 4);
+    var syT = ln.y > 0 ? 0 : clamp(-LN.hillK * ln.dsl * S, -8 * S, 8 * S);
+    ln.syV += (LN.suspW * LN.suspW * (syT - ln.sy) - 2 * LN.suspZ * LN.suspW * ln.syV) * dt;
+    ln.sy = clamp(ln.sy + ln.syV * dt, -18 * S, 14 * S);   // упоры хода подвески
     A.engine(clamp((ln.spd - LN.spd0) / (LN.spdMax - LN.spd0), 0, 1) * (1 - 0.5 * b), 1, true);
     if (ln.gas && ln.y === 0 && Math.floor(ln.t * 22) !== Math.floor((ln.t - dt) * 22)) {
       var nz = laneProj(0), cxg = nz.cx + ln.x * nz.half * LN.laneK;
@@ -6078,7 +6201,7 @@ var Lane = {
        но не двигает весь мир и не нарушает возрастное правило. */
     var squat = (ln.gas ? 0.96 : 1) * (1 - ln.kick * 0.10);
     drawRearCar(cx, H * LN.carY - ln.y + ln.kick * 10 * S, LN.carW * S, LN.carH * S * squat,
-                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0);   // 2,5 вспышки в секунду — в пределах правила о трёх
+                clamp(Lane.steer(), -1, 1) - ln.x, ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0, null, ln);   // 2,5 вспышки в секунду — в пределах правила о трёх
     drawParts(false);
   },
   draw: function (dt) {
@@ -7259,6 +7382,16 @@ setTimeout(function () { if (state === 'load') ready(); }, 8000);   // подс�
     window.__move = moveFx;                                      // тест: параметры процедурной анимации
     window.__put = function (o) { objs.push(o); return objs.length; };   // тест: положить объект прямо перед машинкой
     window.__car = function () { return { x: carX, y: carY, w: vehW(car.id, car.h * S), S: S }; };
+    /* Тест: подвеска, запас на прыжок после края и запомненное нажатие. set() ставит машинку
+       в нужное положение (например, на платформу), act() — то же, что пробел. */
+    window.__phys = function () {
+      return { bodyDy: bodyDy, bodyPitch: bodyPitch, carY: carY, vy: vy, grounded: grounded, jumps: jumps,
+               coyoteT: coyoteT, jumpBufT: jumpBufT, spd: spd, S: S, PHYS: PHYS, act: action, J1: JUMP1, J2: JUMP2, lesson: state === 'lesson' ? les.key : null,
+               quiet: function () { wantEl = null; wordArmed = false; wordT = -1e9; metEl.jump0 = metEl.gas0 = 1; },   // урок посреди замера замораживает мир
+               set: function (o) { for (var k in o) { if (k === 'carY') carY = o[k]; else if (k === 'vy') vy = o[k];
+                 else if (k === 'grounded') grounded = o[k]; else if (k === 'jumps') jumps = o[k];
+                 else if (k === 'lastGroundH') lastGroundH = o[k]; } } };
+    };
     /* Тест: режим «руль» изнутри. quiet() глушит очередь слов — иначе урок,
        начавшийся посреди проверки, останавливает Lane.update, и объект «зависает». */
     window.__th = function () { return { ix: themeIx, from: themeFrom, k: +themeK.toFixed(3), sky: TH().sky.slice(), grass: TH().grass, set: setTheme }; };   // тест: смена палитры
