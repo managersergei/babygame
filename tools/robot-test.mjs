@@ -9,7 +9,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const ev = [], errs = [];
 page.on("pageerror", e => errs.push(e.message));
 page.on("console", m => { const t = m.text(); if (t.startsWith("EV ")) ev.push(t); });
-const B = "http://127.0.0.1:8765/";
+const B = (process.env.BASE || "http://127.0.0.1:8765/");
 await page.goto(B);
 // все слова уже выучены (n >= Stats.need) и звёзд достаточно, чтобы робот был открыт
 await page.evaluate(() => {

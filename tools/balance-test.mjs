@@ -8,7 +8,7 @@ let browser; try { browser = await chromium.launch(); } catch { browser = await 
 const SEC = +(process.argv[2] || 240);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.on("pageerror", e => console.log("PAGEERROR", e.message));
-await page.goto(`http://127.0.0.1:8765/?s=play&rec=1&auto=1&test=1&seed=21`);
+await page.goto(`${process.env.BASE || "http://127.0.0.1:8765/"}?s=play&rec=1&auto=1&test=1&seed=21`);
 await page.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
 const count = {};
 const t0 = Date.now();

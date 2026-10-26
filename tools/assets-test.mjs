@@ -8,7 +8,7 @@ const chromium = await loadChromium();
 let browser; try { browser = await chromium.launch(); } catch { browser = await chromium.launch({ executablePath: cachedChrome() }); }
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.on("pageerror", e => console.log("PAGEERROR", e.message));
-await page.goto("http://127.0.0.1:8765/?s=play&test=1");
+await page.goto((process.env.BASE || "http://127.0.0.1:8765/") + "?s=play&test=1");
 await page.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
 const info = await page.evaluate(() => {
   const out = { total: 0, voiced: [], unvoiced: [], noSprite: [] };

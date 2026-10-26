@@ -10,7 +10,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const ev = [], errs = [];
 page.on("pageerror", e => errs.push(e.message));
 page.on("console", m => { const t = m.text(); if (t.startsWith("EV ")) ev.push(t); });
-await page.goto(`http://127.0.0.1:8765/?s=play&rec=1&auto=1&test=1&seed=${SEED}&fast=${FAST}`);
+await page.goto(`${process.env.BASE || "http://127.0.0.1:8765/"}?s=play&rec=1&auto=1&test=1&seed=${SEED}&fast=${FAST}`);
 await page.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
 const samples = [];
 const t0 = Date.now();

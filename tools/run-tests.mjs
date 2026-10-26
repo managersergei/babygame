@@ -3,7 +3,10 @@
 import { spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 
-const PORT = 8765;
+/* Порт можно сменить переменной BG_PORT — чтобы два прогона из разных копий
+   репозитория не попали на чужой сервер. Тестам адрес уходит через BASE. */
+const PORT = Number(process.env.BG_PORT) || 8765;
+process.env.BASE = process.env.BASE || `http://127.0.0.1:${PORT}/`;
 /* Четыре теста моделируют минуты реальной игры (balance — 240 с, rhythm — 300 с,
    robot — 380 с, words-once — 180 с). Гонять их на каждый пуш — впустую жечь минуты
    GitHub Actions, поэтому на пуше идёт быстрый набор, а полный — по ночам и по кнопке. */
@@ -43,7 +46,7 @@ console.log(`проверок к прогону: ${list.length}${quick ? " (бы
 const bad = [];
 for (const f of list) {
   const t0 = Date.now();
-  const { code, out } = await run("node", [`tools/${f}`]);
+  const { code, out } = await run("node", [`tools/${f}`], { env: process.env });
   const sec = ((Date.now() - t0) / 1000).toFixed(0);
   if (code === 0) console.log(`PASS  ${f}  (${sec} с)`);
   else {

@@ -9,7 +9,7 @@ const lessons = [], overs = [];
 page.on("console", m => { const t = m.text();
   if (t.startsWith("EV ") && t.includes(" lesson ")) lessons.push(t.split(" ")[3]);
   if (t.startsWith("EV ") && t.includes(" say ") && /поймали|Бензин закончился/.test(t)) overs.push(1); });
-await page.goto("http://127.0.0.1:8765/?s=play&rec=1&auto=1&test=1&seed=31&fast=4");
+await page.goto((process.env.BASE || "http://127.0.0.1:8765/") + "?s=play&rec=1&auto=1&test=1&seed=31&fast=4");
 await page.waitForFunction(() => window.__bg && window.__bg().state !== "load", null, { timeout: 20000 });
 const t0 = Date.now();
 while (Date.now() - t0 < 180000) { const b = await page.evaluate(() => window.__bg()); if (b.T > 500) break; await page.waitForTimeout(1000); }
