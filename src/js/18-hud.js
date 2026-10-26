@@ -8,6 +8,26 @@ function outText(txt, x, y, size, fill, stroke, align) {
   g.fillStyle = fill; g.fillText(txt, x, y);
 }
 
+/* Гаснущая надпись: обводка и заливка рисуются непрозрачно в отдельный слой, а прозрачность
+   ложится на слой целиком. Иначе при globalAlpha < 1 тёмная обводка просвечивает сквозь
+   белую заливку и надпись сереет. */
+var fadeLay = null;
+function fadeText(txt, x, y, size, fill, stroke, a) {
+  if (a >= 1) { outText(txt, x, y, size, fill, stroke); return; }
+  if (a <= 0) return;
+  if (!fadeLay) fadeLay = document.createElement('canvas');
+  var k = g.getTransform().a || 1, g0 = g, lc = fadeLay.getContext('2d');
+  g.font = '900 ' + size + 'px "Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif';
+  var w = g.measureText(txt).width + size * 0.6, h = size * 1.7;
+  var pw = Math.ceil(w * k), ph = Math.ceil(h * k);
+  if (fadeLay.width < pw || fadeLay.height < ph) { fadeLay.width = Math.max(fadeLay.width, pw); fadeLay.height = Math.max(fadeLay.height, ph); }
+  lc.setTransform(1, 0, 0, 1, 0, 0); lc.clearRect(0, 0, pw, ph); lc.setTransform(k, 0, 0, k, 0, 0);
+  g = lc; outText(txt, w / 2, h / 2, size, fill, stroke); g = g0;
+  g.save(); g.globalAlpha = a;
+  g.drawImage(fadeLay, 0, 0, pw, ph, x - w / 2, y - h / 2, w, h);
+  g.restore();
+}
+
 function outWrap(txt, x, y, size, maxW, fill, stroke, lh) {
   g.font = '900 ' + size + 'px "Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif';
   var words = txt.split(' '), lines = [], cur = '';
@@ -89,9 +109,10 @@ function drawHUD() {
   texts.forEach(function (t) {
     g.save(); g.globalAlpha = clamp(t.life / t.max, 0, 1);
     if (p3on) {
-      g.globalAlpha = clamp(t.life / t.max * 2.5, 0, 1);   // полная яркость до последних 40 % жизни: полупрозрачное над лесом — серое
+      g.globalAlpha = 1;   // полная яркость до последних 40 % жизни, дальше гаснет только прозрачность — цвет не сереет
       g.shadowColor = 'rgba(20,12,40,.45)'; g.shadowBlur = 8 * S; g.shadowOffsetY = 3 * S;
-      outText(t.t, (t.x - carX) + CARX, GY - t.y + tdy, 44 * S, '#ffffff', (t.c.length === 7 ? mix(t.c, '#1a1030', 0.68) : '#2b2140'));
+      fadeText(t.t, (t.x - carX) + CARX, GY - t.y + tdy, 44 * S, '#ffffff', (t.c.length === 7 ? mix(t.c, '#1a1030', 0.68) : '#2b2140'),
+               clamp(t.life / t.max * 2.5, 0, 1));
     } else outText(t.t, (t.x - carX) + CARX, GY - t.y, 40 * S, t.c, '#2b2140');
     g.restore();
   });
