@@ -268,7 +268,7 @@
 </div>
 
 <script>
-var BUILD_ID = 'src-31a5b66cee';                    // tools/build.mjs: хеш исходников
+var BUILD_ID = 'src-dced657edd';                    // tools/build.mjs: хеш исходников
 /* dev: сообщаем родителю о падениях, чтобы ловить их автопроверкой */
 window.addEventListener('error', function (e) {
   try { parent.postMessage({ err: (e.message || '?') + ' @' + (e.lineno || 0) }, '*'); } catch (x) {}
@@ -5268,6 +5268,10 @@ function scr(o) { return (o.x - carX) + CARX; }
 function lessonFocus(key) {
   var o;
   if (les.from === 'lane') {                                     // в «руле» координаты свои
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) {          // 3D: точка — по 3D-камере, иначе кружок «уплывал»
+      var q3 = les.obj ? Lane3D.projObj(les.obj, les.obj.sky ? 0 : 1.1) : Lane3D.project(0, ln.x, 1.4);
+      if (q3) return [q3.x, q3.y];
+    }
     if (les.obj) {
       var lo = les.obj, lp = laneProj(lo.z);
       return [W / 2 + lo.lane * lp.half * LN.laneK, lp.y - laneH(lo, lp.k) * 0.55];
@@ -6746,7 +6750,7 @@ function laneProjTo(z, out) {
   return out;
 }
 function laneProj(z) { return laneProjTo(z, {}); }
-var lpA = {}, lpB = {}, lpC = {};        // рабочие проекции для горячих циклов
+var lpA = {}, lpB = {}, lpC = {}, lp3 = {};      // рабочие проекции для горячих циклов
 function laneH(o, k) { return o.h * S * k * 1.6; }        // экранная высота объекта
 
 var Lane = {
@@ -6804,9 +6808,9 @@ var Lane = {
         ln.y = 0; ln.vy = 0;
         if (wasUp) {                                        // приземление: звук и пыль из-под колёс
           A.land();
-          var nn = laneProj(0), cxl = nn.cx + ln.x * nn.half * LN.laneK;
+          var nn = Lane.pos(0, ln.x), cxl = nn.x;
           for (var d0 = 0; d0 < 7; d0++)
-            P({ x: cxl + rnd(-60, 60) * S, y: GY - H * LN.carY, vx: rnd(-70, 70) * S, vy: rnd(20, 90) * S,
+            P({ x: cxl + rnd(-60, 60) * S, y: GY - nn.y, vx: rnd(-70, 70) * S, vy: rnd(20, 90) * S,
                 r: rnd(5, 11) * S, c: pick(['#e8e0cd', '#d4c9ae']), kind: 'puff', life: rnd(0.3, 0.55), ay: 60 * S });
         }
       }
@@ -6839,8 +6843,8 @@ var Lane = {
     ln.sy = clamp(ln.sy + ln.syV * dt, -18 * S, 14 * S);   // упоры хода подвески
     A.engine(clamp((ln.spd - LN.spd0) / (LN.spdMax - LN.spd0), 0, 1) * (1 - 0.5 * b), 1, true);
     if (ln.gas && ln.y === 0 && Math.floor(ln.t * 22) !== Math.floor((ln.t - dt) * 22)) {
-      var nz = laneProj(0), cxg = nz.cx + ln.x * nz.half * LN.laneK;
-      P({ x: cxg + rnd(-50, 50) * S, y: GY - H * LN.carY, vx: rnd(-40, 40) * S, vy: rnd(10, 50) * S,
+      var nz = Lane.pos(0, ln.x), cxg = nz.x;
+      P({ x: cxg + rnd(-50, 50) * S, y: GY - nz.y, vx: rnd(-40, 40) * S, vy: rnd(10, 50) * S,
           r: rnd(4, 9) * S, c: pick(['#e8e0cd', '#d4c9ae']), kind: 'puff', life: rnd(0.25, 0.5), ay: 40 * S });
     }
     Lane.rhythm(dt);
@@ -6969,6 +6973,11 @@ var Lane = {
   },
   touch: function (o, near, peak) {
     var p = laneProj(o.z), px = p.cx + o.lane * p.half * LN.laneK, py = p.y;
+    /* В 3D надписи и искры ставим по 3D-камере: 2D-проекция там с картинкой не совпадает. */
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) {
+      var q3 = o.pop ? Lane3D.projObj(o, 0, lp3) : Lane3D.project(o.z, o.lane, 0, lp3);
+      if (q3) { px = q3.x; py = q3.y + (o.pop ? o.air * S : 0); }
+    }
     var high = Math.max(ln.y, peak || 0);
     if (o.pop) {                                            // шарик: допрыгнул — лопнул, не допрыгнул — пролетел мимо
       if (high > o.air * S * 0.55) {
@@ -7031,7 +7040,11 @@ var Lane = {
       burst(W / 2, GY - H * 0.45, 22, ['#ffd93d', '#fff'], 300 * S, 'spark');
     }
   },
-  pos: function (z, lane) { var q = laneProj(z); q.x = q.cx + lane * q.half * LN.laneK; return q; },
+  pos: function (z, lane) {
+    var q = laneProj(z); q.x = q.cx + lane * q.half * LN.laneK;
+    if (typeof Lane3D !== 'undefined' && Lane3D.on()) { var q3 = Lane3D.project(z, lane, 0, lp3); if (q3) { q.x = q3.x; q.y = q3.y; } }   // 3D: точка по 3D-камере
+    return q;
+  },
   /* Сцена без HUD: нужна и самому режиму, и уроку, начатому из него. */
   scene: function () {
     /* 3D готов — мир рисует WebGL-холст под этим; здесь только прозрачная очистка и частицы. */
@@ -7237,6 +7250,8 @@ var L3 = {
   camFollow: 0.55, camHill: 0.6,            // насколько камера идёт за рядом машинки и за склоном
   fogNear: 0.55, fogFar: 1.2,               // туман в долях глубины: объекты появляются из дымки
   sideHill: 9,                              // высота холмов по сторонам дороги, м
+  farK: 0.9,                                // насколько подрастают предметы игры к горизонту (0 — как есть)
+  streak: 0.5,                              // яркость скоростных штрихов на большой скорости и турбо
   dpr: 1.5                                  // потолок плотности пикселей для WebGL
 };
 CFG.reg('L3', L3, {
@@ -7255,6 +7270,8 @@ CFG.reg('L3', L3, {
   fogNear:  [0.1,  1,    0.01,  'туман: начало'],
   fogFar:   [0.5,  1.5,  0.01,  'туман: конец'],
   sideHill: [0,    25,   0.5,   'холмы вдоль дороги, м'],
+  farK:     [0,    2,    0.05,  'предметы вдали крупнее'],
+  streak:   [0,    1,    0.05,  'скоростные штрихи'],
   dpr:      [0.75, 2,    0.05,  'потолок плотности пикселей 3D']
 });
 try { if (/[?&]3d=1/.test(location.search)) L3.on = 1; } catch (e) {}
@@ -7324,53 +7341,118 @@ var Lane3D = (function () {
   function cyl(r1, r2, h, n) { return new T3.CylinderGeometry(r1, r2, h, n || 8); }
   function cone(r, h, n) { return new T3.ConeGeometry(r, h, n || 8); }
 
-  /* Машинка: короб, сужающаяся кабина, окна, фонари, крупные колёса. Вперёд — −Z. */
+  /* Машинка — та, что выбрал ребёнок, игрушечная и с узнаваемым силуэтом сзади:
+     монстр-трак — высокий пикап на огромных колёсах; пожарная — длинная красная с лестницей;
+     «Молния» — низкая и широкая с антикрылом; полиция — белая с синей полосой и мигалкой.
+     Вперёд — −Z. Мигалки — отдельные яркие плашки поверх тусклых (см. beaconSpots). */
+  function tbox(w, h, d, kx, kz) {                          // короб, сужающийся кверху: игрушечная «покатость»
+    var b = box(w, h, d), p = b.attributes.position;
+    for (var i = 0; i < p.count; i++) if (p.getY(i) > 0) { p.setX(i, p.getX(i) * kx); p.setZ(i, p.getZ(i) * kz); }
+    return b;
+  }
+  var DARK = '#2b2140', GLASS = '#8fd3f5', TAIL = '#ff3b3b', CHROME = '#c9ced8';
+  function sedan(P, c0, c1, y0) {                           // легковой кузов: и полиция, и попутные
+    P.push(part(tbox(1.95, 0.62, 3.5, 0.96, 0.97), c0, [0, y0 + 0.31, 0]));
+    P.push(part(box(1.99, 0.2, 3.2), c1, [0, y0 + 0.26, 0]));                           // полоса по борту
+    P.push(part(box(2.02, 0.24, 0.3), '#3a3550', [0, y0 + 0.02, 1.66]));                // бамперы
+    P.push(part(box(2.02, 0.24, 0.3), '#3a3550', [0, y0 + 0.02, -1.66]));
+    P.push(part(tbox(1.6, 0.62, 1.85, 0.8, 0.8), mixHex(c0, '#ffffff', 0.15), [0, y0 + 0.93, 0.15]));
+    P.push(part(box(1.2, 0.42, 0.06), GLASS, [0, y0 + 0.9, 0.98]));                     // заднее стекло
+    P.push(part(box(1.62, 0.32, 1.3), GLASS, [0, y0 + 0.9, 0.15]));                     // боковые окна
+    P.push(part(box(0.42, 0.2, 0.08), TAIL, [-0.68, y0 + 0.42, 1.76]));                 // фонари
+    P.push(part(box(0.42, 0.2, 0.08), TAIL, [0.68, y0 + 0.42, 1.76]));
+    P.push(part(box(0.54, 0.16, 0.06), '#f2f6fb', [0, y0 + 0.18, 1.77]));               // номер
+  }
   function carParts(c0, c1, kind) {
-    var big = kind === 'monster', lift = big ? 0.45 : 0, P = [];
-    var light = mixHex(c0, '#ffffff', 0.18);
-    P.push(part(box(1.9, 0.55, 3.3), c0, [0, 0.62 + lift, 0]));
-    P.push(part(box(1.94, 0.14, 3.34), c1, [0, 0.8 + lift, 0]));                 // полоса по борту
-    P.push(part(box(1.98, 0.2, 0.24), '#3a3550', [0, 0.42 + lift, 1.62]));       // задний бампер
-    P.push(part(box(1.98, 0.2, 0.24), '#3a3550', [0, 0.42 + lift, -1.62]));
-    var cab = box(1.5, 0.58, 1.7), cp = cab.attributes.position;
-    for (var i = 0; i < cp.count; i++) if (cp.getY(i) > 0) { cp.setX(i, cp.getX(i) * 0.8); cp.setZ(i, cp.getZ(i) * 0.86 - 0.05); }
-    P.push(part(cab, light, [0, 1.18 + lift, 0.25]));
-    P.push(part(box(1.16, 0.38, 0.06), '#bfe9ff', [0, 1.17 + lift, 1.1]));      // заднее стекло
-    P.push(part(box(1.16, 0.38, 0.06), '#bfe9ff', [0, 1.17 + lift, -0.6]));
-    P.push(part(box(1.52, 0.3, 1.2), '#9fd8f5', [0, 1.17 + lift, 0.25]));        // боковые окна
-    P.push(part(box(0.38, 0.16, 0.08), '#ff3b3b', [-0.68, 0.74 + lift, 1.66]));  // фонари
-    P.push(part(box(0.38, 0.16, 0.08), '#ff3b3b', [0.68, 0.74 + lift, 1.66]));
-    P.push(part(box(0.5, 0.12, 0.06), '#f2f6fb', [0, 0.56 + lift, 1.66]));       // номер
-    if (kind === 'police') {
-      P.push(part(box(0.42, 0.16, 0.34), '#ff3b3b', [-0.22, 1.56 + lift, 0.3]));
-      P.push(part(box(0.42, 0.16, 0.34), '#3b7bff', [0.22, 1.56 + lift, 0.3]));
-    }
-    if (kind === 'fire') {
-      P.push(part(box(0.08, 0.08, 2.4), '#d9d9d9', [-0.3, 1.56 + lift, 0.1]));
-      P.push(part(box(0.08, 0.08, 2.4), '#d9d9d9', [0.3, 1.56 + lift, 0.1]));
-      for (var r = 0; r < 5; r++) P.push(part(box(0.6, 0.06, 0.06), '#d9d9d9', [0, 1.56 + lift, -0.9 + r * 0.5]));
-    }
-    if (kind === 'race') {
-      P.push(part(box(1.9, 0.08, 0.42), c1, [0, 1.22 + lift, 1.45]));            // антикрыло
-      P.push(part(box(0.08, 0.32, 0.12), '#3a3550', [-0.6, 1.04 + lift, 1.45]));
-      P.push(part(box(0.08, 0.32, 0.12), '#3a3550', [0.6, 1.04 + lift, 1.45]));
+    var P = [], i;
+    if (kind === 'monster') {
+      P.push(part(box(1.5, 0.3, 3.0), '#3a3550', [0, 1.0, 0]));                         // рама
+      P.push(part(cyl(0.13, 0.13, 2.3, 6), '#5a4a55', [0, 0.82, -1.15], [0, 0, Math.PI / 2]));   // мосты
+      P.push(part(cyl(0.13, 0.13, 2.3, 6), '#5a4a55', [0, 0.82, 1.15], [0, 0, Math.PI / 2]));
+      for (i = 0; i < 4; i++) P.push(part(cyl(0.1, 0.1, 0.8, 6), '#ffd23d',              // жёлтые амортизаторы
+        [(i % 2 ? 1 : -1) * 0.62, 1.12, (i < 2 ? -1 : 1) * 1.15], [0, 0, (i % 2 ? -1 : 1) * 0.5]));
+      P.push(part(tbox(2.15, 0.78, 3.5, 0.96, 0.96), c0, [0, 1.62, 0]));                 // кузов
+      P.push(part(box(2.2, 0.22, 3.56), c1, [0, 1.36, 0]));
+      P.push(part(box(2.3, 0.16, 1.5), c1, [0, 2.0, -1.15]));                            // крылья над колёсами
+      P.push(part(box(2.3, 0.16, 1.5), c1, [0, 2.0, 1.15]));
+      P.push(part(tbox(1.8, 0.8, 1.6, 0.82, 0.8), mixHex(c0, '#ffffff', 0.12), [0, 2.4, -0.45]));   // кабина
+      P.push(part(box(1.36, 0.46, 0.06), GLASS, [0, 2.4, 0.36]));
+      P.push(part(box(1.82, 0.4, 1.1), GLASS, [0, 2.4, -0.45]));
+      P.push(part(box(2.0, 0.1, 1.5), '#3a3550', [0, 2.02, 0.95]));                      // открытый кузов пикапа
+      P.push(part(box(1.5, 0.12, 0.3), DARK, [0, 2.86, -0.6]));                         // люстра на крыше
+      for (i = 0; i < 4; i++) P.push(part(box(0.26, 0.22, 0.2), '#fff3a0', [-0.54 + i * 0.36, 3.0, -0.6]));
+      P.push(part(box(2.24, 0.3, 0.3), '#3a3550', [0, 1.3, 1.84]));                      // задний бампер
+      P.push(part(box(0.46, 0.22, 0.08), TAIL, [-0.74, 1.72, 1.77]));
+      P.push(part(box(0.46, 0.22, 0.08), TAIL, [0.74, 1.72, 1.77]));
+    } else if (kind === 'fire') {
+      P.push(part(box(1.7, 0.3, 4.2), '#3a3550', [0, 0.6, 0]));
+      P.push(part(box(2.1, 1.35, 3.0), c0, [0, 1.42, 0.55]));                            // кунг с отсеками
+      P.push(part(box(2.14, 0.2, 3.04), '#ffffff', [0, 1.0, 0.55]));                     // белая полоса
+      P.push(part(box(1.7, 1.0, 0.06), CHROME, [0, 1.5, 2.06], null, null, function (x, y) {   // шторка отсека
+        return Math.floor((y - 0.9) * 9) % 2 ? '#aeb4c0' : CHROME; }));
+      P.push(part(tbox(2.1, 1.3, 1.3, 0.92, 0.82), c0, [0, 1.35, -1.6]));                // кабина впереди
+      P.push(part(box(1.7, 0.5, 0.06), GLASS, [0, 1.65, -2.2]));
+      P.push(part(box(2.12, 0.4, 0.9), GLASS, [0, 1.62, -1.55]));
+      P.push(part(cyl(0.34, 0.34, 1.2, 10), '#ffd23d', [0, 2.3, 1.55], [0, 0, Math.PI / 2]));   // катушка рукава
+      for (i = -1; i <= 1; i += 2) P.push(part(box(0.1, 0.12, 3.9), CHROME, [i * 0.42, 2.34, 0.15]));   // лестница
+      for (i = 0; i < 8; i++) P.push(part(box(0.84, 0.08, 0.08), CHROME, [0, 2.34, -1.6 + i * 0.5]));
+      P.push(part(box(0.2, 0.3, 0.2), CHROME, [-0.42, 2.18, -1.2])); P.push(part(box(0.2, 0.3, 0.2), CHROME, [0.42, 2.18, -1.2]));
+      P.push(part(box(2.2, 0.28, 0.3), '#3a3550', [0, 0.7, 2.12]));
+      P.push(part(box(0.3, 0.42, 0.08), TAIL, [-0.86, 1.15, 2.07])); P.push(part(box(0.3, 0.42, 0.08), TAIL, [0.86, 1.15, 2.07]));
+      P.push(part(box(1.2, 0.14, 0.34), DARK, [0, 2.06, -1.7]));                          // основание мигалки
+    } else if (kind === 'race') {
+      P.push(part(tbox(2.15, 0.55, 3.8, 0.86, 0.9), c0, [0, 0.62, 0]));                   // низкий клин
+      P.push(part(box(0.55, 0.06, 3.5), c1, [0, 0.91, 0]));                               // гоночная полоса
+      P.push(part(box(2.25, 0.2, 2.0), c1, [0, 0.5, 0.35]));                              // боковые понтоны
+      P.push(part(tbox(1.15, 0.5, 1.4, 0.7, 0.7), '#3a4a66', [0, 1.12, -0.2]));           // тёмный колпак кабины
+      P.push(part(box(0.9, 0.06, 0.06), GLASS, [0, 1.25, 0.32]));
+      P.push(part(box(2.4, 0.1, 0.55), c1, [0, 1.48, 1.62]));                             // антикрыло
+      P.push(part(box(0.08, 0.5, 0.66), c0, [-1.2, 1.3, 1.62])); P.push(part(box(0.08, 0.5, 0.66), c0, [1.2, 1.3, 1.62]));
+      P.push(part(box(0.1, 0.55, 0.14), '#3a3550', [-0.55, 1.15, 1.62])); P.push(part(box(0.1, 0.55, 0.14), '#3a3550', [0.55, 1.15, 1.62]));
+      P.push(part(cyl(0.12, 0.12, 0.3, 8), CHROME, [-0.32, 0.5, 1.95], [Math.PI / 2, 0, 0]));   // выхлопные трубы
+      P.push(part(cyl(0.12, 0.12, 0.3, 8), CHROME, [0.32, 0.5, 1.95], [Math.PI / 2, 0, 0]));
+      P.push(part(box(0.5, 0.14, 0.08), TAIL, [-0.72, 0.72, 1.86])); P.push(part(box(0.5, 0.14, 0.08), TAIL, [0.72, 0.72, 1.86]));
+      P.push(part(box(1.9, 0.18, 0.2), '#3a3550', [0, 0.36, 1.84]));                     // диффузор
+    } else {
+      sedan(P, c0, c1, 0.5);
+      if (kind === 'police') {
+        P.push(part(box(1.3, 0.1, 0.4), DARK, [0, 1.5, 0.15]));                          // мигалка: тусклые плашки
+        P.push(part(box(0.5, 0.18, 0.34), '#7a1620', [-0.36, 1.62, 0.15]));
+        P.push(part(box(0.5, 0.18, 0.34), '#1d3a7a', [0.36, 1.62, 0.15]));
+        P.push(part(box(2.0, 0.24, 1.4), '#ffffff', [0, 0.76, 0.1]));                    // белые двери на синей полосе
+      }
     }
     return P;
   }
-  function wheelGeo(r, w) {
-    return merge([part(cyl(r, r, w, 10), '#2b2140', null, [0, 0, Math.PI / 2]),
-                  part(cyl(r * 0.5, r * 0.5, w + 0.04, 6), '#c9ced8', null, [0, 0, Math.PI / 2])]);
+  /* где стоят яркие половинки мигалки; null — у машинки её нет */
+  function beaconSpots(kind) {
+    if (kind === 'police') return { a: [-0.36, 1.63, 0.15], b: [0.36, 1.63, 0.15], ca: '#ff3b3b', cb: '#3b8bff', s: [0.54, 0.2, 0.38] };
+    if (kind === 'fire') return { a: [-0.34, 2.2, -1.7], b: [0.34, 2.2, -1.7], ca: '#3b8bff', cb: '#3b8bff', s: [0.44, 0.2, 0.36] };
+    return null;
+  }
+  /* колесо с протектором: грани по кругу через одну темнее — вращение видно издалека */
+  function wheelGeo(r, w, hub, n) {
+    n = n || 12;
+    return merge([part(cyl(r, r, w, n), DARK, null, [0, 0, Math.PI / 2], null, function (x, y, z) {
+                    if (Math.abs(x) > w * 0.45) return '#4a4060';
+                    return Math.floor((Math.atan2(y, z) + Math.PI) / (Math.PI * 2) * n) % 2 ? '#241b36' : '#3d3354'; }),
+                  part(cyl(r * 0.52, r * 0.52, w + 0.04, 6), hub || CHROME, null, [0, 0, Math.PI / 2]),
+                  part(cyl(r * 0.18, r * 0.18, w + 0.08, 6), '#5a4a55', null, [0, 0, Math.PI / 2])]);
   }
   function wheelSpots(kind) {
-    var big = kind === 'monster', r = big ? 0.72 : 0.46, x = big ? 1.08 : 0.98;
-    return { r: r, w: big ? 0.62 : 0.44, at: [[-x, r, -1.08], [x, r, -1.08], [-x, r, 1.08], [x, r, 1.08]] };
+    if (kind === 'monster') return { r: 0.86, w: 0.8, hub: '#ffd23d', at: [[-1.22, 0.86, -1.15], [1.22, 0.86, -1.15], [-1.22, 0.86, 1.15], [1.22, 0.86, 1.15]] };
+    if (kind === 'fire') return { r: 0.56, w: 0.5, at: [[-0.98, 0.56, -1.45], [0.98, 0.56, -1.45], [-0.98, 0.56, 1.3], [0.98, 0.56, 1.3]] };
+    if (kind === 'race') return { r: 0.52, w: 0.62, hub: '#3a3550', at: [[-1.08, 0.5, -1.2], [1.08, 0.5, -1.2], [-1.1, 0.54, 1.15], [1.1, 0.54, 1.15]] };
+    return { r: 0.48, w: 0.46, at: [[-0.98, 0.48, -1.1], [0.98, 0.48, -1.1], [-0.98, 0.48, 1.1], [0.98, 0.48, 1.1]] };
   }
+  /* покраска из уроков (чёрная, красная, жёлтая) перекрашивает кузов, полоса — темнее него */
+  var PAINT = { black: ['#2e2e3a', '#16161d'], red: ['#d62828', '#9d0208'], yellow: ['#f2c200', '#c99700'] };
   /* попутная машина: колёса вклеены в кузов, она не крутит их — один вызов отрисовки */
   function trafficGeo(col) {
     var P = carParts(col[0], col[1], ''), ws = wheelSpots('');
     for (var i = 0; i < 4; i++) {
       var a = ws.at[i];
-      P.push(part(cyl(ws.r, ws.r, ws.w, 10), '#2b2140', a, [0, 0, Math.PI / 2]));
+      P.push(part(cyl(ws.r, ws.r, ws.w, 10), DARK, a, [0, 0, Math.PI / 2]));
     }
     return merge(P);
   }
@@ -7474,9 +7556,81 @@ var Lane3D = (function () {
                     part(ico(0.34, 1), '#ffffff', [0, 2.3, 0]), part(cone(0.07, 0.4, 5), '#ff7a1a', [0, 2.3, 0.45], [Math.PI / 2, 0, 0])]);
     }
   };
-  /* Реквизит тем (корова, автобус…) в 3D пока не моделирован — ставим похожую по роли форму. */
+  /* Реквизит тем — самые частые предметы обочины. Животные и машины стоят боком к дороге
+     головой к ней (справа зеркалятся), иначе сзади видна одна корма. */
+  function animal(body, belly, head, legs, spots, wool) {
+    var P = [];
+    if (wool) {                                               // овечка — пушистые комки
+      for (var i = 0; i < 6; i++) P.push(part(ico(0.42, 0), body, [-0.45 + (i % 3) * 0.42, 0.95 + (i < 3 ? 0 : 0.28), (i % 2 ? 0.16 : -0.16)]));
+    } else {
+      P.push(part(box(1.7, 0.8, 0.9), body, [0, 1.05, 0], null, null, spots ? function (x, y, z) {
+        return hash(Math.floor(x * 2.2) * 7.1 + Math.floor(z * 2) * 3.3 + Math.floor(y * 2)) > 0.6 ? spots : body; } : null));
+      P.push(part(box(1.5, 0.12, 0.8), belly, [0, 0.62, 0]));
+    }
+    for (var k = 0; k < 4; k++) P.push(part(box(0.2, 0.62, 0.2), legs, [(k < 2 ? -0.62 : 0.62), 0.32, (k % 2 ? 0.3 : -0.3)]));
+    P.push(part(box(0.62, 0.55, 0.55), head, [1.08, 1.42, 0]));
+    P.push(part(box(0.3, 0.3, 0.46), belly, [1.42, 1.3, 0]));                              // морда
+    P.push(part(ico(0.07, 0), DARK, [1.3, 1.56, 0.2])); P.push(part(ico(0.07, 0), DARK, [1.3, 1.56, -0.2]));
+    P.push(part(box(0.16, 0.12, 0.24), head, [0.9, 1.72, 0.32])); P.push(part(box(0.16, 0.12, 0.24), head, [0.9, 1.72, -0.32]));
+    return P;
+  }
+  function vanGeo(c0, c1, len, tall, cross) {                 // автобус, скорая, мусоровоз — один кузов
+    var P = [part(tbox(len, tall, 1.9, 0.98, 0.96), c0, [0, 0.55 + tall / 2, 0]),
+             part(box(len + 0.04, 0.24, 1.94), c1, [0, 0.75, 0]),
+             part(box(len * 0.8, 0.42, 1.94), GLASS, [-0.1, 0.55 + tall * 0.72, 0], null, null, function (x) {
+               return Math.floor((x + len) * 1.4) % 3 === 0 ? c0 : GLASS; }),
+             part(box(0.06, tall * 0.5, 1.5), GLASS, [len / 2 + 0.01, 0.55 + tall * 0.66, 0])];
+    if (cross) { P.push(part(box(0.5, 0.14, 1.96), cross, [-0.4, 0.55 + tall * 0.4, 0])); P.push(part(box(0.14, 0.5, 1.96), cross, [-0.4, 0.55 + tall * 0.4, 0])); }
+    for (var i = 0; i < 4; i++) P.push(part(cyl(0.42, 0.42, 0.3, 10), DARK, [(i < 2 ? -1 : 1) * len * 0.32, 0.42, (i % 2 ? 0.86 : -0.86)], [Math.PI / 2, 0, 0]));
+    return P;
+  }
+  BUILD.cow = function () { return merge(animal('#ffffff', '#f4b6c2', '#ffffff', '#5a4a55', '#2b2140')); };
+  BUILD.horse = function () { return merge(animal('#a0663a', '#7a4a2a', '#a0663a', '#5a3a22').concat([
+                   part(box(0.2, 0.5, 0.16), '#3a2416', [0.7, 1.55, 0], [0, 0, -0.5]),          // грива
+                   part(box(0.12, 0.6, 0.12), '#3a2416', [-0.92, 0.95, 0], [0, 0, -0.4])])); };   // хвост
+  BUILD.sheep = function () { return merge(animal('#f7f4ee', '#3a3550', '#3a3550', '#3a3550', null, true)); };
+  BUILD.fence = function () {
+    var P = [];
+    for (var i = 0; i < 4; i++) P.push(part(box(0.18, 1.1, 0.18), '#c98a54', [0, 0.55, -1.8 + i * 1.2]));
+    P.push(part(box(0.1, 0.16, 3.8), '#e0a46a', [0, 0.85, 0])); P.push(part(box(0.1, 0.16, 3.8), '#e0a46a', [0, 0.45, 0]));
+    return merge(P);
+  };
+  BUILD.windmill = function () {
+    var P = [part(tbox(1.8, 4.2, 1.8, 0.6, 0.6), '#fff1d6', [0, 2.1, 0]), part(cone(1.0, 1.1, 8), '#e63946', [0, 4.75, 0]),
+             part(box(0.5, 0.8, 0.06), '#8a5a3c', [0, 0.4, 0.92]), part(cyl(0.12, 0.12, 0.5, 6), '#5a4a55', [0, 4.1, 0.7], [Math.PI / 2, 0, 0])];
+    for (var i = 0; i < 4; i++) {                             // крылья — крестом, лицом к дороге
+      var a = i * Math.PI / 2 + 0.4;
+      P.push(part(box(0.5, 2.3, 0.06), i % 2 ? '#ffffff' : '#c9d6e8', [Math.sin(a) * 1.2, 4.1 + Math.cos(a) * 1.2, 0.98], [0, 0, -a]));
+    }
+    return merge(P);
+  };
+  BUILD.tractor = function () {
+    return merge([part(box(1.8, 0.7, 1.2), '#e63946', [0.2, 0.95, 0]), part(tbox(0.9, 1.0, 1.1, 0.9, 0.9), '#e63946', [-0.45, 1.8, 0]),
+                  part(box(0.92, 0.5, 1.12), GLASS, [-0.45, 1.85, 0]), part(cyl(0.08, 0.08, 0.7, 6), '#3a3550', [0.8, 1.6, 0.3]),
+                  part(cyl(0.85, 0.85, 0.4, 12), DARK, [-0.6, 0.85, 0.75], [Math.PI / 2, 0, 0]), part(cyl(0.85, 0.85, 0.4, 12), DARK, [-0.6, 0.85, -0.75], [Math.PI / 2, 0, 0]),
+                  part(cyl(0.45, 0.45, 0.3, 10), DARK, [0.85, 0.45, 0.65], [Math.PI / 2, 0, 0]), part(cyl(0.45, 0.45, 0.3, 10), DARK, [0.85, 0.45, -0.65], [Math.PI / 2, 0, 0]),
+                  part(cyl(0.4, 0.4, 0.44, 8), '#ffd23d', [-0.6, 0.85, 0], [Math.PI / 2, 0, 0])]);
+  };
+  BUILD.bus = function () { return merge(vanGeo('#ffcf3d', '#e0691f', 4.4, 1.6)); };
+  BUILD.ambulance = function () { return merge(vanGeo('#ffffff', '#e63946', 3.0, 1.5, '#e63946')); };
+  BUILD.garbage = function () { return merge(vanGeo('#4caf50', '#2f7a4c', 3.4, 1.7)); };
+  BUILD.loc_umbrella = function () {
+    return merge([part(cyl(0.05, 0.05, 2.4, 5), '#ffffff', [0, 1.2, 0]), part(cone(1.5, 0.6, 8), '#ff4d6d', [0, 2.5, 0], null, null, function (x, y, z) {
+                    return Math.floor((Math.atan2(z, x) + Math.PI) / (Math.PI / 4)) % 2 ? '#ffffff' : '#ff4d6d'; }),
+                  part(box(1.0, 0.1, 1.8), '#4fc3f7', [0.8, 0.05, 0])]);
+  };
+  BUILD.loc_rocket = function () {
+    return merge([part(cyl(0.6, 0.6, 3.2, 8), '#f2f6fb', [0, 2.2, 0]), part(cone(0.6, 1.2, 8), '#e63946', [0, 4.4, 0]),
+                  part(ico(0.28, 0), '#4fc3f7', [0, 2.9, 0.55]), part(box(0.1, 1.0, 0.9), '#e63946', [0.6, 0.9, 0]),
+                  part(box(0.1, 1.0, 0.9), '#e63946', [-0.6, 0.9, 0]), part(box(0.9, 1.0, 0.1), '#e63946', [0, 0.9, 0.6])]);
+  };
+  BUILD.chest = function () {
+    return merge([part(box(1.2, 0.7, 0.8), '#8a5a3c', [0, 0.35, 0]), part(cyl(0.4, 0.4, 1.2, 8, 1), '#a0663a', [0, 0.7, 0], [0, 0, Math.PI / 2]),
+                  part(box(0.16, 1.16, 0.84), '#ffd23d', [0.3, 0.55, 0]), part(box(0.16, 1.16, 0.84), '#ffd23d', [-0.3, 0.55, 0])]);
+  };
   var ALIAS = { daisies: 'flower', loc_snowman: 'snowman', loc_fir: 'pine', loc_palm: 'palm', loc_rock: 'rock',
-                loc_jungle: 'tree', loc_tower: 'bld', loc_shop: 'house', windmill: 'house', fence: 'bush' };
+                loc_jungle: 'tree', loc_tower: 'bld', loc_shop: 'house',
+                excavator: 'tractor', tow: 'garbage', master: 'house' };
   /* Пейзаж вдоль дороги: стоит по сетке мира, геймплея не касается. Это и даёт живую обочину —
      игровых предметов обочины на экране всего два-три. */
   var SCEN = {
@@ -7521,6 +7675,14 @@ var Lane3D = (function () {
   SCEN.snowman = function () { return BUILD.snowman(); };
   var SCEN_N = 48;                                         // запас экземпляров на вид пейзажа
 
+  function haloTex(T) {
+    var c = document.createElement('canvas'); c.width = c.height = 64;
+    var x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,240,170,0.95)'); gr.addColorStop(0.35, 'rgba(255,210,60,0.45)'); gr.addColorStop(1, 'rgba(255,200,40,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    return new T.CanvasTexture(c);
+  }
+  var haloIM, streakIM, HALO_N = 16, STREAK_N = 28, streakA = 0;
   function mixHex(a, b, k) { return typeof mix === 'function' ? mix(a, b, k) : a; }
 
   /* ════════ Постройка сцены (один раз) ════════ */
@@ -7533,12 +7695,13 @@ var Lane3D = (function () {
     hemi = new T.HemisphereLight(0xffffff, 0x88aa66, 1.8); scene.add(hemi);
     sun = new T.DirectionalLight(0xfff4e0, 2.6);           // сбоку-сверху: грани читаются разной яркостью
     sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
-    var sc = sun.shadow.camera; sc.left = -4; sc.right = 4; sc.top = 4; sc.bottom = -4; sc.near = 1; sc.far = 30;
+    var sc = sun.shadow.camera; sc.left = -5; sc.right = 5; sc.top = 5; sc.bottom = -5;   // монстр-трак выше и шире
+    sc.near = 1; sc.far = 30;
     sun.shadow.bias = -0.002;
     scene.add(sun); scene.add(sun.target);
 
     mats.v = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    mats.star = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x8a5a00, emissiveIntensity: 0.8 });
+    mats.star = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffa000, emissiveIntensity: 0.55, fog: false });
     mats.car = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffffff, emissiveIntensity: 0 });
     mats.road = new T.MeshLambertMaterial({ color: 0x5d6472, flatShading: true });
     mats.grass = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -7546,6 +7709,12 @@ var Lane3D = (function () {
     mats.hills = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false });
     mats.sky = new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide, fog: false, depthWrite: false });
     mats.far = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false });
+    mats.ridge = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false, side: T.DoubleSide });
+    /* предметы игры — без тумана: звезду и конус ребёнок должен видеть с самого горизонта */
+    mats.vg = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false });
+    mats.beacon = new T.MeshBasicMaterial({ vertexColors: true, fog: false });
+    mats.halo = new T.MeshBasicMaterial({ map: haloTex(T), transparent: true, depthWrite: false, fog: false, blending: T.AdditiveBlending });
+    mats.streak = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false });
     mats.shadow = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false,
                                             polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 
@@ -7554,6 +7723,12 @@ var Lane3D = (function () {
     var sg = new T.CircleGeometry(1, 14); sg.rotateX(-Math.PI / 2);
     shadowIM = new T.InstancedMesh(sg, mats.shadow, 64); shadowIM.frustumCulled = false; shadowIM.renderOrder = 1;
     scene.add(shadowIM);
+    /* сияние звёзд — плашки лицом к камере одним вызовом; скоростные штрихи — тоже одним */
+    haloIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), mats.halo, HALO_N); haloIM.frustumCulled = false; haloIM.renderOrder = 2; haloIM.count = 0;
+    scene.add(haloIM);
+    var sgeo = new T.BoxGeometry(0.07, 0.07, 1);
+    streakIM = new T.InstancedMesh(sgeo, mats.streak, STREAK_N); streakIM.frustumCulled = false; streakIM.count = 0; streakIM.renderOrder = 2;
+    scene.add(streakIM);
     for (var k in SCEN) {
       var im = new T.InstancedMesh(SCEN[k](), mats.v, SCEN_N);
       im.frustumCulled = false; im.count = 0; im.visible = false;
@@ -7608,15 +7783,39 @@ var Lane3D = (function () {
     road.sky = new T.Mesh(new T.SphereGeometry(800, 16, 12), mats.sky); road.sky.frustumCulled = false; road.sky.renderOrder = -2;
     road.sky.geometry.setAttribute('color', new T.BufferAttribute(new Float32Array(road.sky.geometry.attributes.position.count * 3), 3));
     scene.add(road.sky);
-    // дальние горы — кольцо зубцов, цвет смешан с дымкой горизонта
-    var P = [], n = 40;
-    for (var i = 0; i < n; i++) {
-      var a = i / n * Math.PI * 2, h = 26 + 26 * Math.abs(Math.sin(i * 1.7)) + 18 * Math.abs(Math.sin(i * 0.53));
-      var rr = 560 + 60 * Math.sin(i * 2.3);
-      P.push(part(cone(rr * 0.13, h, 5), '#ffffff', [Math.cos(a) * rr, h / 2 - 8, Math.sin(a) * rr], [0, a * 3.1, 0], [1, 1, 0.7]));
-      P.push(part(ico(rr * 0.09, 0), '#ffffff', [Math.cos(a + 0.08) * rr * 0.96, -6, Math.sin(a + 0.08) * rr * 0.96], null, [1.6, 0.45, 1]));   // пологие холмы между пиками
+    /* Дальние горы — три гряды друг за другом, у каждой пика плечи и шапка. Дальняя гряда
+       выше и глубже в дымке — так горизонт читается слоями, а не одним рядом пирамид.
+       Цвет — по темам в updTheme(): на грань хранится гряда и «шапка ли это». */
+    var LAY = [{ r: 470, n: 30, h: 26 }, { r: 600, n: 24, h: 44 }, { r: 740, n: 20, h: 70 }];
+    var vs = [], fl = [], L, i, sd;
+    function tri(ax, ay, az, bx, by, bz, cx, cy, cz, lay, cap) { vs.push(ax, ay, az, bx, by, bz, cx, cy, cz); fl.push(lay, cap); }
+    function at(a, r) { return [Math.cos(a) * r, Math.sin(a) * r]; }
+    for (L = 0; L < 3; L++) {
+      var ly = LAY[L], n = ly.n, step = Math.PI * 2 / n;
+      for (i = 0; i < n; i++) {
+        var a0 = (i + 0.3 * hash(i * 3.1 + L)) * step, a1 = (i + 1 + 0.3 * hash((i + 1) % n * 3.1 + L)) * step;
+        var ap = (a0 + a1) / 2 + (hash(i * 7.7 + L * 5) - 0.5) * step * 0.4, rr = ly.r + 30 * (hash(i * 1.9 + L * 2) - 0.5);
+        var hp = ly.h * (0.55 + 0.9 * hash(i * 5.3 + L * 11)), hv0 = hp * 0.22, hv1 = hp * 0.22, yb = -14;
+        var V0 = at(a0, rr), V1 = at(a1, rr), PK = at(ap, rr - 10), B = at(ap, rr);
+        var S0 = at(ap - (ap - a0) * 0.55, rr - 22), S1 = at(ap + (a1 - ap) * 0.5, rr - 16), hs0 = hp * 0.55, hs1 = hp * 0.5;
+        var kc = 0.62, C0 = [S0[0] + (PK[0] - S0[0]) * kc, S0[1] + (PK[1] - S0[1]) * kc], C1 = [S1[0] + (PK[0] - S1[0]) * kc, S1[1] + (PK[1] - S1[1]) * kc];
+        var hc0 = hs0 + (hp - hs0) * kc, hc1 = hs1 + (hp - hs1) * kc;
+        tri(V0[0], yb, V0[1], V0[0], hv0, V0[1], S0[0], hs0, S0[1], L, 0);
+        tri(V0[0], yb, V0[1], S0[0], hs0, S0[1], B[0], yb, B[1], L, 0);
+        tri(B[0], yb, B[1], S0[0], hs0, S0[1], C0[0], hc0, C0[1], L, 0);
+        tri(B[0], yb, B[1], C0[0], hc0, C0[1], C1[0], hc1, C1[1], L, 0);
+        tri(C0[0], hc0, C0[1], PK[0], hp, PK[1], C1[0], hc1, C1[1], L, 1);              // шапка
+        tri(B[0], yb, B[1], C1[0], hc1, C1[1], S1[0], hs1, S1[1], L, 0);
+        tri(B[0], yb, B[1], S1[0], hs1, S1[1], V1[0], yb, V1[1], L, 0);
+        tri(V1[0], yb, V1[1], S1[0], hs1, S1[1], V1[0], hv1, V1[1], L, 0);
+      }
     }
-    road.hills = new T.Mesh(merge(P), mats.far); road.hills.frustumCulled = false; road.hills.renderOrder = -1;
+    var hg = new T.BufferGeometry();
+    hg.setAttribute('position', new T.BufferAttribute(new Float32Array(vs), 3));
+    hg.setAttribute('color', new T.BufferAttribute(new Float32Array(vs.length), 3));
+    hg.computeVertexNormals();
+    road.ridgeF = fl;
+    road.hills = new T.Mesh(hg, mats.ridge); road.hills.frustumCulled = false; road.hills.renderOrder = -1;
     scene.add(road.hills);
     var C = [];
     for (i = 0; i < 9; i++) {
@@ -7702,37 +7901,50 @@ var Lane3D = (function () {
   }
 
   /* ── цвета темы: пересчитываются только при смене объекта палитры ── */
-  var _c2;
+  var _c2, _cT, _cM, _cL, _cB, _cH, _cS;
+  /* какие горы у темы: высота гряд и снег на шапках (у космоса — камень без снега) */
+  var FAR_K = { peaks: [1.35, 1], forest: [1, 0.5], jungle: [0.85, 0], sea: [0.5, 0], dunes: [0.45, 0], city: [0.75, 0] };
   function updTheme() {
     var th = TH();
     if (th === thRef) return;
     thRef = th;
-    var T = T3; _c2 = _c2 || new T.Color();
+    var T = T3;
+    if (!_c2) { _c2 = new T.Color(); _cT = new T.Color(); _cM = new T.Color(); _cL = new T.Color(); _cB = new T.Color(); _cH = new T.Color(); _cS = new T.Color(); }
     fog.color.set(th.sky[2]);
     R.setClearColor(fog.color);
     mats.road.color.set(th.road[0]);
     mats.grass.color.set(th.grass);
     hemi.color.set(th.sky[1]); hemi.groundColor.set(th.grass);
-    var sa = road.sky.geometry.attributes.position, sc = road.sky.geometry.attributes.color, top = new T.Color(th.sky[0]),
-        mid = new T.Color(th.sky[1]), low = new T.Color(th.sky[2]);
+    var sa = road.sky.geometry.attributes.position, sc = road.sky.geometry.attributes.color, top = _cT.set(th.sky[0]),
+        mid = _cM.set(th.sky[1]), low = _cL.set(th.sky[2]);
     for (var i = 0; i < sa.count; i++) {
       var e = sa.getY(i) / 800;                            // −1..1 по высоте купола
       if (e < 0.02) _c2.copy(low); else if (e < 0.25) _c2.copy(low).lerp(mid, (e - 0.02) / 0.23); else _c2.copy(mid).lerp(top, Math.min(1, (e - 0.25) / 0.5));
       sc.setXYZ(i, _c2.r, _c2.g, _c2.b);
     }
     sc.needsUpdate = true;
-    // горы: цвет склона темы, к вершине светлее, всё в дымке горизонта
-    var hc = road.hills.geometry.attributes.color, hp = road.hills.geometry.attributes.position, base = new T.Color(th.h2), hi = new T.Color(th.h1);
-    for (i = 0; i < hc.count; i++) {
-      var y = hp.getY(i), k = clamp((y + 8) / 80, 0, 1);
-      _c2.copy(base).lerp(hi, k).lerp(low, 0.42 - k * 0.12);
-      hc.setXYZ(i, _c2.r, _c2.g, _c2.b);
+    /* Горы: ближняя гряда — цвет склона темы, дальние светлее и глубже в дымке горизонта;
+       шапки — снег (с отсветом неба) там, где тема снежная, иначе просто светлая вершина. */
+    var fk = FAR_K[th.far] || FAR_K.forest, snow = th.name === 'космос' ? 0 : (th.snow ? 1 : fk[1]);
+    road.hills.scale.y = fk[0];
+    var hc = road.hills.geometry.attributes.color, base = _cB.set(th.h2), hi = _cH.set(th.h1), F = road.ridgeF;
+    _cS.set('#ffffff').lerp(low, 0.25);
+    for (i = 0; i < hc.count; i += 3) {
+      var f = i / 3, lay = F[f * 2], cap = F[f * 2 + 1];
+      var isSnow = cap && snow >= 1 - lay * 0.5 + 0.01;
+      if (isSnow) _c2.copy(_cS); else _c2.copy(base).lerp(hi, lay * 0.4 + cap * 0.35);
+      _c2.lerp(low, isSnow ? 0.08 : 0.18 + lay * 0.22);
+      for (var v = 0; v < 3; v++) hc.setXYZ(i + v, _c2.r, _c2.g, _c2.b);
     }
     hc.needsUpdate = true;
     road.sunM.visible = !!th.sun;
-    scenKinds = SCEN_BY[th.name] || ['rtree', 'bush'];
+    /* Пейзаж новой темы не подменяется весь разом: он начинается от горизонта и
+       подъезжает к машинке вместе с дорогой, старый уезжает назад сам. */
+    var nk = SCEN_BY[th.name] || ['rtree', 'bush'];
+    if (!scenInit) { scenInit = true; prevKinds = scenKinds = nk; switchWz = -1e9; }
+    else if (nk !== scenKinds) { prevKinds = scenKinds; scenKinds = nk; switchWz = ln.wz + Z1 - 0.08; }
   }
-  var scenKinds = ['rtree', 'bush'];
+  var scenKinds = ['rtree', 'bush'], prevKinds = scenKinds, switchWz = -1e9, scenInit = false;
 
   /* ── пулы мешей по виду предмета: в кадре ничего не создаётся, кроме роста пула ── */
   function geoFor(key) {
@@ -7744,6 +7956,7 @@ var Lane3D = (function () {
     else if (SCEN[key]) geo = SCEN[key]();
     else geo = BUILD.bush();
     if (key === 'star') mat = mats.star;
+    else if (GAMEK[key] || key.indexOf('auto') === 0) mat = mats.vg;
     pl = pools[key] = { geo: geo, mat: mat, list: [], used: 0 };
     return pl;
   }
@@ -7759,9 +7972,11 @@ var Lane3D = (function () {
     var t = ALIAS[o.t] || o.t;
     return BUILD[t] || SCEN[t] ? t : 'bush';
   }
-  var SHR = { star: 0.5, fuel: 0.55, cone: 0.6, ball: 0.5, haystack: 0.95, hedgehog: 0.55, balloon: 0.35, tree: 1.4,
+  var GAMEK = { fuel: 1, cone: 1, ball: 1, haystack: 1, hedgehog: 1, balloon: 1 };
+  var SHR = { cow: 1.2, horse: 1.2, sheep: 0.9, tractor: 1.4, bus: 2.2, ambulance: 1.7, garbage: 1.9, windmill: 1.3,
+              loc_umbrella: 0.6, loc_rocket: 0.9, chest: 0.8, fence: 0.4, star: 0.5, fuel: 0.55, cone: 0.6, ball: 0.5, haystack: 0.95, hedgehog: 0.55, balloon: 0.35, tree: 1.4,
               house: 2.0, bush: 1.1, flower: 0.6, auto: 1.5, snowman: 0.8, palm: 1.2, rock: 1.1, pine: 1.2, bld: 2.6 };
-  var nSh = 0, _sm;
+  var nSh = 0, _sm, nHalo = 0;
   function shadowAt(x, y, z, r) {
     if (nSh >= 64) return;
     _sm.makeScale(r, 1, r * 0.8); _sm.setPosition(x, y + 0.05, z);
@@ -7771,6 +7986,7 @@ var Lane3D = (function () {
   function updObjs() {
     var D = L3.depth, laneW = L3.road * LN.laneK, i, k;
     for (k in pools) pools[k].used = 0;
+    nHalo = 0;
     for (i = 0; i < ln.objs.length; i++) {
       var o = ln.objs[i], zz = o.z;
       if (o.done === 'take' || (o.done === 'over' && o.pop)) continue;   // лопнувший шарик не летит дальше целым
@@ -7785,16 +8001,29 @@ var Lane3D = (function () {
       else if (o.air) y += o.air * L3.pxK;
       if (o.fy) y += o.fy / S * L3.pxK;
       var sIn = clamp((1.1 - zz) / 0.12, 0.05, 1), sc = sIn * (o.sky ? 1.3 : 1);
-      if (o.decor && Math.abs(lat) > 12) ground = y = RA.y + sideH(ln.wz + zz, lat) + 0.06;
+      /* Вдали предметы игры подрастают (у машинки — как были, касания не меняются):
+         на телефоне конус на z ≈ 0,6 был в несколько пикселей. */
+      /* реквизит темы (корова, автобус…) приходит без флага decor, но стоит за обочиной (|lane| > 1,4) */
+      var side = o.decor || Math.abs(o.lane) > 1.4;
+      if (!side && !o.sky) sc *= 1 + L3.farK * clamp((zz - 0.15) / 0.85, 0, 1);
+      if (side && Math.abs(lat) > 12) ground = y = RA.y + sideH(ln.wz + zz, lat) + 0.06;
       m.position.set(x, y, z);
       m.rotation.set(0, RA.yaw, o.fly ? (o.frotA || 0) : 0);
-      if (key === 'star') { m.position.y += 0.95 + Math.sin(T * 3 + o.ph) * 0.12; m.rotation.y += T * 2.4; sc *= 1.3; }
+      if (key === 'star') {
+        m.position.y += 0.95 + Math.sin(T * 3 + o.ph) * 0.12; m.rotation.y += T * 2.4; sc *= 1.3;
+        if (nHalo < HALO_N) {                                // сияние: дышит раз в ~1,3 с, не мигает
+          var hs = sc * (2.3 + 0.25 * Math.sin(T * 4.8 + o.ph));
+          _sm.compose(_p.set(x, m.position.y, z), cam.quaternion, _s.set(hs, hs, hs));
+          haloIM.setMatrixAt(nHalo++, _sm);
+        }
+      }
       else if (key === 'fuel') m.rotation.y += Math.sin(T * 2 + o.ph) * 0.3;
       else if (key === 'balloon') m.position.y += Math.sin(T * 2.2 + o.ph) * 0.1;
       else if (key === 'cloud') sc *= 1.4;
       if (key === 'bird') {
         m.scale.set(sc, sc * (0.35 + 0.65 * Math.abs(Math.sin(T * 5 + o.ph))), sc);   // взмах ~1,6 раза в секунду
       } else m.scale.setScalar(sc);
+      if (side && lat > 0) m.scale.x = -sc;              // справа — зеркально: животные и машины смотрят на дорогу
       if (!o.sky) shadowAt(x, ground, z, (SHR[key.indexOf('auto') === 0 ? 'auto' : key] || 0.8) * sc * (o.air ? 0.6 : 1));
     }
     for (k in pools) { var pl = pools[k]; for (i = pl.used; i < pl.list.length; i++) pl.list[i].visible = false; }
@@ -7807,7 +8036,7 @@ var Lane3D = (function () {
     for (var gi = g0; gi <= g1; gi++) for (var sd = -1; sd <= 1; sd += 2) {
       var h1 = hash(gi * 2 + (sd > 0 ? 1 : 0)), h2 = hash(gi * 3.7 + sd * 5.1), h3 = hash(gi * 1.3 + sd * 9.7);
       if (h1 < 0.3) continue;
-      var kind = scenKinds[Math.floor(h3 * scenKinds.length)], im = scen[kind];
+      var kl = gi * SC < switchWz ? prevKinds : scenKinds, kind = kl[Math.floor(h3 * kl.length)], im = scen[kind];
       if (!im || n[kind] >= SCEN_N) continue;
       var zz = gi * SC - ln.wz, lat = sd * (L3.road + 3.2 + h2 * h2 * 48 + (kind === 'bld' || kind === 'house' ? 4 : 0));
       roadAt(zz, RA);
@@ -7826,22 +8055,29 @@ var Lane3D = (function () {
     }
   }
 
-  /* ── машинка игрока: кузов + четыре колеса, пересобирается при смене машины ── */
+  /* ── машинка игрока: кузов + четыре колеса (+ мигалка), пересобирается при смене машины или покраски ── */
   function updPlayer() {
-    var id = car && car.id || 'race';
-    if (carKey !== id) {
-      if (player) { scene.remove(player.g); player.body.geometry.dispose(); player.wg.dispose(); }
-      var c = CAR_BACK[id] || CAR_BACK.race, ws = wheelSpots(id), g = new T3.Group();
+    var id = car && car.id || 'race', key = id + '/' + (carPaint || '');
+    if (carKey !== key) {
+      if (player) { scene.remove(player.g); player.body.geometry.dispose(); player.wg.dispose(); if (player.bg) { player.bg.dispose(); player.ba.material.dispose(); player.bb.material.dispose(); } }
+      var c = PAINT[carPaint] || CAR_BACK[id] || CAR_BACK.race, ws = wheelSpots(id), g = new T3.Group();
       var body = new T3.Mesh(merge(carParts(c[0], c[1], id)), mats.car); body.castShadow = true;
       g.add(body);
-      var wg = wheelGeo(ws.r, ws.w), wl = [];
+      var wg = wheelGeo(ws.r, ws.w, ws.hub, id === 'monster' ? 14 : 12), wl = [];
       for (var i = 0; i < 4; i++) {
         var w = new T3.Mesh(wg, mats.v); w.position.set(ws.at[i][0], ws.at[i][1], ws.at[i][2]); w.castShadow = true;
         g.add(w); wl.push(w);
       }
+      var bs = beaconSpots(id), bg = null, ba = null, bb = null;
+      if (bs) {                                            // яркие половинки мигалки: по очереди, 1,5 раза в секунду каждая
+        bg = merge([part(box(bs.s[0], bs.s[1], bs.s[2]), '#ffffff')]);
+        var mk = function (p, col) { var m = new T3.Mesh(bg, new T3.MeshBasicMaterial({ color: col, fog: false })); m.position.set(p[0], p[1], p[2]); g.add(m); return m; };
+        ba = mk(bs.a, bs.ca); bb = mk(bs.b, bs.cb);
+      }
+      if (id === 'monster') g.scale.setScalar(0.86);          // огромный, но не закрывает дорогу впереди
       scene.add(g);
-      player = { g: g, body: body, wg: wg, wl: wl, r: ws.r };
-      carKey = id;
+      player = { g: g, body: body, wg: wg, wl: wl, r: ws.r, bg: bg, ba: ba, bb: bb };
+      carKey = key;
     }
     var laneW = L3.road * LN.laneK, steer = clamp(Lane.steer(), -1, 1) - ln.x;
     roadAt(0, RA);
@@ -7849,20 +8085,63 @@ var Lane3D = (function () {
     var jump = ln.y / S * L3.jumpK, sy = (ln.sy || 0) / S * L3.pxK - ln.kick * 0.12;
     var slope = Math.atan((rY(0.02) - rY(-0.02)) / (0.04 * L3.depth));
     player.g.position.set(x, RA.y + jump + sy, z);
-    /* Порядок YXZ: сначала курс по дороге и рулю, потом клевок, потом крен. */
-    player.g.rotation.set(slope + (ln.pitch || 0) - ln.kick * 0.08, RA.yaw - steer * 0.22, -(ln.roll || 0) - steer * 0.05, 'YXZ');
+    /* Порядок YXZ: сначала курс по дороге и рулю, потом клевок, потом крен. Крен — только
+       из физики (ln.roll < 0 при руле вправо → верх кузова влево, наружу). Прежний добавок
+       −steer·0,05 валил кузов ВНУТРЬ поворота и спорил с подвеской — убран. */
+    player.g.rotation.set(slope + (ln.pitch || 0) - ln.kick * 0.08, RA.yaw - steer * 0.22, -(ln.roll || 0), 'YXZ');
     var dw = ln.wz - lastWz; lastWz = ln.wz;
     if (dw > 0 && dw < 0.2) wheelA -= dw * L3.depth / player.r;
     for (var j = 0; j < 4; j++) player.wl[j].rotation.x = wheelA;
+    if (player.ba) { var ph = Math.floor(T * 3) % 2; player.ba.visible = ph === 0; player.bb.visible = ph === 1; }
     /* удар: кузов подсвечивается 2,5 раза в секунду — как в 2D, в пределах правила о трёх */
     mats.car.emissiveIntensity = (ln.hitT > 0 && Math.floor(ln.t * 5) % 2 === 0) ? 0.35 : 0;
     // тень от солнца — только от машинки: маленькое окно теневой камеры ездит за ней
     sun.position.set(x - 5, RA.y + 12, z + 4); sun.target.position.set(x, RA.y, z);
   }
 
+  /* Скоростные штрихи вдоль обочины: стоят в мире и проносятся мимо, яркость плавно
+     растёт со скоростью и турбо. Ничего не мигает — только плавное появление. */
+  function updStreaks() {
+    var vRel = clamp((ln.spd - LN.spd0) / Math.max(0.01, LN.spdMax - LN.spd0), 0, 1);
+    var goal = L3.streak * (clamp((vRel - 0.45) / 0.55, 0, 1) * 0.6 + (ln.boost > 0 ? 0.55 : 0));
+    streakA += (goal - streakA) * 0.08;
+    mats.streak.opacity = Math.min(0.75, streakA);
+    if (streakA < 0.02) { streakIM.count = 0; streakIM.visible = false; return; }
+    streakIM.visible = true;
+    var SG = 0.025, g0 = Math.floor((ln.wz - 0.12) / SG), n = 0, len = 3 + 5 * vRel + (ln.boost > 0 ? 3 : 0);
+    for (var gi = g0; gi < g0 + 40 && n < STREAK_N; gi++) {
+      var h1 = hash(gi * 4.3 + 1.7);
+      if (h1 < 0.3) continue;
+      var zz = gi * SG - ln.wz, sd = hash(gi * 2.9) < 0.5 ? -1 : 1, lat = sd * (L3.road + 1.2 + hash(gi * 6.1) * 3.5);
+      roadAt(zz, RA);
+      _q.setFromAxisAngle(_p.set(0, 1, 0), RA.yaw);
+      _sm.compose(_p.set(RA.x + RA.rx * lat, RA.y + 0.4 + h1 * 2.4, RA.z + RA.rz * lat), _q, _s.set(1, 1, len));
+      streakIM.setMatrixAt(n++, _sm);
+    }
+    streakIM.count = n; streakIM.instanceMatrix.needsUpdate = true;
+  }
+
+  /* ── экранная точка мира «руля»: надписи «+1», «ОЙ!» и кружок урока ставятся по 3D-камере ── */
+  var _pv = null, RP = { x: 0, y: 0, z: 0, rx: 1, rz: 0, yaw: 0 };
+  function project(zz, lane, up, out, decor, sky) {
+    if (st !== 2 || !drew || !cam) return null;
+    var laneW = L3.road * LN.laneK;
+    roadAt(zz, RP);
+    var lat = decor ? (lane < 0 ? -1 : 1) * (Math.abs(lane) * laneW + 1.6) : sky ? lane * laneW * 3 : lane * laneW;
+    _pv = _pv || new T3.Vector3();
+    _pv.set(RP.x + RP.rx * lat, RP.y + (up || 0), RP.z + RP.rz * lat).project(cam);
+    out = out || {};
+    out.x = (_pv.x + 1) / 2 * W; out.y = (1 - _pv.y) / 2 * H;
+    return out;
+  }
+  function projObj(o, up, out) {
+    var h = o.sky ? 11 + (o.ph % 1) * 7 : o.air ? o.air * L3.pxK : 0;
+    return project(o.z, o.lane, h + (up || 0), out, o.decor, o.sky);
+  }
+
   function updCam() {
     var D = L3.depth, laneW = L3.road * LN.laneK, cb = L3.camBack / D;
-    var b = roadAt(-cb, RA), cx = b.x + b.rx * ln.x * laneW * L3.camFollow, cy = b.y + L3.camUp, cz = b.z + b.rz * ln.x * laneW * L3.camFollow;
+    var b = roadAt(-cb, RA), cx = b.x + b.rx * ln.x * laneW * L3.camFollow, cy = b.y + L3.camUp + (carKey.indexOf('monster') === 0 ? 0.7 : 0), cz = b.z + b.rz * ln.x * laneW * L3.camFollow;
     var yaw = roadAt(0.06, RA).yaw * 0.7 + roadAt(-cb, RA).yaw * 0.3;
     var ahead = 0.25, hy = (rY(ahead) - rY(-cb)) / ((ahead + cb) * D);
     var pitch = Math.atan(hy) * L3.camHill;
@@ -7896,8 +8175,9 @@ var Lane3D = (function () {
       R.setClearColor(fog.color);                          // рендерер общий: платформер мог поставить свой
       _sm = _sm || new T3.Matrix4();
       nSh = 0;
-      updTheme(); updRoad(); updPlayer(); updObjs(); updScenery(); updCam();
+      updTheme(); updRoad(); updPlayer(); updCam(); updObjs(); updScenery(); updStreaks();
       shadowIM.count = nSh; shadowIM.instanceMatrix.needsUpdate = true;
+      haloIM.count = nHalo; haloIM.visible = nHalo > 0; if (nHalo) haloIM.instanceMatrix.needsUpdate = true;
       R.render(scene, cam);
     } catch (e) { fail(); return; }
     drew = true;
@@ -7910,13 +8190,14 @@ var Lane3D = (function () {
       scene.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
       for (var k in mats) mats[k].dispose();
     } catch (e) {}
-    R = null; scene = null; pools = {}; scen = {}; player = null; carKey = ''; thRef = null; mats = {}; road = {};
+    R = null; scene = null; pools = {}; scen = {}; player = null; carKey = ''; thRef = null; scenInit = false; mats = {}; road = {};
     vw = vh = 0; st = 0;                                   // модуль уже в памяти: следующий вход соберёт сцену заново
   }
   return {
     init: init,
     on: function () { return !!L3.on && st !== -1 && ensure(); },
     render: render,
+    project: project, projObj: projObj,
     lost: fail, release: dispose,
     stats: function () { return R ? { calls: R.info.render.calls, tris: R.info.render.triangles, ms: +ms.toFixed(2), st: st, dpr: vdpr } : { st: st }; }
   };
