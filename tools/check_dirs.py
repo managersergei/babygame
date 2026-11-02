@@ -154,6 +154,7 @@ WORLD_FACE = {
     "bird": "left", "butterfly": "left", "train": "left",
     "monster_a": "left", "monster_b": "left", "monster_c": "left", "monster_d": "left",
     "monster_a_run": "left", "monster_b_run": "left", "monster_c_run": "left", "monster_d_run": "left",
+    "cat": "left", "dog": "left", "bunny": "left",   # стоят у дороги, смотрят к дороге
     "sheep": "right",     # стоит на месте, убегает вправо
     "robot": "right",     # догоняет машинку сзади
 }

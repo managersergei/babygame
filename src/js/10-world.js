@@ -95,7 +95,8 @@ var LESSON_ORDER = [
   'flower', 'apple', 'ball', 'butterfly', 'hedgehog', 'rocket', 'train',   // на долгую игру
   'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies',   // ферма и луг
   'coin', 'chest', 'sheep', 'tractor', 'bus', 'ambulance', 'excavator', 'garbage', 'tow',
-  'loc_tower', 'loc_shop', 'loc_palm', 'loc_umbrella', 'loc_monkey', 'loc_rock', 'loc_fir', 'loc_snowman', 'master'
+  'loc_tower', 'loc_shop', 'loc_palm', 'loc_umbrella', 'loc_monkey', 'loc_rock', 'loc_fir', 'loc_snowman', 'master',
+  'cat', 'dog', 'mushroom', 'bunny'   // слова 03.11.2026: деревня, город, луг и закат, зима
   // ↑ окружение и транспорт: слово входит в очередь, только когда его реплики озвучены (voicedLesson)
   // 'wheel' в очереди нет: слово учим на второй починке, когда бы она ни случилась
 ];
@@ -118,7 +119,8 @@ function resetRhythm() { rollWord(); rollRobot(); wantEl = null; wantT = 0; word
 /* Чем дорога может показать слово. Нет записи — показать нечем (солнце, радуга): очередь их пропускает. */
 var PROP_KIND = { tree:1, house:1, bush:1, fence:1, cow:1, haystack:1, chicken:1, windmill:1, daisies:1, horse:1,
                   chest:1, sheep:1, tractor:1, bus:1, ambulance:1, excavator:1, garbage:1, tow:1, master:1,
-                  loc_tower:1, loc_shop:1, loc_palm:1, loc_umbrella:1, loc_monkey:1, loc_rock:1, loc_fir:1, loc_snowman:1 };
+                  loc_tower:1, loc_shop:1, loc_palm:1, loc_umbrella:1, loc_monkey:1, loc_rock:1, loc_fir:1, loc_snowman:1,
+                  cat:1, dog:1, bunny:1, mushroom:1 };
 var ROAD_EL   = { star:1, balloon:1, cone:1, puddle:1, ramp:1, plat:1, pit:1, mon:1, flower:1, apple:1, ball:1, hedgehog:1, coin:1 };
 var SKY_EL    = { bird:1, plane:1, butterfly:1, cloud:1 };
 function hasItem(p, t) { for (var i = 0; i < p.items.length; i++) if (p.items[i].t === t) return true; return false; }
