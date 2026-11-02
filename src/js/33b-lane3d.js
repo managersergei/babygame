@@ -11,6 +11,16 @@
    (0 — машинка, 1 — горизонт) переводится в метры множителем L3.depth. Всё считается
    относительно текущего ln.wz, поэтому точность float не уплывает на длинном заезде.
    Объект с o.z ≈ 0 стоит ровно на уровне машинки — там же, где игра считает касание.   */
+/* Портировано (адаптировано под три ряда и игровую глубину), подробности — vendor/НАСЛЕДИЕ.md:
+   • камера-преследователь, FOV от скорости, крен, тряска — ChaseCamera (src/camera.js),
+     кузов — Kart._animate (src/kart.js), сечение бордюра — extrude/curbs (src/track.js),
+     небо с солнцем, свет, ACES + sRGB — src/environment.js, src/main.js:
+     https://github.com/bridge-mind/turbo-kart-rally — Copyright (c) 2026 BridgeMind, MIT License;
+   • дрожь кузова на скорости — Vehicle.tsx: https://github.com/pmndrs/racing-game —
+     Copyright 2021 pmdrs, contributors, MIT License.
+   MIT: «Permission is hereby granted, free of charge, to any person obtaining a copy of this
+   software ... The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.» Полный текст — в LICENSE этих репозиториев. */
 var L3 = {
   on: 0,                                    // 1 — рисовать 3D (по умолчанию выключено, включает ?3d=1 или админка)
   depth: 60,                                // метров на единицу игровой глубины
@@ -25,7 +35,21 @@ var L3 = {
   sideHill: 9,                              // высота холмов по сторонам дороги, м
   farK: 0.9,                                // насколько подрастают предметы игры к горизонту (0 — как есть)
   streak: 0.5,                              // яркость скоростных штрихов на большой скорости и турбо
-  dpr: 1.5                                  // потолок плотности пикселей для WebGL
+  dpr: 1.5,                                 // потолок плотности пикселей для WebGL
+  /* Камера-преследователь (порт ChaseCamera из turbo-kart-rally, см. vendor/НАСЛЕДИЕ.md) */
+  camYaw: 4.5,                              // как быстро камера догоняет поворот дороги (меньше — сильнее запаздывает)
+  camPos: 10, camLift: 9, camAir: 3.5,      // пружина смещения; сглаживание высоты на земле и в прыжке
+  camLook: 0.22,                            // точка взгляда вперёд по дороге, доли глубины
+  camStretch: 0.7,                          // на скорости и турбо камера чуть отъезжает, м
+  fovSpd: 4, fovGas: 1.5, fovBoost: 4, fovMax: 64,   // угол обзора растёт от скорости, газа и турбо
+  camRoll: 0.012,                           // крен камеры от скорости смены ряда
+  shake: 0.5,                               // тряска при ударе (гаснет за 0,2 с)
+  /* Кузов (порт kart._animate): клевок в воздухе, приседание при посадке, дрожь на скорости */
+  airPitch: 0.6, squash: 0.1, vib: 0.01,
+  /* Сечение дороги (порт track.extrude): рельефный бордюр и обочина; полосы — только на изгибах */
+  curbH: 0.12, shoulder: 1.4, curbK: 0.0015,
+  /* Небо и тон (порт environment.js / main.js) */
+  sunHalo: 0.45, aces: 1, expo: 1.1
 };
 CFG.reg('L3', L3, {
   on:       [0,    1,    1,     '3D-руль: 1 — включён'],
@@ -45,7 +69,28 @@ CFG.reg('L3', L3, {
   sideHill: [0,    25,   0.5,   'холмы вдоль дороги, м'],
   farK:     [0,    2,    0.05,  'предметы вдали крупнее'],
   streak:   [0,    1,    0.05,  'скоростные штрихи'],
-  dpr:      [0.75, 2,    0.05,  'потолок плотности пикселей 3D']
+  dpr:      [0.75, 2,    0.05,  'потолок плотности пикселей 3D'],
+  camYaw:   [1,    15,   0.1,   'камера: догоняет поворот (меньше — запаздывает)'],
+  camPos:   [2,    30,   0.5,   'камера: жёсткость пружины'],
+  camLift:  [1,    20,   0.5,   'камера: высота на земле догоняет'],
+  camAir:   [0.5,  10,   0.1,   'камера: высота в прыжке догоняет'],
+  camLook:  [0.05, 0.6,  0.01,  'камера: смотрит вперёд по дороге'],
+  camStretch:[0,   3,    0.1,   'камера: отъезд на скорости, м'],
+  fovSpd:   [0,    12,   0.5,   'угол обзора: от скорости'],
+  fovGas:   [0,    6,    0.5,   'угол обзора: от газа'],
+  fovBoost: [0,    12,   0.5,   'угол обзора: от турбо'],
+  fovMax:   [50,   80,   1,     'угол обзора: потолок'],
+  camRoll:  [0,    0.05, 0.001, 'камера: крен при смене ряда'],
+  shake:    [0,    1.5,  0.05,  'камера: тряска при ударе'],
+  airPitch: [0,    2,    0.05,  'кузов: клевок в прыжке'],
+  squash:   [0,    0.3,  0.01,  'кузов: приседание при посадке'],
+  vib:      [0,    0.04, 0.001, 'кузов: дрожь на скорости'],
+  curbH:    [0,    0.4,  0.01,  'бордюр: высота, м'],
+  shoulder: [0,    4,    0.1,   'обочина: ширина, м'],
+  curbK:    [0,    0.006, 0.0001,'полосатый бордюр от кривизны, 1/м'],
+  sunHalo:  [0,    1.5,  0.05,  'небо: ореол солнца'],
+  aces:     [0,    1,    1,     'тон-маппинг ACES: 1 — включён'],
+  expo:     [0.5,  2,    0.05,  'экспозиция ACES']
 });
 try { if (/[?&]3d=1/.test(location.search)) L3.on = 1; } catch (e) {}
 
@@ -480,7 +525,21 @@ var Lane3D = (function () {
     mats.grass = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     mats.white = new T.MeshLambertMaterial({ color: 0xf7f7f2 });
     mats.hills = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false });
-    mats.sky = new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide, fog: false, depthWrite: false });
+    /* Небо — шейдер градиента с солнцем и ореолом (порт environment.js turbo-kart-rally, MIT):
+       низ = цвет тумана, так дорога уходит в дымку без шва; солнце не отдельный меш, а пятно в шейдере. */
+    mats.sky = new T.ShaderMaterial({
+      uniforms: { uTop: { value: new T.Color() }, uMid: { value: new T.Color() }, uLow: { value: new T.Color() },
+                  uSunDir: { value: new T.Vector3(-260, 120, -640).normalize() }, uSunCol: { value: new T.Color(0xfff3b8) },
+                  uSunK: { value: 1 }, uHalo: { value: L3.sunHalo } },
+      vertexShader: 'varying vec3 vDir;\nvoid main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uLow; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform float uSunK; uniform float uHalo;\n' +
+        'varying vec3 vDir;\nvoid main(){ vec3 d = normalize(vDir); float y = d.y;\n' +
+        ' vec3 col = mix(uLow, uMid, smoothstep(0.0, 0.25, y)); col = mix(col, uTop, pow(smoothstep(0.25, 0.8, y), 0.75));\n' +
+        ' float sd = max(dot(d, uSunDir), 0.0);\n' +
+        ' col += uSunCol * uSunK * uHalo * (pow(sd, 60.0) + pow(sd, 6.0) * 0.27);\n' +
+        ' col = mix(col, uSunCol, uSunK * smoothstep(0.9993, 0.9996, sd));\n' +
+        ' gl_FragColor = vec4(min(col, vec3(1.0)), 1.0);\n#include <colorspace_fragment>\n}',
+      side: T.BackSide, depthWrite: false, fog: false, toneMapped: false });
     mats.far = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false });
     mats.ridge = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false, side: T.DoubleSide });
     /* предметы игры — без тумана: звезду и конус ребёнок должен видеть с самого горизонта */
@@ -513,7 +572,7 @@ var Lane3D = (function () {
   /* Дорога, бордюр, разметка и трава пересобираются каждый кадр в одни и те же буферы. */
   var Z0 = -0.25, Z1 = 1.4, STEP = 0.02, ROWS = Math.ceil((Z1 - Z0) / STEP) + 2;
   var COLS = [-140, -80, -46, -26, -15, -9, -1, 1, 9, 15, 26, 46, 80, 140];   // ±1 — край у бордюра
-  var rowX, rowY, rowZ, rowRX, rowRZ, rowG;
+  var rowX, rowY, rowZ, rowRX, rowRZ, rowG, CO = 0.95, CURB_P = new Float32Array(10), shC = null;
   function quadIndex(n) {
     var ix = new Uint32Array(n * 6);
     for (var i = 0; i < n; i++) { var v = i * 4, o = i * 6; ix[o] = v; ix[o + 1] = v + 1; ix[o + 2] = v + 2; ix[o + 3] = v + 1; ix[o + 4] = v + 3; ix[o + 5] = v + 2; }
@@ -544,7 +603,7 @@ var Lane3D = (function () {
       var v = r * nc + c; gi.push(v, v + 1, v + nc, v + 1, v + nc + 1, v + nc);
     }
     road.grass = new T.Mesh(dyn(ROWS * nc, new Uint32Array(gi), true), mats.grass);
-    road.curbN = (ROWS - 1) * 2;
+    road.curbN = (ROWS - 1) * 2 * 4;                        // на сторону: подъём, верх, скат бордюра и обочина
     road.curb = new T.Mesh(dyn(road.curbN * 4, quadIndex(road.curbN), true), mats.v);
     road.markN = (ROWS - 1) * 4;
     road.mark = new T.Mesh(dyn(road.markN * 4, quadIndex(road.markN)), mats.white);
@@ -553,8 +612,7 @@ var Lane3D = (function () {
   }
   function buildSky() {
     var T = T3;
-    road.sky = new T.Mesh(new T.SphereGeometry(800, 16, 12), mats.sky); road.sky.frustumCulled = false; road.sky.renderOrder = -2;
-    road.sky.geometry.setAttribute('color', new T.BufferAttribute(new Float32Array(road.sky.geometry.attributes.position.count * 3), 3));
+    road.sky = new T.Mesh(new T.SphereGeometry(800, 32, 16), mats.sky); road.sky.frustumCulled = false; road.sky.renderOrder = -2;
     scene.add(road.sky);
     /* Дальние горы — три гряды друг за другом, у каждой пика плечи и шапка. Дальняя гряда
        выше и глубже в дымке — так горизонт читается слоями, а не одним рядом пирамид.
@@ -597,8 +655,6 @@ var Lane3D = (function () {
     }
     road.clouds = new T.Mesh(merge(C), mats.far); road.clouds.frustumCulled = false; road.clouds.renderOrder = -1;
     scene.add(road.clouds);
-    road.sunM = new T.Mesh(new T.CircleGeometry(20, 20), new T.MeshBasicMaterial({ color: 0xfff6b0, fog: false, depthWrite: false }));
-    road.sunM.renderOrder = -1; road.sunM.frustumCulled = false; scene.add(road.sunM);
   }
 
   /* ── форма дороги в метрах относительно машинки ── */
@@ -636,19 +692,31 @@ var Lane3D = (function () {
     var gp = road.grass.geometry.attributes.position, gcol = road.grass.geometry.attributes.color, ga = gp.array, gc = gcol.array, nc = COLS.length;
     for (r = 0; r < ROWS; r++) for (c = 0; c < nc; c++) {
       var lat = COLS[c] < 0 ? COLS[c] - Rw : COLS[c] + Rw, q = (r * nc + c) * 3;
-      if (c === 6) lat = -Rw - 0.9; if (c === 7) lat = Rw + 0.9;
+      if (c === 6) lat = -Rw - CO - L3.shoulder; if (c === 7) lat = Rw + CO + L3.shoulder;   // трава начинается за обочиной
       ga[q] = rowX[r] + rowRX[r] * lat; ga[q + 1] = rowY[r] + sideH(rowG[r] * STEP, lat); ga[q + 2] = rowZ[r] + rowRZ[r] * lat;
       var v = 0.86 + 0.2 * hash(rowG[r] * 0.37 + c * 13.1);  // пятна травы — тоже по сетке мира
       gc[q] = v; gc[q + 1] = v; gc[q + 2] = v;
     }
     gp.needsUpdate = true; gcol.needsUpdate = true;
-    // бордюр: красно-белые плашки по 2 ряда
+    /* Бордюр — сечение ломаной, как extrude() в track.js turbo-kart-rally (MIT): подъём от асфальта,
+       плоский верх, скат наружу, за ним обочина до травы. Красно-белые полосы — только там, где дорога
+       заметно гнётся (кривизна > L3.curbK, считается по сетке мира — не мерцает); на прямой — светлая кромка. */
     var cp = road.curb.geometry.attributes.position, cc = road.curb.geometry.attributes.color, ca = cp.array, cl = cc.array, n = 0;
-    for (r = 0; r < ROWS - 1; r++) for (var sd = -1; sd <= 1; sd += 2) {
-      var red = Math.floor(rowG[r] / 2) % 2 === 0, cr = red ? 0.80 : 0.93, cg = red ? 0.05 : 0.90, cb = red ? 0.03 : 0.85;
-      if (sd < 0) quad(ca, n, r, -Rw - 0.9, -Rw, 0.06); else quad(ca, n, r, Rw, Rw + 0.9, 0.06);   // слева направо, иначе грань смотрит вниз
-      for (i = 0; i < 4; i++) { var w3 = (n * 4 + i) * 3; cl[w3] = cr; cl[w3 + 1] = cg; cl[w3 + 2] = cb; }
-      n++;
+    var ch = L3.curbH, e = 0.05, ed = e * D, P = CURB_P;
+    P[0] = Rw - 0.05; P[1] = 0; P[2] = Rw + 0.1; P[3] = ch; P[4] = Rw + CO - 0.2; P[5] = ch; P[6] = Rw + CO; P[7] = -0.03;
+    P[8] = Rw + CO + L3.shoulder; P[9] = -0.06;
+    for (r = 0; r < ROWS - 1; r++) {
+      var zz = rowG[r] * STEP - ln.wz, kv = Math.abs(rX(zz + e) - 2 * rX(zz) + rX(zz - e)) / (ed * ed);
+      var bend = kv > L3.curbK, red = bend && Math.floor(rowG[r] / 2) % 2 === 0;
+      var cr = red ? 0.80 : 0.93, cg = red ? 0.05 : 0.90, cb = red ? 0.03 : 0.85;
+      if (!bend) { cr = 0.86; cg = 0.86; cb = 0.84; }
+      for (var sd = -1; sd <= 1; sd += 2) for (var j = 0; j < 4; j++) {
+        var l0 = P[j * 2] * sd, d0 = P[j * 2 + 1], l1 = P[j * 2 + 2] * sd, d1 = P[j * 2 + 3];
+        if (sd < 0) quadP(ca, n, r, l1, d1, l0, d0); else quadP(ca, n, r, l0, d0, l1, d1);   // слева направо, иначе грань смотрит вниз
+        var k0 = j === 3 ? shC.r : j === 2 ? cr * 0.8 : cr, k1 = j === 3 ? shC.g : j === 2 ? cg * 0.8 : cg, k2 = j === 3 ? shC.b : j === 2 ? cb * 0.8 : cb;
+        for (i = 0; i < 4; i++) { var w3 = (n * 4 + i) * 3; cl[w3] = k0; cl[w3 + 1] = k1; cl[w3 + 2] = k2; }
+        n++;
+      }
     }
     cp.needsUpdate = true; cc.needsUpdate = true;
     // разметка: кромка сплошная, между рядами пунктир 2 через 2
@@ -664,6 +732,13 @@ var Lane3D = (function () {
       }
     }
     mp.needsUpdate = true;
+  }
+  function quadP(arr, n, r, l0, d0, l1, d1) {               // плашка с разной высотой краёв (скат бордюра)
+    var o = n * 12, r2 = r + 1;
+    arr[o] = rowX[r] + rowRX[r] * l0;  arr[o + 1] = rowY[r] + d0;  arr[o + 2] = rowZ[r] + rowRZ[r] * l0;
+    arr[o + 3] = rowX[r] + rowRX[r] * l1; arr[o + 4] = rowY[r] + d1; arr[o + 5] = rowZ[r] + rowRZ[r] * l1;
+    arr[o + 6] = rowX[r2] + rowRX[r2] * l0; arr[o + 7] = rowY[r2] + d0; arr[o + 8] = rowZ[r2] + rowRZ[r2] * l0;
+    arr[o + 9] = rowX[r2] + rowRX[r2] * l1; arr[o + 10] = rowY[r2] + d1; arr[o + 11] = rowZ[r2] + rowRZ[r2] * l1;
   }
   function quad(arr, n, r, l0, l1, dy) {
     var o = n * 12, r2 = r + 1;
@@ -688,14 +763,10 @@ var Lane3D = (function () {
     mats.road.color.set(th.road[0]);
     mats.grass.color.set(th.grass);
     hemi.color.set(th.sky[1]); hemi.groundColor.set(th.grass);
-    var sa = road.sky.geometry.attributes.position, sc = road.sky.geometry.attributes.color, top = _cT.set(th.sky[0]),
-        mid = _cM.set(th.sky[1]), low = _cL.set(th.sky[2]);
-    for (var i = 0; i < sa.count; i++) {
-      var e = sa.getY(i) / 800;                            // −1..1 по высоте купола
-      if (e < 0.02) _c2.copy(low); else if (e < 0.25) _c2.copy(low).lerp(mid, (e - 0.02) / 0.23); else _c2.copy(mid).lerp(top, Math.min(1, (e - 0.25) / 0.5));
-      sc.setXYZ(i, _c2.r, _c2.g, _c2.b);
-    }
-    sc.needsUpdate = true;
+    var low = _cL.set(th.sky[2]), su = mats.sky.uniforms, i;
+    su.uTop.value.set(th.sky[0]); su.uMid.value.set(th.sky[1]); su.uLow.value.copy(low); su.uSunK.value = th.sun ? 1 : 0;
+    /* обочина — между травой и асфальтом темы, чуть светлее: гравий, а не продолжение газона */
+    shC = shC || new T.Color(); shC.set(th.grass).lerp(_c2.set(th.road[0]), 0.45).lerp(_c2.set('#e8dcc0'), 0.3);
     /* Горы: ближняя гряда — цвет склона темы, дальние светлее и глубже в дымке горизонта;
        шапки — снег (с отсветом неба) там, где тема снежная, иначе просто светлая вершина. */
     var fk = FAR_K[th.far] || FAR_K.forest, snow = th.name === 'космос' ? 0 : (th.snow ? 1 : fk[1]);
@@ -710,7 +781,6 @@ var Lane3D = (function () {
       for (var v = 0; v < 3; v++) hc.setXYZ(i + v, _c2.r, _c2.g, _c2.b);
     }
     hc.needsUpdate = true;
-    road.sunM.visible = !!th.sun;
     /* Пейзаж новой темы не подменяется весь разом: он начинается от горизонта и
        подъезжает к машинке вместе с дорогой, старый уезжает назад сам. */
     var nk = SCEN_BY[th.name] || ['rtree', 'bush'];
@@ -858,10 +928,26 @@ var Lane3D = (function () {
     var jump = ln.y / S * L3.jumpK, sy = (ln.sy || 0) / S * L3.pxK - ln.kick * 0.12;
     var slope = Math.atan((rY(0.02) - rY(-0.02)) / (0.04 * L3.depth));
     player.g.position.set(x, RA.y + jump + sy, z);
+    CAR.x = x; CAR.z = z;
+    /* Кузов по kart._animate (turbo-kart-rally, MIT). Разделение, чтобы не считать дважды:
+       статический наклон даёт дорога (нормаль = уклон; поперечного крена у полотна нет),
+       динамику — физика ln.pitch / ln.roll / ln.sy. В воздухе уклон дороги больше не держит
+       кузов: он следует за вертикальной скоростью — нос вверх на взлёте, вниз на спуске. */
+    var dt = clamp(ln.t - bodyT, 0, 0.1); bodyT = ln.t;
+    var air = ln.y > 0, pT = slope;
+    if (air) pT = clamp(Math.atan2(ln.vy / S * L3.jumpK, Math.max(4, ln.spd * L3.depth)) * L3.airPitch, -0.3, 0.3);
+    bodyP += (pT - bodyP) * (1 - Math.exp(-(air ? 4 : 12) * dt));
+    if (wasAir && !air) landT = 0.14;                     // посадка: короткое приседание ~0,14 с
+    wasAir = air; landT = Math.max(0, landT - dt);
+    var sq = L3.squash * Math.sin(Math.PI * (1 - landT / 0.14)) * (landT > 0 ? 1 : 0);
+    player.body.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
+    /* дрожь кузова на скорости — как chassis в pmndrs/racing-game (MIT): sin(20t)·v/vmax */
+    var vRel = clamp((ln.spd - LN.spd0) / Math.max(0.01, LN.spdMax - LN.spd0), 0, 1);
+    player.body.rotation.x = air ? 0 : Math.sin(ln.t * 20) * vRel * L3.vib;
     /* Порядок YXZ: сначала курс по дороге и рулю, потом клевок, потом крен. Крен — только
        из физики (ln.roll < 0 при руле вправо → верх кузова влево, наружу). Прежний добавок
        −steer·0,05 валил кузов ВНУТРЬ поворота и спорил с подвеской — убран. */
-    player.g.rotation.set(slope + (ln.pitch || 0) - ln.kick * 0.08, RA.yaw - steer * 0.22, -(ln.roll || 0), 'YXZ');
+    player.g.rotation.set(bodyP + (ln.pitch || 0) - ln.kick * 0.08, RA.yaw - steer * 0.22, -(ln.roll || 0), 'YXZ');
     var dw = ln.wz - lastWz; lastWz = ln.wz;
     if (dw > 0 && dw < 0.2) wheelA -= dw * L3.depth / player.r;
     for (var j = 0; j < 4; j++) player.wl[j].rotation.x = wheelA;
@@ -912,18 +998,69 @@ var Lane3D = (function () {
     return project(o.z, o.lane, h + (up || 0), out, o.decor, o.sky);
   }
 
+  /* ── Камера-преследователь: порт ChaseCamera.update из turbo-kart-rally src/camera.js (MIT,
+     BridgeMind 2026). Смещение камеры хранится ОТНОСИТЕЛЬНО машинки (нет отставания, зависящего
+     от скорости) и тянется к желаемому пружиной; курс догоняет поворот дороги с запаздыванием —
+     на изгибе машинку видно чуть сбоку; высота сглаживается отдельно и в мировых метрах,
+     в прыжке медленнее — кадр не дёргается. Взгляд — в точку дороги впереди. Время — игровое
+     (ln.t): пауза замирает, рестарт ставит камеру на место без проезда. ── */
+  var CAR = { x: 0, z: 0 }, bodyT = 0, bodyP = 0, wasAir = false, landT = 0;
+  var CS = { on: false, t: 0, yaw: 0, ox: 0, oz: 0, lat: 0, yw: 0, lx: 0, lz: 0, pit: 0, fov: 56, roll: 0, boost: 0, slope: 0,
+             shake: 0, shT: 1, hitP: 0 }, RB = { x: 0, y: 0, z: 0, rx: 1, rz: 0, yaw: 0 };
+  function kk(rate, dt) { return 1 - Math.exp(-rate * dt); }
   function updCam() {
-    var D = L3.depth, laneW = L3.road * LN.laneK, cb = L3.camBack / D;
-    var b = roadAt(-cb, RA), cx = b.x + b.rx * ln.x * laneW * L3.camFollow, cy = b.y + L3.camUp + (carKey.indexOf('monster') === 0 ? 0.7 : 0), cz = b.z + b.rz * ln.x * laneW * L3.camFollow;
-    var yaw = roadAt(0.06, RA).yaw * 0.7 + roadAt(-cb, RA).yaw * 0.3;
-    var ahead = 0.25, hy = (rY(ahead) - rY(-cb)) / ((ahead + cb) * D);
-    var pitch = Math.atan(hy) * L3.camHill;
-    cam.position.set(cx, cy, cz);
-    cam.lookAt(cx - Math.sin(yaw) * 10, cy + Math.tan(pitch) * 10 * Math.cos(yaw), cz - Math.cos(yaw) * 10);
+    var D = L3.depth, laneW = L3.road * LN.laneK, c = CS, dt = ln.t - c.t, snap = !c.on || dt < 0 || dt > 0.5;
+    dt = clamp(dt, 0, 0.1); c.t = ln.t;
+    var vRel = clamp((ln.spd - LN.spd0) / Math.max(0.01, LN.spdMax - LN.spd0), 0, 1), boosting = ln.boost > 0;
+    c.boost += ((boosting ? 1 : 0) - c.boost) * kk(boosting ? 6 : 2.5, dt);
+    var tYaw = roadAt(0.03, RB).yaw, sl = (rY(0.02) - rY(-0.02)) / (0.04 * D);
+    var dist = L3.camBack + L3.camStretch * (vRel + c.boost * 1.15);
+    var tLat = ln.x * laneW * L3.camFollow, base = hillAt(ln.wz) / S * L3.hillK, jumpM = ln.y / S * L3.jumpK;
+    var mon = carKey.indexOf('monster') === 0 ? 0.7 : 0;
+    if (snap) { c.on = true; c.yaw = tYaw; c.slope = sl; c.lat = tLat; c.boost = boosting ? 1 : 0; c.shake = 0; c.shT = 1; c.hitP = ln.hitT; }
+    c.yaw += (tYaw - c.yaw) * (snap ? 1 : kk(L3.camYaw, dt));
+    if (ln.y <= 0) c.slope += (sl - c.slope) * (snap ? 1 : kk(3, dt));
+    var lift = clamp(-c.slope * dist * 0.85, -1.6, 2.4);
+    var dx = Math.sin(c.yaw) * dist, dz = Math.cos(c.yaw) * dist, kp = snap ? 1 : kk(L3.camPos, dt);
+    c.ox += (dx - c.ox) * kp; c.oz += (dz - c.oz) * kp;
+    var dh = Math.sqrt(c.ox * c.ox + c.oz * c.oz);          // пружина срезает углы на быстром повороте — держим дистанцию
+    if (dh > 1e-3) { var f = 1 + (dist / dh - 1) * 0.5; c.ox *= f; c.oz *= f; }
+    c.lat += (tLat - c.lat) * kp;
+    roadAt(0, RB);
+    var ax = RB.x + RB.rx * c.lat, az = RB.z + RB.rz * c.lat;
+    /* высота — в мировых метрах (кадр «руля» сдвигается по высоте вместе с машинкой) */
+    var wantY = base + jumpM + L3.camUp + mon + lift;
+    if (snap) c.yw = wantY; else c.yw += (wantY - c.yw) * kk(ln.y > 0 ? L3.camAir : L3.camLift, dt);
+    var cy = c.yw - base, czz = -c.oz / D;               // камера позади: глубина отрицательная
+    cy = Math.max(cy, rY(czz) + 1.0, jumpM + 0.8);
+    /* взгляд: направление на дорогу впереди, по вертикали — почти горизонт + наклон за склоном */
+    var la = L3.camLook + vRel * 0.03;
+    roadAt(la, RB);
+    var lx = RB.x + RB.rx * c.lat - ax, lz = RB.z + RB.rz * c.lat - az, lk = snap ? 1 : kk(12, dt);
+    c.lx += (lx - c.lx) * lk; c.lz += (lz - c.lz) * lk;
+    var pit = Math.atan((rY(la) - rY(czz)) / ((la - czz) * D)) * L3.camHill;
+    c.pit += (pit - c.pit) * lk;
+    /* угол обзора: скорость, газ, турбо (порт fovTarget) */
+    var fT = Math.min(L3.fovMax, L3.fov + vRel * L3.fovSpd + ln.gas * L3.fovGas + c.boost * L3.fovBoost);
+    c.fov = snap ? fT : c.fov + (fT - c.fov) * kk(3.5, dt);
+    /* крен от скорости смены ряда и затухающая тряска удара: не дольше 0,2 с, слабая */
+    c.roll += (-(ln.vx || 0) * L3.camRoll - c.roll) * kk(4, dt);
+    if (ln.hitT > c.hitP + 0.3) { c.shake = L3.shake; c.shT = 0; }
+    c.hitP = ln.hitT; c.shT += dt;
+    c.shake = c.shT > 0.2 ? 0 : c.shake * Math.exp(-8 * dt);
+    var s = c.shake * c.shake * 0.45, t = c.shT;
+    var sx = (Math.sin(t * 41.3) + Math.sin(t * 27.1 + 1.3) * 0.6) * s, sy = (Math.sin(t * 37.7 + 2.1) + Math.sin(t * 19.4) * 0.6) * s;
+    var sz = Math.sin(t * 33.9 + 0.7) * s * 0.5;
+    var cx = ax + c.ox + sx, cz = az + c.oz + sz;
+    cam.position.set(cx, cy + sy, cz);
+    var ll = Math.sqrt(c.lx * c.lx + c.lz * c.lz) || 1, tx = ax + c.lx - cx, tz = az + c.lz - cz, tl = Math.sqrt(tx * tx + tz * tz) || 1;
+    cam.lookAt(cx + tx / tl * 10, cy + sy + Math.tan(c.pit) * 10, cz + tz / tl * 10);
+    var rr = c.roll + Math.sin(t * 29.3) * s * 0.08;
+    if (rr) cam.rotateZ(rr);
+    var cb = dist / D;
     road.sky.position.copy(cam.position);
     road.hills.position.set(cam.position.x, rY(0.6) * 0.3, cam.position.z);
     road.clouds.position.set(cam.position.x, 0, cam.position.z);
-    road.sunM.position.set(cam.position.x - 260, cam.position.y + 120, cam.position.z - 640); road.sunM.lookAt(cam.position);
     fog.near = cb * D + L3.fogNear * D; fog.far = cb * D + L3.fogFar * D;
   }
 
@@ -932,10 +1069,10 @@ var Lane3D = (function () {
   function fitView(dpr) {
     var hz = L3.horizon, hf = 2 * H * Math.max(hz, 1 - hz);
     cam.aspect = W / hf;                                   // при setViewOffset это пропорция ПОЛНОГО кадра
-    cam.fov = 2 * Math.atan(Math.tan(L3.fov * Math.PI / 360) * hf / H) * 180 / Math.PI;
+    cam.fov = 2 * Math.atan(Math.tan(CS.fov * Math.PI / 360) * hf / H) * 180 / Math.PI;
     cam.setViewOffset(W, hf, 0, hf / 2 - hz * H, W, H);
     cam.updateProjectionMatrix();
-    vw = W; vh = H; vdpr = dpr; vhz = hz; vfov = L3.fov;
+    vw = W; vh = H; vdpr = dpr; vhz = hz; vfov = CS.fov;
   }
   var vhz = 0, vfov = 0;
 
@@ -943,15 +1080,21 @@ var Lane3D = (function () {
     if (!ensure()) return;
     var t0 = performance.now();
     var dpr = R3D.frame(L3.dpr);
-    if (W !== vw || H !== vh || dpr !== vdpr || L3.horizon !== vhz || L3.fov !== vfov) fitView(dpr);
     try {
       R.setClearColor(fog.color);                          // рендерер общий: платформер мог поставить свой
       _sm = _sm || new T3.Matrix4();
       nSh = 0;
       updTheme(); updRoad(); updPlayer(); updCam(); updObjs(); updScenery(); updStreaks();
+      /* проекция пересчитывается, только когда угол обзора сдвинулся заметно (как в ChaseCamera) */
+      if (W !== vw || H !== vh || dpr !== vdpr || L3.horizon !== vhz || Math.abs(CS.fov - vfov) > 0.01) fitView(dpr);
       shadowIM.count = nSh; shadowIM.instanceMatrix.needsUpdate = true;
       haloIM.count = nHalo; haloIM.visible = nHalo > 0; if (nHalo) haloIM.instanceMatrix.needsUpdate = true;
+      mats.sky.uniforms.uHalo.value = L3.sunHalo;
+      /* ACES + sRGB (как main.js turbo-kart-rally). Рендерер общий с платформером — тон ставим
+         только на свой кадр и сразу возвращаем. */
+      R.toneMapping = L3.aces ? T3.ACESFilmicToneMapping : T3.NoToneMapping; R.toneMappingExposure = L3.expo;
       R.render(scene, cam);
+      R.toneMapping = T3.NoToneMapping; R.toneMappingExposure = 1;
     } catch (e) { fail(); return; }
     drew = true;
     ms = performance.now() - t0;
@@ -963,6 +1106,7 @@ var Lane3D = (function () {
       scene.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
       for (var k in mats) mats[k].dispose();
     } catch (e) {}
+    CS.on = false;
     R = null; scene = null; pools = {}; scen = {}; player = null; carKey = ''; thRef = null; scenInit = false; mats = {}; road = {};
     vw = vh = 0; st = 0;                                   // модуль уже в памяти: следующий вход соберёт сцену заново
   }
@@ -972,7 +1116,7 @@ var Lane3D = (function () {
     render: render,
     project: project, projObj: projObj,
     lost: fail, release: dispose,
-    stats: function () { return R ? { calls: R.info.render.calls, tris: R.info.render.triangles, ms: +ms.toFixed(2), st: st, dpr: vdpr } : { st: st }; }
+    stats: function () { return R ? { calls: R.info.render.calls, tris: R.info.render.triangles, ms: +ms.toFixed(2), st: st, dpr: vdpr, fov: +CS.fov.toFixed(2), shake: +CS.shake.toFixed(3), roll: +CS.roll.toFixed(4) } : { st: st }; }
   };
 })();
 R3D.use({ lost: function () { Lane3D.lost(); }, release: function () { Lane3D.release(); } });
