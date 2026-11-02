@@ -107,7 +107,7 @@ ASSETS.push('monster_body', 'monster_tire',        // части ригован�
             'cow', 'horse', 'chicken', 'fence', 'haystack', 'windmill', 'daisies',
             'flower', 'ball', 'butterfly', 'hedgehog', 'apple', 'launchpad', 'train', 'crossing',
             'loc_tower', 'loc_shop', 'loc_palm', 'loc_umbrella', 'loc_jungle', 'loc_monkey',
-            'loc_rock', 'loc_rocket', 'loc_fir', 'loc_snowman',
+            'loc_rock', 'loc_rocket', 'loc_fir', 'loc_snowman', 'cat', 'dog', 'bunny', 'mushroom',
             'monster_a_run', 'monster_b_run', 'monster_c_run', 'monster_d_run',
             'paint', 'sheep', 'robot', 'master', 'monster_a', 'monster_b', 'monster_c', 'monster_d',
             'ambulance', 'bus', 'excavator', 'garbage', 'tractor', 'tow');   // части машин (…_body, wheel_…) убраны: подход «колёса отдельно» отменён, файлов нет

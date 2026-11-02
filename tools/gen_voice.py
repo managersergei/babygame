@@ -26,7 +26,7 @@ ENGINE = "free" if "--engine" in sys.argv and sys.argv[sys.argv.index("--engine"
 KEY = os.environ.get("BABYGAME_FAL_KEY", "")
 if ENGINE == "fal" and not KEY:
     sys.exit("нет BABYGAME_FAL_KEY. Либо задайте ключ этого проекта, либо: --engine free (edge-tts)")
-BASE = "/Users/sergei/Documents/babygame"
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # был жёсткий путь: из worktree писал в основной checkout
 OUT = BASE + "/assets/voice"
 MODEL = "https://fal.run/fal-ai/elevenlabs/tts/multilingual-v2"
 VOICE = "Sarah"
@@ -38,7 +38,11 @@ NUMS = ["один", "два", "три", "четыре"]   # «четыре» п�
 WHEELS = ["одно колесо", "два колеса", "три колеса", "четыре колеса"]   # «четыре колеса» тоже не озвучено
 COLORS = ["чёрный", "красный"]
 # (слово для повтора, как назвать в фразе)
-ELEMS = [("машина", "машинка", "Она едет по дороге!"),
+ELEMS = [("кот", "котик", "Он говорит: мяу!"),           # слова 03.11.2026
+         ("собака", "собачка", "Она говорит: гав!"),
+         ("зайка", "зайчик", "Он прыгает по снегу!"),
+         ("гриб", "грибочек", "Он растёт в траве!"),
+         ("машина", "машинка", "Она едет по дороге!"),
          ("звезда", "звёздочка", "Собирай звёздочки!"),
          ("шарик", "шарик", "Их надо лопать!"),
          ("конус", "конус", "Их можно сбивать!"),

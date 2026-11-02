@@ -19,9 +19,9 @@ RULES = [
     ("cars/traffic",   "cars",  r"^(ambulance|bus|excavator|garbage|tractor|tow)$"),
     ("world/road",     "world", r"^(cone|ramp|pit|puddle|crossing|launchpad|restart|wheel|door|headlight)$"),
     ("world/pickups",  "world", r"^(star|coin|chest|apple|balloon|fuel|fuel_empty|paint)$"),
-    ("world/animals",  "world", r"^(cow|horse|chicken|sheep|hedgehog|butterfly|bird|loc_monkey)$"),
+    ("world/animals",  "world", r"^(cow|horse|chicken|sheep|hedgehog|butterfly|bird|loc_monkey|cat|dog|bunny)$"),
     ("world/monsters", "world", r"^(monster_[a-d](_run)?|robot|master)$"),
-    ("world/nature",   "world", r"^(tree|bush|flower|daisies|haystack|loc_palm|loc_fir|loc_jungle|sun|cloud|arch)$"),
+    ("world/nature",   "world", r"^(tree|bush|flower|daisies|haystack|mushroom|loc_palm|loc_fir|loc_jungle|sun|cloud|arch)$"),
     ("world/places",   "world", r"^(house|fence|windmill|loc_tower|loc_shop|loc_rock|loc_rocket|loc_umbrella|loc_snowman)$"),
     ("world/vehicles", "world", r"^(train|plane|ball)$"),
 ]
