@@ -225,6 +225,22 @@ setMicIcon();
     else box.style.display = 'none';
   });
   document.getElementById('statsClose').addEventListener('click', function () { stopPlay(); box.style.display = 'none'; });
+  document.getElementById('statsWipe').addEventListener('click', function () {
+    if (!confirm('Удалить всё с этого устройства: прогресс, настройки и записи голоса? Это нельзя отменить.')) return;
+    try {
+      var ks = [], i;
+      for (i = 0; i < localStorage.length; i++) ks.push(localStorage.key(i));
+      ks.forEach(function (k) { if (k.indexOf('babygame.') === 0) localStorage.removeItem(k); });
+    } catch (e) {}
+    var done = false;
+    function go() { if (done) return; done = true; location.reload(); }
+    try {
+      Rec.closeDb();
+      var rq = indexedDB.deleteDatabase('babygame');
+      rq.onsuccess = rq.onerror = rq.onblocked = go;
+    } catch (e) { go(); }
+    setTimeout(go, 1500);
+  });
   document.getElementById('statsReset').addEventListener('click', function () {
     if (!confirm('Стереть выученные слова и образцы голоса? Со следующего заезда игра начнёт учить сначала.')) return;
     Stats.reset(); Voice.reset(); render();

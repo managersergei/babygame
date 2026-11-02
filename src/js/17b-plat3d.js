@@ -746,11 +746,11 @@ var Plat3D = (function () {
   function nearProps(k, xw) {
     var i, n = 0, GT = 0.06;                         // верх травяной полосы: она на 6 см выше полотна
     for (i = Math.floor((xw - 20) / 1.1); i <= Math.floor((xw + 40) / 1.1); i++) {
-      if (hash(i * 8.3) < 0.45) continue;
+      if (hash(i * 8.3) < (k === 'beach' ? 0.285 : 0.45)) continue;
       var vx = i * 1.1 - xw + hash(i * 1.9) * 0.7, vz = ZC + 1.6 + hash(i * 6.1) * (ZE - ZC - 1.9), r = hash(i * 4.4), ry = (hash(i) - 0.5) * 1.2;
       if (k === 'beach') {
-        if (r < 0.35) p3('shell', vx, vz, 0.16 + hash(i) * 0.06, 0, ry * 2, GT);
-        else if (r < 0.6) p3('starfish', vx, vz, 0.09, 0, ry * 3, GT);
+        if (r < 0.35) p3('shell', vx, vz, (0.16 + hash(i) * 0.06) * 1.8, 0, ry * 2, GT);
+        else if (r < 0.6) p3('starfish', vx, vz, 0.09 * 1.8, 0, ry * 3, GT);
         else p3('palmlet', vx, vz - 0.3, 0.55 + hash(i) * 0.15, Math.sin(T * 1.4 + i) * 0.04, ry, GT);
       } else if (k === 'city') {
         if (r < 0.5) continue;                       // в городе реже: тротуар не свалка
