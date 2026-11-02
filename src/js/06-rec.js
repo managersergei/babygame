@@ -64,6 +64,6 @@ var Rec = (function () {
     fr.readAsArrayBuffer(blob);
   }
   return { on: on, setOn: function (v) { this.on = on = v; try { localStorage.setItem('babygame.rec', v ? '1' : '0'); } catch (e) {} },
-           fromBlob: fromBlob, all: all, del: del, clear: clear, wav: wav, save: save, stamp: stamp, count: function () { return n; } };
+           closeDb: function () { try { if (db) db.close(); } catch (e) {} db = null; failed = true; }, fromBlob: fromBlob, all: all, del: del, clear: clear, wav: wav, save: save, stamp: stamp, count: function () { return n; } };
 })();
 

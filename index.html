@@ -203,6 +203,7 @@
   <div class="card">
     <h2>Родителям — на 20 секунд</h2>
     <p class="lead">Игра для ребёнка 2–4 лет. Он говорит слово — машинка едет, прыгает, заправляется.</p>
+    <p class="lead">Голос ребёнка не покидает телефон: игра запоминает только, как звучит слово, и хранит это на этом устройстве.</p>
     <ul class="steps">
       <li><b>🎤</b><span>Разрешите микрофон</span></li>
       <li><b>👨‍👩‍👦</b><span>Сядьте рядом и скажите первое слово вместе</span></li>
@@ -248,6 +249,7 @@
   <div id="statsBody"></div>
   <button id="recClear" class="danger">УДАЛИТЬ ЗАПИСИ</button>
   <button id="statsReset" class="danger">СБРОСИТЬ ПРОГРЕСС</button>
+  <button id="statsWipe" class="danger">Удалить всё с этого устройства</button>
   <button id="statsClose">ЗАКРЫТЬ</button>
 </div>
 
@@ -268,7 +270,7 @@
 </div>
 
 <script>
-var BUILD_ID = 'src-44082b3596';                    // tools/build.mjs: хеш исходников
+var BUILD_ID = 'src-508c5d3c56';                    // tools/build.mjs: хеш исходников
 /* dev: сообщаем родителю о падениях, чтобы ловить их автопроверкой */
 window.addEventListener('error', function (e) {
   try { parent.postMessage({ err: (e.message || '?') + ' @' + (e.lineno || 0) }, '*'); } catch (x) {}
@@ -1361,7 +1363,7 @@ var Rec = (function () {
     fr.readAsArrayBuffer(blob);
   }
   return { on: on, setOn: function (v) { this.on = on = v; try { localStorage.setItem('babygame.rec', v ? '1' : '0'); } catch (e) {} },
-           fromBlob: fromBlob, all: all, del: del, clear: clear, wav: wav, save: save, stamp: stamp, count: function () { return n; } };
+           closeDb: function () { try { if (db) db.close(); } catch (e) {} db = null; failed = true; }, fromBlob: fromBlob, all: all, del: del, clear: clear, wav: wav, save: save, stamp: stamp, count: function () { return n; } };
 })();
 
 /* ═══════════════ 4. МАШИНКИ И РЕЖИМЫ ═══════════════ */
@@ -4683,11 +4685,11 @@ var Plat3D = (function () {
   function nearProps(k, xw) {
     var i, n = 0, GT = 0.06;                         // верх травяной полосы: она на 6 см выше полотна
     for (i = Math.floor((xw - 20) / 1.1); i <= Math.floor((xw + 40) / 1.1); i++) {
-      if (hash(i * 8.3) < 0.45) continue;
+      if (hash(i * 8.3) < (k === 'beach' ? 0.285 : 0.45)) continue;
       var vx = i * 1.1 - xw + hash(i * 1.9) * 0.7, vz = ZC + 1.6 + hash(i * 6.1) * (ZE - ZC - 1.9), r = hash(i * 4.4), ry = (hash(i) - 0.5) * 1.2;
       if (k === 'beach') {
-        if (r < 0.35) p3('shell', vx, vz, 0.16 + hash(i) * 0.06, 0, ry * 2, GT);
-        else if (r < 0.6) p3('starfish', vx, vz, 0.09, 0, ry * 3, GT);
+        if (r < 0.35) p3('shell', vx, vz, (0.16 + hash(i) * 0.06) * 1.8, 0, ry * 2, GT);
+        else if (r < 0.6) p3('starfish', vx, vz, 0.09 * 1.8, 0, ry * 3, GT);
         else p3('palmlet', vx, vz - 0.3, 0.55 + hash(i) * 0.15, Math.sin(T * 1.4 + i) * 0.04, ry, GT);
       } else if (k === 'city') {
         if (r < 0.5) continue;                       // в городе реже: тротуар не свалка
@@ -9098,6 +9100,22 @@ setMicIcon();
     else box.style.display = 'none';
   });
   document.getElementById('statsClose').addEventListener('click', function () { stopPlay(); box.style.display = 'none'; });
+  document.getElementById('statsWipe').addEventListener('click', function () {
+    if (!confirm('Удалить всё с этого устройства: прогресс, настройки и записи голоса? Это нельзя отменить.')) return;
+    try {
+      var ks = [], i;
+      for (i = 0; i < localStorage.length; i++) ks.push(localStorage.key(i));
+      ks.forEach(function (k) { if (k.indexOf('babygame.') === 0) localStorage.removeItem(k); });
+    } catch (e) {}
+    var done = false;
+    function go() { if (done) return; done = true; location.reload(); }
+    try {
+      Rec.closeDb();
+      var rq = indexedDB.deleteDatabase('babygame');
+      rq.onsuccess = rq.onerror = rq.onblocked = go;
+    } catch (e) { go(); }
+    setTimeout(go, 1500);
+  });
   document.getElementById('statsReset').addEventListener('click', function () {
     if (!confirm('Стереть выученные слова и образцы голоса? Со следующего заезда игра начнёт учить сначала.')) return;
     Stats.reset(); Voice.reset(); render();
